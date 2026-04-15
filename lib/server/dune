@@ -1,0 +1,5 @@
+(library
+ (name server)
+ (public_name trading.server)
+ (libraries core indicators strategies engine finam
+            cohttp-eio eio eio.unix yojson uri))

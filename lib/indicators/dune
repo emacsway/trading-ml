@@ -1,0 +1,4 @@
+(library
+ (name indicators)
+ (public_name trading.indicators)
+ (libraries core))

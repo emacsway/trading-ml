@@ -34,3 +34,6 @@ setup.log
 
 # Local OPAM switch
 _opam/
+
+ui/node_modules
+ui/.angular
