@@ -1,0 +1,31 @@
+/** Bollinger Bands: middle = SMA(n), upper = middle + k·σ, lower = middle - k·σ.
+ *  σ is the population standard deviation of the window. O(n) via running sums
+ *  of x and x². */
+
+export interface BBand {
+  lower: number;
+  middle: number;
+  upper: number;
+}
+
+export function bollinger(data: number[], period: number, k: number): BBand[] {
+  const out: BBand[] = data.map(() => ({ lower: NaN, middle: NaN, upper: NaN }));
+  if (period <= 1 || k <= 0) return out;
+  let sum = 0, sumSq = 0;
+  for (let i = 0; i < data.length; i++) {
+    sum += data[i];
+    sumSq += data[i] * data[i];
+    if (i >= period) {
+      sum -= data[i - period];
+      sumSq -= data[i - period] * data[i - period];
+    }
+    if (i >= period - 1) {
+      const mean = sum / period;
+      // Guard against catastrophic cancellation near constant inputs.
+      const variance = Math.max(0, sumSq / period - mean * mean);
+      const sd = Math.sqrt(variance);
+      out[i] = { middle: mean, upper: mean + k * sd, lower: mean - k * sd };
+    }
+  }
+  return out;
+}
