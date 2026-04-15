@@ -4,7 +4,7 @@ import {
 } from '@angular/core';
 import {
   createChart, IChartApi, ISeriesApi, LineData, CandlestickData,
-  CandlestickSeries, LineSeries, Time,
+  HistogramData, CandlestickSeries, LineSeries, HistogramSeries, Time,
 } from 'lightweight-charts';
 import { Candle } from './api.service';
 import { type IndicatorOverlay, PRICE_PANE } from './indicators';
@@ -24,7 +24,7 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
 
   private chart?: IChartApi;
   private candleSeries?: ISeriesApi<'Candlestick'>;
-  private overlaySeries: ISeriesApi<'Line'>[] = [];
+  private overlaySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
 
   constructor() {
     effect(() => {
@@ -84,17 +84,36 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     for (const o of overlays) {
       const idx = paneIndex.get(o.pane)!;
       for (const line of o.lines) {
-        const s = this.chart.addSeries(LineSeries, {
-          color: line.color,
-          lineWidth: 1,
-          priceLineVisible: false,
-          title: line.label,
-        }, idx);
-        const pts: LineData[] = line.points
-          .filter(p => p.v !== null && !Number.isNaN(p.v))
-          .map(p => ({ time: Math.floor(p.ts) as Time, value: p.v }));
-        s.setData(pts);
-        this.overlaySeries.push(s);
+        if (line.kind === 'histogram') {
+          const s = this.chart.addSeries(HistogramSeries, {
+            color: line.color,
+            priceLineVisible: false,
+            title: line.label,
+            // Fit the histogram to ~30% of its pane so price action stays dominant.
+            priceFormat: { type: 'volume' },
+          }, idx);
+          const pts: HistogramData[] = line.points
+            .filter(p => p.v !== null && !Number.isNaN(p.v))
+            .map(p => ({
+              time: Math.floor(p.ts) as Time,
+              value: p.v,
+              color: p.color ?? line.color,
+            }));
+          s.setData(pts);
+          this.overlaySeries.push(s);
+        } else {
+          const s = this.chart.addSeries(LineSeries, {
+            color: line.color,
+            lineWidth: 1,
+            priceLineVisible: false,
+            title: line.label,
+          }, idx);
+          const pts: LineData[] = line.points
+            .filter(p => p.v !== null && !Number.isNaN(p.v))
+            .map(p => ({ time: Math.floor(p.ts) as Time, value: p.v }));
+          s.setData(pts);
+          this.overlaySeries.push(s);
+        }
       }
     }
 

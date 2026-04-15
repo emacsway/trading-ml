@@ -25,15 +25,28 @@ import { cvdOverlay } from './cvd';
 import { cmfOverlay } from './cmf';
 import { cviOverlay } from './cvi';
 import { chaikinOscillatorOverlay } from './chaikin_oscillator';
+import { volumeOverlay } from './volume';
 
 export interface OverlayBar extends OHLCV {
   ts: number;
 }
 
+export type OverlayKind = 'line' | 'histogram';
+
+export interface OverlayPoint {
+  ts: number;
+  v: number;
+  /** Per-point color override — used by histograms to tint each bar
+   *  individually (e.g. green on up-candles, red on down-candles). */
+  color?: string;
+}
+
 export interface OverlayLine {
   label: string;
   color: string;
-  points: { ts: number; v: number }[];
+  /** Defaults to `'line'` when omitted. */
+  kind?: OverlayKind;
+  points: OverlayPoint[];
 }
 
 export interface IndicatorOverlay {
@@ -73,6 +86,7 @@ export const overlayRegistry: Record<string, OverlayRenderer> = {
   'CMF': cmfOverlay,
   'CVI': cviOverlay,
   'ChaikinOscillator': chaikinOscillatorOverlay,
+  'Volume':   volumeOverlay,
   'VolumeMA': volumeMaOverlay,
 };
 
