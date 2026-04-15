@@ -7,8 +7,11 @@ import { FormsModule } from '@angular/forms';
 import {
   Api, Candle, IndicatorSpec, StrategySpec, BacktestResult,
 } from './api.service';
-import { ChartComponent, IndicatorOverlay } from './chart.component';
-import { sma, ema, bollinger } from './indicators';
+import { ChartComponent } from './chart.component';
+import {
+  emptyOverlay, overlayRegistry,
+  type IndicatorOverlay,
+} from './indicators';
 
 interface IndicatorChoice {
   spec: IndicatorSpec;
@@ -170,41 +173,13 @@ export class AppComponent {
       .subscribe(r => this.result.set(r));
   }
 
+  /** Dispatches to the per-indicator renderer registered in
+   *  [overlayRegistry]. Indicators without a registered renderer produce
+   *  an empty overlay (they aren't drawn on the price chart). */
   private computeOverlay(ind: IndicatorChoice, candles: Candle[]): IndicatorOverlay {
-    const closes = candles.map(c => c.close);
-    switch (ind.spec.name) {
-      case 'SMA':
-      case 'EMA': {
-        const period = ind.params['period'] || 20;
-        const series = ind.spec.name === 'EMA' ? ema(closes, period)
-                                               : sma(closes, period);
-        return {
-          name: ind.spec.name,
-          lines: [{
-            label: `${ind.spec.name}(${period})`,
-            color: ind.color,
-            points: series.map((v, i) => ({ ts: candles[i].ts, v })),
-          }],
-        };
-      }
-      case 'BollingerBands': {
-        const period = ind.params['period'] || 20;
-        const k = ind.params['k'] || 2;
-        const bands = bollinger(closes, period, k);
-        return {
-          name: 'BB',
-          lines: [
-            { label: 'BB upper',  color: ind.color,
-              points: bands.map((x, i) => ({ ts: candles[i].ts, v: x.upper })) },
-            { label: 'BB middle', color: ind.color,
-              points: bands.map((x, i) => ({ ts: candles[i].ts, v: x.middle })) },
-            { label: 'BB lower',  color: ind.color,
-              points: bands.map((x, i) => ({ ts: candles[i].ts, v: x.lower })) },
-          ],
-        };
-      }
-      default:
-        return { name: ind.spec.name, lines: [] };
-    }
+    const render = overlayRegistry[ind.spec.name];
+    return render
+      ? render(candles, ind.params, ind.color)
+      : emptyOverlay(ind.spec.name);
   }
 }

@@ -1,16 +1,21 @@
-/** Barrel — one place to register every indicator so the UI can import
- *  `{ sma, ema, … }` without caring about file layout.
- *  Adding a new indicator = one file + one line here. */
+/** Barrel — single import surface for indicators, their overlays and types.
+ *  Adding a new indicator = one file for the math + (optionally) an
+ *  overlay function in the same file + one line here and one line in
+ *  `overlay.ts`'s registry. */
 
 // Shared types
 export type { OHLCV } from './ohlcv';
+export type {
+  IndicatorOverlay, OverlayLine, OverlayBar, OverlayRenderer,
+} from './overlay';
+export { overlayRegistry, emptyOverlay } from './overlay';
 
 // Price-only indicators
-export { sma } from './sma';
-export { ema } from './ema';
-export { wma } from './wma';
+export { sma, smaOverlay } from './sma';
+export { ema, emaOverlay } from './ema';
+export { wma, wmaOverlay } from './wma';
 export { rsi } from './rsi';
-export { bollinger, type BBand } from './bollinger';
+export { bollinger, bollingerOverlay, type BBand } from './bollinger';
 export { macd, type MACD } from './macd';
 export { macdWeighted } from './macd_weighted';
 

@@ -7,11 +7,8 @@ import {
   CandlestickSeries, LineSeries, Time,
 } from 'lightweight-charts';
 import { Candle } from './api.service';
-
-export interface IndicatorOverlay {
-  name: string;
-  lines: { label: string; color: string; points: { ts: number; v: number }[] }[];
-}
+import type { IndicatorOverlay } from './indicators';
+export type { IndicatorOverlay };
 
 @Component({
   selector: 'app-chart',
