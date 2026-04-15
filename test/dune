@@ -1,3 +1,5 @@
 (test
  (name test_trading)
  (libraries core indicators strategies engine finam alcotest qcheck-core))
+
+(include_subdirs unqualified)
