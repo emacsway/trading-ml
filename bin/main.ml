@@ -21,10 +21,13 @@ open Core
 let usage () =
   prerr_endline {|trading <command> [options]
 
-  serve [--port 8080] [--live] [--secret SECRET] [--account ACCOUNT_ID]
+  serve [--port 8080] [--live] [--broker finam|bcs]
+        [--secret SECRET] [--account ACCOUNT_ID]
       start HTTP API server (bound to localhost).
-      Default mode is synthetic. Pass --live to use the real Finam REST.
-      Secret / account may also come from FINAM_SECRET / FINAM_ACCOUNT_ID.
+      Default mode is synthetic. Pass --live to hit a real broker.
+      --broker selects which integration (default: finam). Secret /
+      account may also come from <BROKER>_SECRET / <BROKER>_ACCOUNT_ID
+      env vars, e.g. FINAM_SECRET, BCS_SECRET.
 
   list
       show registered indicators and strategies
@@ -84,6 +87,25 @@ let arg_value name args =
 
 let arg_flag name args = List.mem name args
 
+(** Selects the secret / account env-var prefix per broker. Keeps the
+    CLI single-flagged while letting users park credentials for
+    multiple brokers side by side. *)
+let broker_env_prefix = function
+  | "bcs" -> "BCS"
+  | _ -> "FINAM"
+
+let open_finam ~env ~secret ~account : Broker.client =
+  let cfg = Finam.Config.make ?account_id:account ~secret () in
+  let transport = Finam.Eio_transport.make ~env in
+  let rest = Finam.Rest.make ~transport ~cfg in
+  Finam.Finam_broker.as_broker rest
+
+let open_bcs ~env ~secret ~account : Broker.client =
+  let cfg = Bcs.Config.make ?account_id:account ~refresh_token:secret () in
+  let transport = Http_transport.make_eio ~env in
+  let rest = Bcs.Rest.make ~transport ~cfg in
+  Bcs.Bcs_broker.as_broker rest
+
 let cmd_serve args =
   let port =
     match arg_value "--port" args with
@@ -91,15 +113,21 @@ let cmd_serve args =
     | None -> 8080
   in
   let live = arg_flag "--live" args in
+  let broker_id =
+    match arg_value "--broker" args with
+    | Some v -> v
+    | None -> "finam"
+  in
+  let prefix = broker_env_prefix broker_id in
   let secret =
     match arg_value "--secret" args with
     | Some v -> Some v
-    | None -> Sys.getenv_opt "FINAM_SECRET"
+    | None -> Sys.getenv_opt (prefix ^ "_SECRET")
   in
   let account =
     match arg_value "--account" args with
     | Some v -> Some v
-    | None -> Sys.getenv_opt "FINAM_ACCOUNT_ID"
+    | None -> Sys.getenv_opt (prefix ^ "_ACCOUNT_ID")
   in
   Eio_main.run @@ fun env ->
   (* Seed mirage-crypto-rng so TLS can do handshakes. Required by
@@ -114,19 +142,24 @@ let cmd_serve args =
       match secret with
       | None ->
         Server.Log.warn
-          "--live requested but no secret (use --secret or FINAM_SECRET). \
-           Falling back to synthetic.";
+          "--live requested but no secret (use --secret or %s_SECRET). \
+           Falling back to synthetic." prefix;
         Server.Http.Synthetic
       | Some secret ->
-        let cfg = Finam.Config.make ?account_id:account ~secret () in
-        let transport = Finam.Eio_transport.make ~env in
-        let client = Finam.Rest.make ~transport ~cfg in
-        Server.Log.info "live Finam mode (account=%s)"
-          (Option.value account ~default:"<none>");
+        let client = match broker_id with
+          | "finam" -> open_finam ~env ~secret ~account
+          | "bcs"   -> open_bcs ~env ~secret ~account
+          | other ->
+            failwith ("unknown --broker: " ^ other ^ " (expected finam|bcs)")
+        in
+        Server.Log.info "live %s mode (account=%s)"
+          (Broker.name client) (Option.value account ~default:"<none>");
         Server.Http.Live client
   in
   Server.Log.info "listening on http://127.0.0.1:%d (%s)"
-    port (match source with Synthetic -> "synthetic" | Live _ -> "live");
+    port (match source with
+      | Synthetic -> "synthetic"
+      | Live c -> "live:" ^ Broker.name c);
   Server.Http.run ~env ~port ~source
 
 let () =

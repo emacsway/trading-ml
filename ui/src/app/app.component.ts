@@ -42,7 +42,7 @@ let nextSlotId = 1;
   template: `
     <div class="layout">
       <header>
-        <h1>Finam Trading — OCaml</h1>
+        <h1>Stock Trading with OCaml</h1>
         <div class="controls">
           <label>Symbol
             <input [ngModel]="ticker()" (ngModelChange)="ticker.set($event)"

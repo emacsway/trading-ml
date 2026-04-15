@@ -1,0 +1,4 @@
+(library
+ (name bcs)
+ (public_name trading.bcs)
+ (libraries core broker http_transport yojson uri))

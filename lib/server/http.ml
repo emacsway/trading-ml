@@ -39,10 +39,11 @@ let get_query_int uri k d =
 let parse_timeframe s =
   try Timeframe.of_string s with _ -> Timeframe.H1
 
-(** Source for candle data. *)
+(** Source for candle data. [Live] is broker-agnostic — wraps any
+    [Broker.client] (Finam, BCS, …). *)
 type source =
   | Synthetic
-  | Live of Finam.Rest.t
+  | Live of Broker.client
 
 let synthetic_candles ~n ~timeframe =
   Synthetic.generate ~n ~start_ts:1_704_067_200L
@@ -79,10 +80,10 @@ let live_or_synthetic source ~symbol ~n ~timeframe =
   match source with
   | Synthetic -> synthetic_candles ~n ~timeframe
   | Live client ->
-    try Finam.Rest.bars client ~n ~symbol ~timeframe
+    try Broker.bars client ~n ~symbol ~timeframe
     with e ->
-      Log.warn "finam bars(%s) failed: %s — falling back to synthetic"
-        (Symbol.to_string symbol) (Printexc.to_string e);
+      Log.warn "%s bars(%s) failed: %s — falling back to synthetic"
+        (Broker.name client) (Symbol.to_string symbol) (Printexc.to_string e);
       synthetic_candles ~n ~timeframe
 
 (** Source for the streaming endpoint — in synthetic mode we wobble the
@@ -197,21 +198,22 @@ let route source registry request body : int * Cohttp_eio.Server.response_action
     | `GET, "/api/strategies" ->
       ok (json_response (Api.strategies_catalog ()))
     | `GET, "/api/exchanges" ->
-      let j = match source with
+      let exchanges : Broker.exchange list = match source with
         | Synthetic ->
-          (* Static list mirroring the UI's built-in MICS[]; keeps mock
-             and live behaviour identical from the front-end's view. *)
-          `Assoc [ "exchanges", `List [
-            `Assoc [ "mic", `String "MISX"; "name", `String "MOEX" ];
-            `Assoc [ "mic", `String "XSPB"; "name", `String "SPB Exchange" ];
-          ]]
+          (* Static list mirrors the UI's built-in fallback. *)
+          [ { mic = "MISX"; name = "MOEX" };
+            { mic = "XSPB"; name = "SPB Exchange" } ]
         | Live client ->
-          (try Finam.Rest.exchanges client
+          (try Broker.exchanges client
            with e ->
-             Log.warn "finam /v1/exchanges failed: %s"
-               (Printexc.to_string e);
-             `Assoc [ "exchanges", `List [] ])
+             Log.warn "%s exchanges failed: %s"
+               (Broker.name client) (Printexc.to_string e);
+             [])
       in
+      let j : Yojson.Safe.t = `Assoc [
+        "exchanges", `List (List.map (fun (e : Broker.exchange) ->
+          `Assoc [ "mic", `String e.mic; "name", `String e.name ]) exchanges)
+      ] in
       ok (json_response j)
     | `GET, "/api/candles" ->
       let symbol = Symbol.of_string (get_query uri "symbol") in
@@ -227,7 +229,10 @@ let route source registry request body : int * Cohttp_eio.Server.response_action
       let body = Eio.Flow.read_all body in
       ok (json_response (run_backtest source body))
     | `GET, "/" | `GET, "/health" ->
-      let mode = match source with Synthetic -> "synthetic" | Live _ -> "live" in
+      let mode = match source with
+        | Synthetic -> "synthetic"
+        | Live c -> "live:" ^ Broker.name c
+      in
       ok (string_response ("ok (" ^ mode ^ ")"))
     | _ -> 404, `Response (string_response ~status:`Not_found "not found")
   with e ->

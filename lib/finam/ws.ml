@@ -32,7 +32,7 @@ let subscribe_message id = function
       "channel", `String "bars";
       "id", `String id;
       "symbol", `String (Symbol.to_string symbol);
-      "timeframe", `String (Timeframe.to_finam timeframe);
+      "timeframe", `String (Rest.timeframe_wire timeframe);
     ]
   | Sub_account account_id ->
     `Assoc [

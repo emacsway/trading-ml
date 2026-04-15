@@ -1,0 +1,5 @@
+(library
+ (name http_transport)
+ (public_name trading.http_transport)
+ (libraries cohttp cohttp-eio eio eio.unix uri
+            tls tls-eio x509 domain-name))

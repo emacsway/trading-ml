@@ -97,6 +97,15 @@ let qualify_symbol cfg (symbol : Symbol.t) =
     | Some mic -> s ^ "@" ^ mic
     | None -> s
 
+(** Finam gRPC TimeFrame enum mapping. Kept here, not in [Core.Timeframe],
+    so the core type stays broker-agnostic. *)
+let timeframe_wire : Timeframe.t -> string = function
+  | M1 -> "TIME_FRAME_M1" | M5 -> "TIME_FRAME_M5"
+  | M15 -> "TIME_FRAME_M15" | M30 -> "TIME_FRAME_M30"
+  | H1 -> "TIME_FRAME_H1" | H4 -> "TIME_FRAME_H4"
+  | D1 -> "TIME_FRAME_D" | W1 -> "TIME_FRAME_W"
+  | MN1 -> "TIME_FRAME_MN"
+
 (** Format a unix-epoch timestamp as RFC 3339 / ISO 8601 (UTC, "Z"
     suffix). Finam's new REST expects the bars endpoint's
     [interval.start_time] / [end_time] in this shape; plain int
@@ -126,7 +135,7 @@ let bars
       ~default:(Int64.sub end_ts (Int64.mul (Int64.of_int n) tf_secs))
   in
   let q = [
-    "timeframe",            Timeframe.to_finam timeframe;
+    "timeframe",            timeframe_wire timeframe;
     "interval.start_time",  iso8601_of_ts start_ts;
     "interval.end_time",    iso8601_of_ts end_ts;
   ] in

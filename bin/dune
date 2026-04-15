@@ -2,5 +2,6 @@
  (name main)
  (public_name trading)
  (package trading)
- (libraries core indicators strategies engine finam server
+ (libraries core broker indicators strategies engine
+            http_transport finam bcs server
             eio_main mirage-crypto-rng.unix))
