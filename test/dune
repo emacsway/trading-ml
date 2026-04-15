@@ -1,5 +1,7 @@
 (test
  (name test_trading)
- (libraries core indicators strategies engine finam alcotest qcheck-core))
+ (libraries core indicators strategies engine finam
+            eio eio_main
+            alcotest qcheck-core))
 
 (include_subdirs unqualified)

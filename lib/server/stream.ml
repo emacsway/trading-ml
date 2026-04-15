@@ -167,3 +167,38 @@ let unsubscribe t ~symbol ~timeframe (client : client) =
         s.cancel ();
         t.subs <- KMap.remove key t.subs
       end)
+
+(** Injection point for alternative upstream sources (WebSocket bridge).
+    Updates the cached candle for [(symbol, timeframe)] so the polling
+    fiber doesn't re-emit a duplicate, then fans the event out to all
+    registered SSE clients of that key. No-op if the key has no
+    subscribers yet. *)
+let push_from_upstream t ~symbol ~timeframe (candle : Candle.t) =
+  let key = (symbol, timeframe) in
+  let chunk_opt =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      match KMap.find_opt key t.subs with
+      | None -> None
+      | Some s ->
+        let event =
+          match last s.last_candles with
+          | Some cl when Int64.equal cl.Candle.ts candle.ts ->
+            Bar_update candle
+          | _ -> Bar_closed candle
+        in
+        (* Update cache: either replace trailing bar or append. *)
+        let cached =
+          match last s.last_candles with
+          | Some cl when Int64.equal cl.Candle.ts candle.ts ->
+            (match List.rev s.last_candles with
+             | _ :: rest -> List.rev (candle :: rest)
+             | [] -> [candle])
+          | _ -> s.last_candles @ [candle]
+        in
+        s.last_candles <- cached;
+        Some (encode_event event, s.clients))
+  in
+  match chunk_opt with
+  | None -> ()
+  | Some (chunk, clients) ->
+    List.iter (fun c -> Eio.Stream.add c.queue chunk) clients

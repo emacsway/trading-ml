@@ -4,6 +4,8 @@ let () =
     "portfolio", Test_portfolio.tests;
     "backtest",  Test_backtest.tests;
     "finam dto", Test_finam_dto.tests;
+    "finam ws frame", Test_ws_frame.tests;
+    "finam ws client", Test_ws_client.tests;
     (* Indicators — one file per indicator under test/indicators/. *)
     "sma",       Sma_test.tests;
     "ema",       Ema_test.tests;
