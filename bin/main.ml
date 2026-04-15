@@ -102,6 +102,12 @@ let cmd_serve args =
     | None -> Sys.getenv_opt "FINAM_ACCOUNT_ID"
   in
   Eio_main.run @@ fun env ->
+  (* Seed mirage-crypto-rng so TLS can do handshakes. Required by
+     tls-eio: without a seeded RNG every HTTPS client call blows up
+     with "default generator is not yet initialized". One call at
+     startup is enough — internally this installs a periodic
+     getrandom(2) reseeder. *)
+  Mirage_crypto_rng_unix.use_default ();
   let source =
     if not live then Server.Http.Synthetic
     else

@@ -14,9 +14,11 @@ type t = {
   account_id : string option;
 }
 
+(* [trade-api.finam.ru] (с дефисом) возвращает 301 → [tradeapi.finam.ru].
+   WebSocket-хост — пока гипотеза, подтвердится при активации WS. *)
 let make
-    ?(rest_base = Uri.of_string "https://trade-api.finam.ru")
-    ?(ws_url = Uri.of_string "wss://ws-api.finam.ru/trade-api/")
+    ?(rest_base = Uri.of_string "https://tradeapi.finam.ru")
+    ?(ws_url = Uri.of_string "wss://tradeapi.finam.ru/")
     ?account_id
     ~secret
     () =
