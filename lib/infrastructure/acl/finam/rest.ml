@@ -176,3 +176,7 @@ let cancel_order t ~account_id ~order_id =
 (** Exposed for [Ws_bridge] so it can put the current JWT into the
     upgrade handshake's Authorization header. *)
 let current_token t = Auth.current t.auth
+
+(** Accessors for [Ws_bridge] to share auth state and config. *)
+let auth t = t.auth
+let cfg t = t.cfg

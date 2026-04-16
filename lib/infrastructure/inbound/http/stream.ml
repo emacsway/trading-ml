@@ -50,17 +50,33 @@ type sub_state = {
 type fetch =
   instrument:Instrument.t -> n:int -> timeframe:Timeframe.t -> Candle.t list
 
+type lifecycle_hook =
+  instrument:Instrument.t -> timeframe:Timeframe.t -> unit
+
 type t = {
   env : Eio_unix.Stdenv.base;
   fetch : fetch;
+  on_first : lifecycle_hook;
+  on_last  : lifecycle_hook;
   mutable subs : sub_state KMap.t;
   mutex : Eio.Mutex.t;
   mutable next_id : int;
   sw : Eio.Switch.t;
 }
 
-let create ~env ~sw ~fetch = {
+(** [on_first_subscriber] fires when the first SSE client subscribes
+    to a [(instrument, timeframe)] key — the natural moment to forward
+    the subscription to an upstream WS. [on_last_unsubscriber] fires
+    when the last client of a key disconnects, so the upstream
+    subscription can be released. Both default to no-ops, keeping
+    [Stream] free of any broker knowledge. *)
+let create
+    ?(on_first_subscriber : lifecycle_hook = fun ~instrument:_ ~timeframe:_ -> ())
+    ?(on_last_unsubscriber : lifecycle_hook = fun ~instrument:_ ~timeframe:_ -> ())
+    ~env ~sw ~fetch () = {
   env; sw; fetch;
+  on_first = on_first_subscriber;
+  on_last  = on_last_unsubscriber;
   subs = KMap.empty;
   mutex = Eio.Mutex.create ();
   next_id = 0;
@@ -140,35 +156,51 @@ let start_poll t (key : key) (sub : sub_state) =
 
 let subscribe t ~instrument ~timeframe : client * Candle.t list =
   let key = (instrument, timeframe) in
-  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-    let id = t.next_id in
-    t.next_id <- t.next_id + 1;
-    let client = { id; queue = Eio.Stream.create 64 } in
-    match KMap.find_opt key t.subs with
-    | Some s ->
-      s.clients <- client :: s.clients;
-      client, s.last_candles
-    | None ->
-      let s = {
-        clients = [client];
-        last_candles = [];
-        cancel = (fun () -> ());
-      } in
-      t.subs <- KMap.add key s t.subs;
-      start_poll t key s;
-      client, [])
+  let client, seed, first =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      let id = t.next_id in
+      t.next_id <- t.next_id + 1;
+      let client = { id; queue = Eio.Stream.create 64 } in
+      match KMap.find_opt key t.subs with
+      | Some s ->
+        s.clients <- client :: s.clients;
+        client, s.last_candles, false
+      | None ->
+        let s = {
+          clients = [client];
+          last_candles = [];
+          cancel = (fun () -> ());
+        } in
+        t.subs <- KMap.add key s t.subs;
+        start_poll t key s;
+        client, [], true)
+  in
+  if first then
+    (try t.on_first ~instrument ~timeframe
+     with e ->
+       Log.warn "stream on_first_subscriber failed: %s"
+         (Printexc.to_string e));
+  client, seed
 
 let unsubscribe t ~instrument ~timeframe (client : client) =
   let key = (instrument, timeframe) in
-  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-    match KMap.find_opt key t.subs with
-    | None -> ()
-    | Some s ->
-      s.clients <- List.filter (fun c -> c.id <> client.id) s.clients;
-      if s.clients = [] then begin
-        s.cancel ();
-        t.subs <- KMap.remove key t.subs
-      end)
+  let last =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      match KMap.find_opt key t.subs with
+      | None -> false
+      | Some s ->
+        s.clients <- List.filter (fun c -> c.id <> client.id) s.clients;
+        if s.clients = [] then begin
+          s.cancel ();
+          t.subs <- KMap.remove key t.subs;
+          true
+        end else false)
+  in
+  if last then
+    try t.on_last ~instrument ~timeframe
+    with e ->
+      Log.warn "stream on_last_unsubscriber failed: %s"
+        (Printexc.to_string e)
 
 (** Injection point for alternative upstream sources (WebSocket bridge).
     Updates the cached candle for [(instrument, timeframe)] so the

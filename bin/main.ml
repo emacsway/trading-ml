@@ -94,17 +94,82 @@ let broker_env_prefix = function
   | "bcs" -> "BCS"
   | _ -> "FINAM"
 
-let open_finam ~env ~secret ~account : Broker.client =
+(** When the broker exposes a live WS feed, we keep the underlying REST
+    handle alongside the {!Broker.client} existential so the CLI can
+    wire WS subscriptions / order routing without re-discovering the
+    concrete adapter type. *)
+type live_broker =
+  | Live_finam of { client : Broker.client; rest : Finam.Rest.t }
+  | Live_bcs   of { client : Broker.client }
+
+let open_finam ~env ~secret ~account : live_broker =
   let cfg = Finam.Config.make ?account_id:account ~secret () in
   let transport = Http_transport.make_eio ~env in
   let rest = Finam.Rest.make ~transport ~cfg in
-  Finam.Finam_broker.as_broker rest
+  Live_finam { client = Finam.Finam_broker.as_broker rest; rest }
 
-let open_bcs ~env ~secret ~account : Broker.client =
+let open_bcs ~env ~secret ~account : live_broker =
   let cfg = Bcs.Config.make ?account_id:account ~refresh_token:secret () in
   let transport = Http_transport.make_eio ~env in
   let rest = Bcs.Rest.make ~transport ~cfg in
-  Bcs.Bcs_broker.as_broker rest
+  Live_bcs { client = Bcs.Bcs_broker.as_broker rest }
+
+let live_client = function
+  | Live_finam { client; _ } | Live_bcs { client } -> client
+
+(** Build a {!Server.Http.live_setup} that bridges Finam's WebSocket
+    feed into the SSE stream registry. Connection happens up-front on
+    the server's switch; per-key SUBSCRIBE/UNSUBSCRIBE messages flow
+    on subscriber lifecycle hooks; inbound BARS events fan out via
+    [Stream.push_from_upstream]. *)
+let finam_live_setup ~env (rest : Finam.Rest.t) ~sw : Server.Http.live_setup =
+  let cfg = Finam.Rest.cfg rest in
+  let auth = Finam.Rest.auth rest in
+  match
+    try Ok (Finam.Ws_bridge.connect ~env ~sw ~cfg ~auth)
+    with e -> Error e
+  with
+  | Error e ->
+    Server.Log.warn "[finam ws] connect failed: %s — falling back to polling"
+      (Printexc.to_string e);
+    Server.Http.no_live_setup
+  | Ok bridge ->
+    let registry_ref : Server.Stream.t option ref = ref None in
+    Eio.Fiber.fork_daemon ~sw (fun () ->
+      Finam.Ws_bridge.run bridge ~on_event:(fun ev ->
+        match ev with
+        | Bars { instrument; bars } ->
+          (match !registry_ref with
+           | None -> ()
+           | Some r ->
+             let tfs =
+               Finam.Ws_bridge.timeframes_for_instrument bridge instrument
+             in
+             List.iter (fun candle ->
+               List.iter (fun timeframe ->
+                 Server.Stream.push_from_upstream r
+                   ~instrument ~timeframe candle
+               ) tfs
+             ) bars)
+        | Error_ev { code; type_; message } ->
+          Server.Log.warn "[finam ws] error %d %s: %s" code type_ message
+        | Lifecycle { event; code; reason } ->
+          Server.Log.info "[finam ws] %s (%d) %s" event code reason
+        | _ -> ());
+      `Stop_daemon);
+    Server.Http.{
+      on_first = (fun ~instrument ~timeframe ->
+        try Finam.Ws_bridge.subscribe_bars bridge ~instrument ~timeframe
+        with e ->
+          Server.Log.warn "[finam ws] subscribe failed: %s"
+            (Printexc.to_string e));
+      on_last = (fun ~instrument ~timeframe ->
+        try Finam.Ws_bridge.unsubscribe_bars bridge ~instrument ~timeframe
+        with e ->
+          Server.Log.warn "[finam ws] unsubscribe failed: %s"
+            (Printexc.to_string e));
+      bind = (fun r -> registry_ref := Some r);
+    }
 
 let cmd_serve args =
   let port =
@@ -136,31 +201,36 @@ let cmd_serve args =
      startup is enough — internally this installs a periodic
      getrandom(2) reseeder. *)
   Mirage_crypto_rng_unix.use_default ();
-  let source =
-    if not live then Server.Http.Synthetic
+  let source, ws_setup =
+    if not live then Server.Http.Synthetic, None
     else
       match secret with
       | None ->
         Server.Log.warn
           "--live requested but no secret (use --secret or %s_SECRET). \
            Falling back to synthetic." prefix;
-        Server.Http.Synthetic
+        Server.Http.Synthetic, None
       | Some secret ->
-        let client = match broker_id with
+        let lb = match broker_id with
           | "finam" -> open_finam ~env ~secret ~account
           | "bcs"   -> open_bcs ~env ~secret ~account
           | other ->
             failwith ("unknown --broker: " ^ other ^ " (expected finam|bcs)")
         in
+        let client = live_client lb in
         Server.Log.info "live %s mode (account=%s)"
           (Broker.name client) (Option.value account ~default:"<none>");
-        Server.Http.Live client
+        let setup = match lb with
+          | Live_finam { rest; _ } -> Some (finam_live_setup ~env rest)
+          | Live_bcs _ -> None  (* WS for BCS not implemented yet. *)
+        in
+        Server.Http.Live client, setup
   in
   Server.Log.info "listening on http://127.0.0.1:%d (%s)"
     port (match source with
       | Synthetic -> "synthetic"
       | Live c -> "live:" ^ Broker.name c);
-  Server.Http.run ~env ~port ~source
+  Server.Http.run ?setup:ws_setup ~env ~port ~source ()
 
 let () =
   match Array.to_list Sys.argv with

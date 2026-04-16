@@ -1,11 +1,37 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
+/** Internal UI shape — all numeric. Chart libraries and indicator
+ *  math work with [number], never strings. */
 export interface Candle {
   ts: number;
   open: number; high: number; low: number; close: number; volume: number;
 }
+
+/** Wire shape matching the backend's {!Candle_json.yojson_of_t}:
+ *  [ts] as a JSON number, OHLCV as JSON strings (canonical Decimal
+ *  encoding). Parsed to {!Candle} at the HTTP boundary. */
+interface WireCandle {
+  ts: number;
+  open: string | number;
+  high: string | number;
+  low:  string | number;
+  close:  string | number;
+  volume: string | number;
+}
+
+const toNum = (v: string | number): number =>
+  typeof v === 'number' ? v : parseFloat(v);
+
+const parseCandle = (c: WireCandle): Candle => ({
+  ts: c.ts,
+  open: toNum(c.open),
+  high: toNum(c.high),
+  low:  toNum(c.low),
+  close:  toNum(c.close),
+  volume: toNum(c.volume),
+});
 
 export interface IndicatorSpec {
   name: string;
@@ -77,7 +103,8 @@ export class Api {
     const q = new URLSearchParams({
       symbol, n: String(n), timeframe,
     });
-    return this.http.get<{ candles: Candle[] }>(`/api/candles?${q}`);
+    return this.http.get<{ candles: WireCandle[] }>(`/api/candles?${q}`)
+      .pipe(map(r => ({ candles: r.candles.map(parseCandle) })));
   }
   backtest(body: {
     symbol: string; strategy: string; timeframe?: Timeframe;
@@ -94,7 +121,7 @@ export class Api {
     return new Observable<StreamEvent>(subscriber => {
       const es = new EventSource(`/api/stream?${q}`);
       es.onmessage = (ev) => {
-        try { subscriber.next(JSON.parse(ev.data)); }
+        try { subscriber.next(parseStreamEvent(JSON.parse(ev.data))); }
         catch (e) { subscriber.error(e); }
       };
       es.onerror = () => {
@@ -113,3 +140,19 @@ export type StreamEvent =
   | { kind: 'seed';        candles: Candle[] }
   | { kind: 'bar_update';  candle: Candle }
   | { kind: 'bar_closed';  candle: Candle };
+
+type WireStreamEvent =
+  | { kind: 'seed';        candles: WireCandle[] }
+  | { kind: 'bar_update';  candle: WireCandle }
+  | { kind: 'bar_closed';  candle: WireCandle };
+
+const parseStreamEvent = (e: WireStreamEvent): StreamEvent => {
+  switch (e.kind) {
+    case 'seed':
+      return { kind: 'seed', candles: e.candles.map(parseCandle) };
+    case 'bar_update':
+      return { kind: 'bar_update', candle: parseCandle(e.candle) };
+    case 'bar_closed':
+      return { kind: 'bar_closed', candle: parseCandle(e.candle) };
+  }
+};

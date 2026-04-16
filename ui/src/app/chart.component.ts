@@ -38,6 +38,10 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
   private chart?: IChartApi;
   private candleSeries?: ISeriesApi<'Candlestick'>;
   private overlaySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
+  /** Timestamp of the first bar seen. When the first-bar [ts] changes
+   *  we assume it's a different data set (symbol / timeframe switch)
+   *  and auto-fit; otherwise the user's pan/zoom is preserved. */
+  private firstTsFitted?: number;
 
   constructor() {
     effect(() => {
@@ -155,6 +159,14 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
       for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
     }
 
-    this.chart.timeScale().fitContent();
+    /* Auto-fit only when the data set itself changed (symbol or
+       timeframe switch ⇒ different first-bar ts). Within the same
+       series (live bar append / update) we preserve whatever range
+       the user has panned or zoomed to. */
+    const firstTs = candles[0]?.ts;
+    if (firstTs !== undefined && firstTs !== this.firstTsFitted) {
+      this.chart.timeScale().fitContent();
+      this.firstTsFitted = firstTs;
+    }
   }
 }

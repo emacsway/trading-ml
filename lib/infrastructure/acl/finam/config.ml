@@ -21,10 +21,10 @@ type t = {
 
 (* Authoritative host from the v2.14 REST docs is [api.finam.ru].
    [trade-api.finam.ru] and [tradeapi.finam.ru] are older / renamed hosts.
-   WebSocket URL stays a best-guess until we verify it with a live key. *)
+   WebSocket endpoint per asyncapi-v1.0.0.yaml: [/ws] on the same host. *)
 let make
     ?(rest_base = Uri.of_string "https://api.finam.ru")
-    ?(ws_url = Uri.of_string "wss://api.finam.ru/")
+    ?(ws_url = Uri.of_string "wss://api.finam.ru/ws")
     ?account_id
     ?(default_mic = Some "MISX")
     ~secret

@@ -44,6 +44,7 @@ let () =
     "finam dto",       Finam_dto_test.tests;
     "finam auth",      Finam_auth_test.tests;
     "finam ws frame",  Finam_ws_frame_test.tests;
+    "finam ws proto",  Finam_ws_test.tests;
     (* ACL: BCS *)
     "bcs auth",    Bcs_auth_test.tests;
     "bcs rest",    Bcs_rest_test.tests;

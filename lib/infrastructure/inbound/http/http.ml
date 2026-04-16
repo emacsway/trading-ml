@@ -258,11 +258,34 @@ let handler source registry _conn request body =
      Log.info "%s %s → %d (%.1fms)" meth_str line status dt_ms);
   action
 
-let run ~env ~port ~source =
+(** Live-data wiring extension point. The caller (e.g. {!Bin.Main})
+    decides whether to attach a WS upstream: it gets the [sw] for
+    spawning fibers, returns lifecycle hooks for [Stream.create], and
+    receives the freshly-built [Stream.t] via [bind] to wire the
+    inbound event flow back into [push_from_upstream]. *)
+type live_setup = {
+  on_first : Stream.lifecycle_hook;
+  on_last  : Stream.lifecycle_hook;
+  bind     : Stream.t -> unit;
+}
+
+let no_live_setup : live_setup = {
+  on_first = (fun ~instrument:_ ~timeframe:_ -> ());
+  on_last  = (fun ~instrument:_ ~timeframe:_ -> ());
+  bind     = (fun _ -> ());
+}
+
+let run ?(setup = fun ~sw:_ -> no_live_setup) ~env ~port ~source () =
   Eio.Switch.run @@ fun sw ->
+  let s = setup ~sw in
   let fetch ~instrument ~n ~timeframe =
     stream_fetch source ~instrument ~n ~timeframe in
-  let registry = Stream.create ~env ~sw ~fetch in
+  let registry =
+    Stream.create
+      ~on_first_subscriber:s.on_first
+      ~on_last_unsubscriber:s.on_last
+      ~env ~sw ~fetch () in
+  s.bind registry;
   let socket =
     Eio.Net.listen ~reuse_addr:true ~backlog:16 ~sw
       (Eio.Stdenv.net env)

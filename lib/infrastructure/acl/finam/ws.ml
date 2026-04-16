@@ -1,73 +1,167 @@
-(** WebSocket subscription helpers for Finam Trade async-api.
-    Defines the subscription protocol messages as pure DTOs and exposes a
-    client over a generic [frame] sink/source. The Eio transport glue
-    lives below. *)
+(** Subscription protocol DTOs for Finam Trade async-api.
+    Authoritative reference: [specs/asyncapi/asyncapi-v1.0.0.yaml] in
+    the [finam-trade-api] mirror.
+
+    Wire format (client → server) is a single envelope:
+    {[
+      { "action": "SUBSCRIBE",         (* SUBSCRIBE | UNSUBSCRIBE | UNSUBSCRIBE_ALL *)
+        "type":   "BARS",              (* BARS | ORDER_BOOK | QUOTES | ... *)
+        "data":   { ... },             (* type-specific *)
+        "token":  "<JWT>"              (* required on every message, not in HTTP headers *)
+      }
+    ]}
+
+    Server → client envelope:
+    {[
+      { "type": "DATA",                (* DATA | ERROR | EVENT *)
+        "subscription_type": "BARS",
+        "subscription_key":  "<opt>",
+        "timestamp": 1700000000,
+        "payload":  { ... }            (* shape depends on subscription_type *)
+      }
+    ]} *)
 
 open Core
 
 type subscribe =
   | Sub_quotes of Instrument.t list
-  | Sub_orderbook of Instrument.t list
+  | Sub_orderbook of Instrument.t
   | Sub_bars of { instrument : Instrument.t; timeframe : Timeframe.t }
   | Sub_account of string
 
-let subscribe_message id = function
+(** [subscribe_message ~token sub] — full envelope ready to JSON-encode
+    and send over the socket. *)
+let subscribe_message ~token = function
   | Sub_quotes is ->
     `Assoc [
-      "action", `String "subscribe";
-      "channel", `String "quotes";
-      "id", `String id;
-      "symbols", `List (List.map (fun i ->
-        `String (Rest.qualify_instrument i)) is);
+      "action", `String "SUBSCRIBE";
+      "type",   `String "QUOTES";
+      "data",   `Assoc [
+        "symbols", `List (List.map (fun i ->
+          `String (Rest.qualify_instrument i)) is);
+      ];
+      "token",  `String token;
     ]
-  | Sub_orderbook is ->
+  | Sub_orderbook i ->
     `Assoc [
-      "action", `String "subscribe";
-      "channel", `String "orderbook";
-      "id", `String id;
-      "symbols", `List (List.map (fun i ->
-        `String (Rest.qualify_instrument i)) is);
+      "action", `String "SUBSCRIBE";
+      "type",   `String "ORDER_BOOK";
+      "data",   `Assoc [
+        "symbol", `String (Rest.qualify_instrument i);
+      ];
+      "token",  `String token;
     ]
   | Sub_bars { instrument; timeframe } ->
     `Assoc [
-      "action", `String "subscribe";
-      "channel", `String "bars";
-      "id", `String id;
-      "symbol", `String (Rest.qualify_instrument instrument);
-      "timeframe", `String (Rest.timeframe_wire timeframe);
+      "action", `String "SUBSCRIBE";
+      "type",   `String "BARS";
+      "data",   `Assoc [
+        "symbol",    `String (Rest.qualify_instrument instrument);
+        "timeframe", `String (Rest.timeframe_wire timeframe);
+      ];
+      "token",  `String token;
     ]
   | Sub_account account_id ->
     `Assoc [
-      "action", `String "subscribe";
-      "channel", `String "account";
-      "id", `String id;
-      "account_id", `String account_id;
+      "action", `String "SUBSCRIBE";
+      "type",   `String "ACCOUNT";
+      "data",   `Assoc [ "account_id", `String account_id ];
+      "token",  `String token;
     ]
 
+let unsubscribe_message ~token = function
+  | Sub_bars { instrument; timeframe } ->
+    `Assoc [
+      "action", `String "UNSUBSCRIBE";
+      "type",   `String "BARS";
+      "data",   `Assoc [
+        "symbol",    `String (Rest.qualify_instrument instrument);
+        "timeframe", `String (Rest.timeframe_wire timeframe);
+      ];
+      "token",  `String token;
+    ]
+  | Sub_quotes is ->
+    `Assoc [
+      "action", `String "UNSUBSCRIBE";
+      "type",   `String "QUOTES";
+      "data",   `Assoc [
+        "symbols", `List (List.map (fun i ->
+          `String (Rest.qualify_instrument i)) is);
+      ];
+      "token",  `String token;
+    ]
+  | Sub_orderbook i ->
+    `Assoc [
+      "action", `String "UNSUBSCRIBE";
+      "type",   `String "ORDER_BOOK";
+      "data",   `Assoc [ "symbol", `String (Rest.qualify_instrument i) ];
+      "token",  `String token;
+    ]
+  | Sub_account account_id ->
+    `Assoc [
+      "action", `String "UNSUBSCRIBE";
+      "type",   `String "ACCOUNT";
+      "data",   `Assoc [ "account_id", `String account_id ];
+      "token",  `String token;
+    ]
+
+(** Decoded server-side events. The [bars] payload is always a list
+    because Finam may batch (warm-up snapshot + live updates), but each
+    list element shares one [(instrument, timeframe)] subscription —
+    the timeframe is recovered by the bridge from its subscription
+    table, since the wire payload only carries [symbol]. *)
 type event =
-  | Quote of { instrument : Instrument.t; bid : Decimal.t; ask : Decimal.t; ts : int64 }
-  | Bar of { instrument : Instrument.t; candle : Candle.t }
-  | Order_update of Yojson.Safe.t
+  | Bars of { instrument : Instrument.t; bars : Candle.t list }
+  | Quote of { instrument : Instrument.t;
+               bid : Decimal.t; ask : Decimal.t; ts : int64 }
+  | Error_ev of { code : int; type_ : string; message : string }
+  | Lifecycle of { event : string; code : int; reason : string }
   | Other of Yojson.Safe.t
 
 let event_of_json (j : Yojson.Safe.t) : event =
   let open Yojson.Safe.Util in
-  match member "channel" j with
-  | `String "quotes" ->
-    let instrument =
-      Instrument.of_qualified (member "symbol" j |> to_string) in
-    let bid = Dto.decimal_field "bid" j in
-    let ask = Dto.decimal_field "ask" j in
-    let ts = match member "timestamp" j with
-      | `String s -> Dto.parse_iso8601 s
-      | `Int n -> Int64.of_int n
-      | _ -> 0L
-    in
-    Quote { instrument; bid; ask; ts }
-  | `String "bars" ->
-    let instrument =
-      Instrument.of_qualified (member "symbol" j |> to_string) in
-    let candle = Dto.candle_of_json (member "bar" j) in
-    Bar { instrument; candle }
-  | `String "orders" | `String "account" -> Order_update j
+  match member "type" j with
+  | `String "DATA" ->
+    (match member "subscription_type" j with
+     | `String "BARS" ->
+       let payload = member "payload" j in
+       let instrument =
+         Instrument.of_qualified (member "symbol" payload |> to_string) in
+       let bars = match member "bars" payload with
+         | `List items -> List.map Dto.candle_of_json items
+         | _ -> []
+       in
+       Bars { instrument; bars }
+     | `String "QUOTES" ->
+       let payload = member "payload" j in
+       (* Each quote arrives as one element in payload.quote[]. We surface
+          the first; callers that care about deeper books can read raw. *)
+       (match member "quote" payload with
+        | `List (q :: _) ->
+          let instrument =
+            Instrument.of_qualified (member "symbol" q |> to_string) in
+          let bid = Dto.decimal_field "bid" q in
+          let ask = Dto.decimal_field "ask" q in
+          let ts = match member "timestamp" q with
+            | `String s -> Dto.parse_iso8601 s
+            | `Int n -> Int64.of_int n
+            | _ -> 0L
+          in
+          Quote { instrument; bid; ask; ts }
+        | _ -> Other j)
+     | _ -> Other j)
+  | `String "ERROR" ->
+    let info = member "error_info" j in
+    Error_ev {
+      code = (match member "code" info with `Int n -> n | _ -> 0);
+      type_ = (match member "type" info with `String s -> s | _ -> "");
+      message = (match member "message" info with `String s -> s | _ -> "");
+    }
+  | `String "EVENT" ->
+    let info = member "event_info" j in
+    Lifecycle {
+      event = (match member "event" info with `String s -> s | _ -> "");
+      code = (match member "code" info with `Int n -> n | _ -> 0);
+      reason = (match member "reason" info with `String s -> s | _ -> "");
+    }
   | _ -> Other j

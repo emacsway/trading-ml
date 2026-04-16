@@ -1,12 +1,18 @@
-(** JSON encoding kept separate so [Candle.mli] remains Gospel-checkable. *)
+(** JSON encoding kept separate so [Candle.mli] remains Gospel-checkable.
+
+    OHLCV fields use the canonical string Decimal encoding (same as
+    orders, fills, cash) — preserving precision on the wire and
+    keeping the wire contract uniform. Consumers that need native
+    numbers (e.g. the UI feeding [lightweight-charts]) parse at their
+    own boundary. *)
 
 let yojson_of_t (c : Candle.t) : Yojson.Safe.t =
   `Assoc [
     "ts", `Intlit (Int64.to_string c.Candle.ts);
-    "open", Decimal_json.yojson_of_t c.open_;
-    "high", Decimal_json.yojson_of_t c.high;
-    "low", Decimal_json.yojson_of_t c.low;
-    "close", Decimal_json.yojson_of_t c.close;
+    "open",   Decimal_json.yojson_of_t c.open_;
+    "high",   Decimal_json.yojson_of_t c.high;
+    "low",    Decimal_json.yojson_of_t c.low;
+    "close",  Decimal_json.yojson_of_t c.close;
     "volume", Decimal_json.yojson_of_t c.volume;
   ]
 
