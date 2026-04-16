@@ -54,7 +54,21 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
         vertLines: { color: '#1a1d24' },
         horzLines: { color: '#1a1d24' },
       },
-      timeScale: { timeVisible: true, borderColor: '#2a2e38' },
+      /* lightweight-charts renders [Time] in UTC by default. We keep the
+         wire format as epoch seconds (UTC) but format the axis labels and
+         crosshair tooltip in the browser's local timezone. */
+      localization: {
+        timeFormatter: (t: Time) =>
+          new Date((t as number) * 1000).toLocaleString(),
+      },
+      timeScale: {
+        timeVisible: true,
+        borderColor: '#2a2e38',
+        tickMarkFormatter: (t: Time) => {
+          const d = new Date((t as number) * 1000);
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        },
+      },
     });
     this.candleSeries = this.chart.addSeries(CandlestickSeries, {
       upColor: '#26a69a', downColor: '#ef5350',
