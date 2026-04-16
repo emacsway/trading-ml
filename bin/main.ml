@@ -21,18 +21,20 @@ open Core
 let usage () =
   prerr_endline {|trading <command> [options]
 
-  serve [--port 8080] [--live] [--broker finam|bcs]
+  serve [--port 8080] [--broker synthetic|finam|bcs]
         [--secret SECRET] [--account ACCOUNT_ID]
       start HTTP API server (bound to localhost).
-      Default mode is synthetic. Pass --live to hit a real broker.
-      --broker selects which integration (default: finam). Secret /
-      account may also come from <BROKER>_SECRET / <BROKER>_ACCOUNT_ID
-      env vars, e.g. FINAM_SECRET, BCS_SECRET.
+      --broker selects the data source (default: synthetic).
+      Live brokers require a secret via --secret or the matching
+      <BROKER>_SECRET env var (FINAM_SECRET, BCS_SECRET); account
+      likewise via --account or <BROKER>_ACCOUNT_ID. Synthetic
+      ignores credentials and serves a deterministic random-walk
+      through the same Broker.S port.
 
   list
       show registered indicators and strategies
 
-  backtest <strategy> [--n N] [--symbol SBER]
+  backtest <strategy> [--n N] [--symbol SBER@MISX]
       run a backtest on synthetic data and print summary
 |};
   exit 2
@@ -66,8 +68,9 @@ let cmd_backtest args =
     exit 1
   | Some spec ->
     let strat = spec.build [] in
-    let candles = Server.Synthetic.generate
-      ~n ~start_ts:1_704_067_200L ~tf_seconds:3600 ~start_price:100.0 in
+    let syn = Synthetic.Synthetic_broker.make () in
+    let candles = Synthetic.Synthetic_broker.bars syn
+      ~n ~instrument ~timeframe:Timeframe.H1 in
     let cfg = Engine.Backtest.default_config () in
     let r = Engine.Backtest.run ~config:cfg ~strategy:strat ~instrument ~candles in
     Printf.printf "Strategy: %s\nBars: %d\nTrades: %d\n\
@@ -85,8 +88,6 @@ let arg_value name args =
     | [] -> None
   in find args
 
-let arg_flag name args = List.mem name args
-
 (** Selects the secret / account env-var prefix per broker. Keeps the
     CLI single-flagged while letting users park credentials for
     multiple brokers side by side. *)
@@ -94,28 +95,35 @@ let broker_env_prefix = function
   | "bcs" -> "BCS"
   | _ -> "FINAM"
 
-(** When the broker exposes a live WS feed, we keep the underlying REST
-    handle alongside the {!Broker.client} existential so the CLI can
-    wire WS subscriptions / order routing without re-discovering the
-    concrete adapter type. *)
-type live_broker =
-  | Live_finam of { client : Broker.client; rest : Finam.Rest.t }
-  | Live_bcs   of { client : Broker.client; rest : Bcs.Rest.t }
+(** Opened broker: always gives back a {!Broker.client}, and for
+    live brokers also the concrete REST handle so we can wire a
+    {!Server.Http.live_setup} with WS feed. Synthetic has no live
+    setup — polling through the adapter is enough. *)
+type opened =
+  | Opened_finam    of { client : Broker.client; rest : Finam.Rest.t }
+  | Opened_bcs      of { client : Broker.client; rest : Bcs.Rest.t }
+  | Opened_synthetic of { client : Broker.client }
 
-let open_finam ~env ~secret ~account : live_broker =
+let open_finam ~env ~secret ~account : opened =
   let cfg = Finam.Config.make ?account_id:account ~secret () in
   let transport = Http_transport.make_eio ~env in
   let rest = Finam.Rest.make ~transport ~cfg in
-  Live_finam { client = Finam.Finam_broker.as_broker rest; rest }
+  Opened_finam { client = Finam.Finam_broker.as_broker rest; rest }
 
-let open_bcs ~env ~secret ~account : live_broker =
+let open_bcs ~env ~secret ~account : opened =
   let cfg = Bcs.Config.make ?account_id:account ~refresh_token:secret () in
   let transport = Http_transport.make_eio ~env in
   let rest = Bcs.Rest.make ~transport ~cfg in
-  Live_bcs { client = Bcs.Bcs_broker.as_broker rest; rest }
+  Opened_bcs { client = Bcs.Bcs_broker.as_broker rest; rest }
 
-let live_client = function
-  | Live_finam { client; _ } | Live_bcs { client; _ } -> client
+let open_synthetic () : opened =
+  let t = Synthetic.Synthetic_broker.make () in
+  Opened_synthetic { client = Synthetic.Synthetic_broker.as_broker t }
+
+let opened_client = function
+  | Opened_finam    { client; _ }
+  | Opened_bcs      { client; _ }
+  | Opened_synthetic { client } -> client
 
 (** Build a {!Server.Http.live_setup} that bridges Finam's WebSocket
     feed into the SSE stream registry. Connection happens up-front on
@@ -207,11 +215,10 @@ let cmd_serve args =
     | Some v -> int_of_string v
     | None -> 8080
   in
-  let live = arg_flag "--live" args in
   let broker_id =
     match arg_value "--broker" args with
     | Some v -> v
-    | None -> "finam"
+    | None -> "synthetic"
   in
   let prefix = broker_env_prefix broker_id in
   let secret =
@@ -231,36 +238,33 @@ let cmd_serve args =
      startup is enough — internally this installs a periodic
      getrandom(2) reseeder. *)
   Mirage_crypto_rng_unix.use_default ();
-  let source, ws_setup =
-    if not live then Server.Http.Synthetic, None
-    else
-      match secret with
-      | None ->
-        Server.Log.warn
-          "--live requested but no secret (use --secret or %s_SECRET). \
-           Falling back to synthetic." prefix;
-        Server.Http.Synthetic, None
-      | Some secret ->
-        let lb = match broker_id with
-          | "finam" -> open_finam ~env ~secret ~account
-          | "bcs"   -> open_bcs ~env ~secret ~account
-          | other ->
-            failwith ("unknown --broker: " ^ other ^ " (expected finam|bcs)")
-        in
-        let client = live_client lb in
-        Server.Log.info "live %s mode (account=%s)"
-          (Broker.name client) (Option.value account ~default:"<none>");
-        let setup = match lb with
-          | Live_finam { rest; _ } -> Some (finam_live_setup ~env rest)
-          | Live_bcs   { rest; _ } -> Some (bcs_live_setup   ~env rest)
-        in
-        Server.Http.Live client, setup
+  let need_secret () = match secret with
+    | Some s -> s
+    | None ->
+      Printf.eprintf
+        "--broker %s requires a secret (use --secret or %s_SECRET)\n"
+        broker_id prefix;
+      exit 2
+  in
+  let opened = match broker_id with
+    | "synthetic" -> open_synthetic ()
+    | "finam" -> open_finam ~env ~secret:(need_secret ()) ~account
+    | "bcs"   -> open_bcs   ~env ~secret:(need_secret ()) ~account
+    | other ->
+      failwith ("unknown --broker: " ^ other
+                ^ " (expected synthetic|finam|bcs)")
+  in
+  let client = opened_client opened in
+  Server.Log.info "broker: %s (account=%s)"
+    (Broker.name client) (Option.value account ~default:"<none>");
+  let ws_setup = match opened with
+    | Opened_finam     { rest; _ } -> Some (finam_live_setup ~env rest)
+    | Opened_bcs       { rest; _ } -> Some (bcs_live_setup   ~env rest)
+    | Opened_synthetic _           -> None
   in
   Server.Log.info "listening on http://127.0.0.1:%d (%s)"
-    port (match source with
-      | Synthetic -> "synthetic"
-      | Live c -> "live:" ^ Broker.name c);
-  Server.Http.run ?setup:ws_setup ~env ~port ~source ()
+    port (Broker.name client);
+  Server.Http.run ?setup:ws_setup ~env ~port ~client ()
 
 let () =
   match Array.to_list Sys.argv with

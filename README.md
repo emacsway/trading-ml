@@ -69,29 +69,38 @@ Yojson dependencies.
 
     dune exec -- bin/main.exe list
     dune exec -- bin/main.exe backtest SMA_Crossover --n 500
-    dune exec -- bin/main.exe serve --port 8080          # synthetic data
+    dune exec -- bin/main.exe serve --port 8080          # synthetic broker
 
-### Live mode — picking a broker
+### Picking a broker
 
-`serve --live` connects to a real broker. Choose one with
-`--broker finam|bcs` (default `finam`). Credentials can come from the
-flags `--secret <value>` / `--account <id>` or from per-broker env vars
-that the binary reads as `<BROKER>_SECRET` / `<BROKER>_ACCOUNT_ID`:
+`serve --broker <id>` selects the data source. `<id>` is one of
+`synthetic` (default), `finam`, or `bcs` — all three implement the
+same `Broker.S` port, so every code path (candles, SSE stream,
+backtest) is identical regardless of choice.
+
+    # Synthetic (default) — deterministic random walk, no credentials.
+    # Good for demos and working on UI / strategies offline.
+    dune exec -- bin/main.exe serve
 
     # Finam: long-lived portal secret → short-lived JWT (handled by Auth)
     export FINAM_SECRET=eyJ…          # from https://tradeapi.finam.ru portal
     export FINAM_ACCOUNT_ID=1440399   # optional
-    dune exec -- bin/main.exe serve --live --broker finam
+    dune exec -- bin/main.exe serve --broker finam
 
     # BCS: OAuth2 refresh_token → short-lived access_token (Keycloak flow)
     export BCS_SECRET=eyJ…            # "Trade API" token from «БКС Мир инвестиций» → «О счёте» → «Токены API»
     export BCS_ACCOUNT_ID=00000000    # optional
-    dune exec -- bin/main.exe serve --live --broker bcs
+    dune exec -- bin/main.exe serve --broker bcs
 
-Live mode upgrades the `/api/stream` SSE feed from polling to a real
-WebSocket — the server opens an upstream WS to the selected broker on
-each first SSE subscriber and fans the bars out; polling remains as a
-fallback if the WS connect fails.
+Credentials may come from the `--secret` / `--account` flags or
+from per-broker env vars (`<BROKER>_SECRET` / `<BROKER>_ACCOUNT_ID`).
+`--broker synthetic` ignores credentials.
+
+Live brokers also attach a WebSocket bridge — `/api/stream` SSE
+subscribers are multiplexed onto an upstream WS subscription, so UI
+updates arrive instantly rather than on the polling cadence.
+Synthetic has no WS path; its random-walk adapter wobbles the
+trailing bar on each poll and the SSE stream emits the diff.
 
 ## Run the UI
 
@@ -187,10 +196,32 @@ the pane key via `overlayRegistry`.
 
 ## Broker adapters
 
-Both adapters implement the shared `Broker.S` port (`lib/application/broker/`)
+All adapters implement the shared `Broker.S` port (`lib/application/broker/`)
 so the rest of the codebase programs against `Broker.client`. WebSocket
 plumbing (frame codec, TLS handshake, `Client.connect`/`send_text`/`recv`)
-lives in `lib/infrastructure/websocket/` and is reused by both.
+lives in `lib/infrastructure/websocket/` and is reused by live brokers.
+
+### Synthetic
+
+A fake broker adapter at `lib/infrastructure/acl/synthetic/` — used
+whenever you start the server without a real broker. Implements
+`Broker.S` by running a deterministic random walk
+(`Generator.generate`) and wobbling the trailing bar on each `bars`
+call so the polling stream emits visible intrabar updates.
+
+    let syn = Synthetic.Synthetic_broker.make () in
+    let client = Synthetic.Synthetic_broker.as_broker syn in
+    (* identical call site to Finam / BCS: *)
+    let bars = Broker.bars client ~n:500
+      ~instrument:(Instrument.of_qualified "SBER@MISX")
+      ~timeframe:Timeframe.H1 in
+
+It's symmetric to the live adapters by design: there is no
+special-cased "synthetic mode" in the HTTP server or the stream
+registry, so real-broker errors aren't silently masked by fallback
+data, and strategies / backtests run against a stable source no
+matter which broker the server was started with. Venue list is a
+single placeholder (`MISX`) so the UI dropdown still renders.
 
 ### Finam
 

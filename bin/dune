@@ -3,5 +3,5 @@
  (public_name trading)
  (package trading)
  (libraries core broker indicators strategies engine
-            http_transport finam bcs server
+            http_transport finam bcs synthetic server
             eio_main mirage-crypto-rng.unix))
