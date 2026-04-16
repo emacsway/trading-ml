@@ -23,16 +23,18 @@ export const TIMEFRAMES: Timeframe[] = [
   'M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1',
 ];
 
-/** Market Identifier Code (ISO 10383). Finam's new API expects symbols
- *  in [TICKER@MIC] form. Short static list for now — if Finam exposes a
- *  directory endpoint (e.g. /v1/exchanges), we can fetch dynamically. */
-/** Static fallback — used before /api/exchanges responds, or when the
- *  endpoint isn't reachable. Finam returns MIC codes as plain strings
- *  so we keep the type [string] in the runtime wire shape and the
- *  curated literal type for the fallback set. */
+/** Market Identifier Code (ISO 10383) — identifies a trading venue.
+ *  The backend expects a fully-qualified instrument as
+ *  [TICKER@MIC[/BOARD]] in the [symbol] query / body field. */
 export type Mic = string;
 
 export const MICS_FALLBACK: Mic[] = ['MISX', 'XSPB'];
+
+/** QUIK-style trading mode within a venue (e.g. [TQBR], [SMAL],
+ *  [SPBFUT]). Optional in the qualified symbol — when omitted, the
+ *  Finam adapter routes to the venue's primary board, the BCS adapter
+ *  uses its configured default. */
+export type Board = string;
 
 export interface Exchange {
   mic: string;

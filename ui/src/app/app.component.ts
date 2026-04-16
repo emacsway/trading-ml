@@ -7,7 +7,7 @@ import { FormsModule } from '@angular/forms';
 import {
   Api, Candle, IndicatorSpec, StrategySpec, BacktestResult,
   MICS_FALLBACK, TIMEFRAMES,
-  type Exchange, type Mic, type StreamEvent, type Timeframe,
+  type Board, type Exchange, type Mic, type StreamEvent, type Timeframe,
 } from './api.service';
 import { ChartComponent } from './chart.component';
 import {
@@ -54,6 +54,11 @@ let nextSlotId = 1;
                 <option [value]="ex.mic">{{ex.mic}} — {{ex.name}}</option>
               }
             </select>
+          </label>
+          <label>Board
+            <input [ngModel]="board()" (ngModelChange)="board.set($event)"
+                   placeholder="TQBR" style="width: 80px"
+                   title="Trading mode within the venue (optional)">
           </label>
           <label>Timeframe
             <select [ngModel]="timeframe()"
@@ -198,6 +203,7 @@ export class AppComponent {
 
   readonly ticker = signal('SBER');
   readonly mic = signal<Mic>('MISX');
+  readonly board = signal<Board>('');
   readonly timeframe = signal<Timeframe>('H1');
   readonly n = signal(500);
   readonly liveEnabled = signal(false);
@@ -207,8 +213,15 @@ export class AppComponent {
   readonly exchanges = signal<Exchange[]>(
     MICS_FALLBACK.map(mic => ({ mic, name: mic })));
 
-  /** Fully-qualified symbol sent to the server, e.g. [SBER@MISX]. */
-  readonly symbol = computed(() => `${this.ticker()}@${this.mic()}`);
+  /** Fully-qualified symbol sent to the server: [TICKER@MIC] when no
+   *  board is set, [TICKER@MIC/BOARD] otherwise.
+   *  Backend parses it via [Instrument.of_qualified]; the symbol must
+   *  be qualified (a bare ticker raises). */
+  readonly symbol = computed(() => {
+    const base = `${this.ticker()}@${this.mic()}`;
+    const b = this.board().trim();
+    return b ? `${base}/${b}` : base;
+  });
   readonly strategyName = signal('');
   readonly strategies = signal<StrategySpec[]>([]);
   readonly catalog = signal<IndicatorSpec[]>([]);

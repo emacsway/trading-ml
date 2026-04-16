@@ -158,6 +158,23 @@ describe('AppComponent', () => {
     expect(fixture.componentInstance.candles().length).toBe(20);
   });
 
+  it('appends /BOARD to the symbol when board is set', async () => {
+    fixture.componentInstance.board.set('TQBR');
+    await fixture.whenStable();
+    httpCtrl.expectOne('/api/candles?symbol=SBER%40MISX%2FTQBR&n=500&timeframe=H1').flush({
+      candles: candlesFor(15),
+    });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.candles().length).toBe(15);
+  });
+
+  it('omits /BOARD when board is empty or whitespace', async () => {
+    fixture.componentInstance.board.set('   ');
+    await fixture.whenStable();
+    /* No new request — symbol unchanged ⇒ effect doesn't refire. */
+    expect(fixture.componentInstance.symbol()).toBe('SBER@MISX');
+  });
+
   describe('applyStreamEvent', () => {
     const sampleCandle = (ts: number, close: number): Candle => ({
       ts, open: close, high: close + 1, low: close - 1, close, volume: 1,
