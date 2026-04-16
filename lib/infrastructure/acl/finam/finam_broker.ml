@@ -2,6 +2,8 @@
     [Broker.S] interface. All Finam-specific translation lives here so
     callers (server, CLI, tests) program against [Broker.client]. *)
 
+open Core
+
 type t = Rest.t
 
 let name = "finam"
@@ -9,15 +11,17 @@ let name = "finam"
 let bars t ~n ~instrument ~timeframe =
   Rest.bars t ~n ~instrument ~timeframe
 
-let exchanges t : Broker.exchange list =
+(** Decode Finam's [/v1/exchanges] payload into MIC codes. We drop the
+    [name] field — display labels are the UI's concern, not the
+    adapter's. Any malformed MIC is silently filtered (Finam has shipped
+    placeholder rows in the past). *)
+let venues t : Mic.t list =
   let j = Rest.exchanges t in
   match Yojson.Safe.Util.member "exchanges" j with
   | `List items ->
     List.filter_map (fun item ->
-      let open Yojson.Safe.Util in
-      match member "mic" item, member "name" item with
-      | `String m, `String n -> Some { Broker.mic = m; name = n }
-      | `String m, _ -> Some { Broker.mic = m; name = m }
+      match Yojson.Safe.Util.member "mic" item with
+      | `String m -> (try Some (Mic.of_string m) with Invalid_argument _ -> None)
       | _ -> None
     ) items
   | _ -> []
@@ -27,5 +31,5 @@ let as_broker (rest : Rest.t) : Broker.client =
     type nonrec t = t
     let name = name
     let bars = bars
-    let exchanges = exchanges
+    let venues = venues
   end) rest

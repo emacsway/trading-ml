@@ -7,11 +7,6 @@
 
 open Core
 
-type exchange = {
-  mic : string;
-  name : string;
-}
-
 module type S = sig
   type t
 
@@ -30,9 +25,11 @@ module type S = sig
       ignores [mic]; both honor [board] when present (Finam falls
       back to its server-side primary-board choice when absent). *)
 
-  val exchanges : t -> exchange list
-  (** Static or upstream-sourced list of venues supported by this
-      broker. Used to populate the UI's exchange selector. *)
+  val venues : t -> Mic.t list
+  (** Venues this broker can route to, as ISO-10383 MIC codes.
+      Human-readable labels are not the broker's responsibility — the
+      UI maps known MICs to display names; unknown MICs render as the
+      raw code. *)
 end
 
 type client = E : (module S with type t = 't) * 't -> client
@@ -45,4 +42,4 @@ let name (E ((module M), _)) = M.name
 let bars (E ((module M), t)) ~n ~instrument ~timeframe =
   M.bars t ~n ~instrument ~timeframe
 
-let exchanges (E ((module M), t)) = M.exchanges t
+let venues (E ((module M), t)) = M.venues t

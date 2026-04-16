@@ -28,18 +28,25 @@ export const TIMEFRAMES: Timeframe[] = [
  *  [TICKER@MIC[/BOARD]] in the [symbol] query / body field. */
 export type Mic = string;
 
-export const MICS_FALLBACK: Mic[] = ['MISX', 'XSPB'];
+/** Display labels for known venues. Backend only ships MIC codes;
+ *  human-readable names live here. Unknown MICs render as the raw
+ *  code via {@link micLabel}. */
+export const MIC_LABELS: Record<Mic, string> = {
+  MISX: 'MOEX',
+  IEXG: 'SPB Exchange',
+  XNYS: 'NYSE',
+  XNGS: 'Nasdaq',
+};
+
+export const micLabel = (mic: Mic): string => MIC_LABELS[mic] ?? mic;
+
+export const MICS_FALLBACK: Mic[] = ['MISX', 'IEXG'];
 
 /** QUIK-style trading mode within a venue (e.g. [TQBR], [SMAL],
  *  [SPBFUT]). Optional in the qualified symbol — when omitted, the
  *  Finam adapter routes to the venue's primary board, the BCS adapter
  *  uses its configured default. */
 export type Board = string;
-
-export interface Exchange {
-  mic: string;
-  name: string;
-}
 
 export interface BacktestResult {
   num_trades: number;
@@ -62,8 +69,8 @@ export class Api {
   strategies(): Observable<StrategySpec[]> {
     return this.http.get<StrategySpec[]>('/api/strategies');
   }
-  exchanges(): Observable<{ exchanges: Exchange[] }> {
-    return this.http.get<{ exchanges: Exchange[] }>('/api/exchanges');
+  exchanges(): Observable<{ exchanges: Mic[] }> {
+    return this.http.get<{ exchanges: Mic[] }>('/api/exchanges');
   }
   candles(symbol: string, n: number, timeframe: Timeframe = 'H1')
     : Observable<{ candles: Candle[] }> {

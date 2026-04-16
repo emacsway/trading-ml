@@ -291,10 +291,7 @@ const server = createServer(async (req, res) => {
       return json(res, strategiesCatalog);
     }
     if (req.method === 'GET' && path === '/api/exchanges') {
-      return json(res, { exchanges: [
-        { mic: 'MISX', name: 'MOEX' },
-        { mic: 'XSPB', name: 'SPB Exchange' },
-      ]});
+      return json(res, { exchanges: ['MISX', 'IEXG'] });
     }
     if (req.method === 'GET' && path === '/api/candles') {
       const symbol = url.searchParams.get('symbol') || 'SBER@MISX';

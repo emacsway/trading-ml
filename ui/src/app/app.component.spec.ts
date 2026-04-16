@@ -66,10 +66,9 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     httpCtrl.expectOne('/api/strategies').flush(strategies);
     httpCtrl.expectOne('/api/indicators').flush(indicatorsCatalog);
-    httpCtrl.expectOne('/api/exchanges').flush({ exchanges: [
-      { mic: 'MISX', name: 'MOEX' },
-      { mic: 'XSPB', name: 'SPB Exchange' },
-    ]});
+    httpCtrl.expectOne('/api/exchanges').flush({
+      exchanges: ['MISX', 'IEXG'],
+    });
     httpCtrl.expectOne('/api/candles?symbol=SBER%40MISX&n=500&timeframe=H1').flush({
       candles: candlesFor(60),
     });
@@ -149,9 +148,9 @@ describe('AppComponent', () => {
   });
 
   it('reloads candles when the exchange (MIC) changes', async () => {
-    fixture.componentInstance.mic.set('XSPB');
+    fixture.componentInstance.mic.set('IEXG');
     await fixture.whenStable();
-    httpCtrl.expectOne('/api/candles?symbol=SBER%40XSPB&n=500&timeframe=H1').flush({
+    httpCtrl.expectOne('/api/candles?symbol=SBER%40IEXG&n=500&timeframe=H1').flush({
       candles: candlesFor(20),
     });
     await fixture.whenStable();

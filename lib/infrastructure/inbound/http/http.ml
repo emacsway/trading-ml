@@ -199,21 +199,19 @@ let route source registry request body : int * Cohttp_eio.Server.response_action
     | `GET, "/api/strategies" ->
       ok (json_response (Api.strategies_catalog ()))
     | `GET, "/api/exchanges" ->
-      let exchanges : Broker.exchange list = match source with
+      let venues : Mic.t list = match source with
         | Synthetic ->
           (* Static list mirrors the UI's built-in fallback. *)
-          [ { mic = "MISX"; name = "MOEX" };
-            { mic = "XSPB"; name = "SPB Exchange" } ]
+          [ Mic.of_string "MISX"; Mic.of_string "IEXG" ]
         | Live client ->
-          (try Broker.exchanges client
+          (try Broker.venues client
            with e ->
-             Log.warn "%s exchanges failed: %s"
+             Log.warn "%s venues failed: %s"
                (Broker.name client) (Printexc.to_string e);
              [])
       in
       let j : Yojson.Safe.t = `Assoc [
-        "exchanges", `List (List.map (fun (e : Broker.exchange) ->
-          `Assoc [ "mic", `String e.mic; "name", `String e.name ]) exchanges)
+        "exchanges", `List (List.map (fun m -> `String (Mic.to_string m)) venues)
       ] in
       ok (json_response j)
     | `GET, "/api/candles" ->

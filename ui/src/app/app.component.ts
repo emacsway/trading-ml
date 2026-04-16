@@ -6,8 +6,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
   Api, Candle, IndicatorSpec, StrategySpec, BacktestResult,
-  MICS_FALLBACK, TIMEFRAMES,
-  type Board, type Exchange, type Mic, type StreamEvent, type Timeframe,
+  MICS_FALLBACK, TIMEFRAMES, micLabel,
+  type Board, type Mic, type StreamEvent, type Timeframe,
 } from './api.service';
 import { ChartComponent } from './chart.component';
 import {
@@ -50,8 +50,8 @@ let nextSlotId = 1;
           </label>
           <label>Exchange
             <select [ngModel]="mic()" (ngModelChange)="mic.set($event)">
-              @for (ex of exchanges(); track ex.mic) {
-                <option [value]="ex.mic">{{ex.mic}} — {{ex.name}}</option>
+              @for (m of venues(); track m) {
+                <option [value]="m">{{m}} — {{label(m)}}</option>
               }
             </select>
           </label>
@@ -210,8 +210,8 @@ export class AppComponent {
   readonly timeframes = TIMEFRAMES;
   /** Populated from [/api/exchanges] on startup; falls back to
    *  [MICS_FALLBACK] until the response arrives or if it fails. */
-  readonly exchanges = signal<Exchange[]>(
-    MICS_FALLBACK.map(mic => ({ mic, name: mic })));
+  readonly venues = signal<Mic[]>(MICS_FALLBACK);
+  readonly label = micLabel;
 
   /** Fully-qualified symbol sent to the server: [TICKER@MIC] when no
    *  board is set, [TICKER@MIC/BOARD] otherwise.
@@ -261,7 +261,7 @@ export class AppComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: r => {
-          if (r.exchanges?.length) this.exchanges.set(r.exchanges);
+          if (r.exchanges?.length) this.venues.set(r.exchanges);
         },
         error: () => { /* keep the static fallback */ },
       });
