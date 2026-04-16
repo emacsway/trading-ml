@@ -8,6 +8,11 @@ let () =
   Alcotest.run "trading-unit" [
     (* Domain *)
     "decimal",     Decimal_test.tests;
+    "mic",         Mic_test.tests;
+    "ticker",      Ticker_test.tests;
+    "isin",        Isin_test.tests;
+    "board",       Board_test.tests;
+    "instrument",  Instrument_test.tests;
     "portfolio",   Portfolio_test.tests;
     "backtest",    Backtest_test.tests;
     (* Indicators — one file per indicator, mirrored from lib *)
