@@ -29,6 +29,12 @@ let () =
     "cvd",         Cvd_test.tests;
     "volume",      Volume_test.tests;
     "volume ma",   Volume_ma_test.tests;
+    (* Strategies *)
+    "sma crossover",    Sma_crossover_test.tests;
+    "rsi mean rev",     Rsi_mean_reversion_test.tests;
+    "macd momentum",    Macd_momentum_test.tests;
+    "bollinger brk",    Bollinger_breakout_test.tests;
+    "strat registry",   Registry_test.tests;
     (* ACL: Finam *)
     "finam dto",       Finam_dto_test.tests;
     "finam auth",      Finam_auth_test.tests;
