@@ -12,7 +12,7 @@ type jwt = {
 
 type t = {
   secret : string;
-  transport : Transport.t;
+  transport : Http_transport.t;
   base : Uri.t;
   mutex : Mutex.t;           (* guards [state] ONLY — never held across
                                 the HTTP refresh call, otherwise an Eio
@@ -96,6 +96,11 @@ let http_refresh t : jwt =
 let with_lock t f =
   Mutex.lock t.mutex;
   Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+
+(** Force-drop the cached JWT so the next [current] refreshes. Called
+    by the HTTP retry layer on 401. *)
+let invalidate (t : t) : unit =
+  with_lock t (fun () -> t.state <- None)
 
 (** Returns a live JWT.
     Fast path: inspect cache under a tiny critical section.

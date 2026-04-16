@@ -24,6 +24,25 @@ type t = request -> response
 
 let fake (responder : request -> response) : t = responder
 
+(** Wrap a broker-specific "send with auth" pattern around a transport.
+    [build_request token] must produce a [request] with an
+    [Authorization: Bearer …] header using [token]. On 401 we
+    [invalidate ()], then ask [get_token ()] again (which must refresh
+    under the hood) and retry exactly once. Covers the race where the
+    server invalidates a JWT slightly before our local cache expected. *)
+let with_auth_retry
+    ~(get_token : unit -> string)
+    ~(invalidate : unit -> unit)
+    ~(build_request : token:string -> request)
+    (transport : t) : response =
+  let token = get_token () in
+  let resp = transport (build_request ~token) in
+  if resp.status = 401 then begin
+    invalidate ();
+    let token' = get_token () in
+    transport (build_request ~token:token')
+  end else resp
+
 (** --- Eio-backed implementation --- *)
 
 let read_file path =

@@ -96,7 +96,7 @@ let broker_env_prefix = function
 
 let open_finam ~env ~secret ~account : Broker.client =
   let cfg = Finam.Config.make ?account_id:account ~secret () in
-  let transport = Finam.Eio_transport.make ~env in
+  let transport = Http_transport.make_eio ~env in
   let rest = Finam.Rest.make ~transport ~cfg in
   Finam.Finam_broker.as_broker rest
 

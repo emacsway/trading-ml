@@ -1,5 +1,5 @@
 (** Finam Trade REST client.
-    Uses a pluggable [Transport.t] so the module is pure and testable;
+    Uses a pluggable [Http_transport.t] so the module is pure and testable;
     production wires in cohttp-eio, tests wire in an in-memory fake.
 
     Authentication is transparent: the client owns a [Auth.t] cache, and
@@ -11,7 +11,7 @@
 open Core
 
 type t = {
-  transport : Transport.t;
+  transport : Http_transport.t;
   cfg : Config.t;
   auth : Auth.t;
 }
@@ -32,24 +32,11 @@ let url cfg path query =
   let u = Uri.with_path base (Uri.path base ^ path) in
   Uri.with_query' u query
 
-let ensure_ok (resp : Transport.response) =
+let ensure_ok (resp : Http_transport.response) =
   if resp.status >= 200 && resp.status < 300 then resp.body
   else failwith (Printf.sprintf "Finam REST %d: %s" resp.status resp.body)
 
-(** Send a request with the current JWT. If the server rejects the JWT
-    (401), refresh it once and retry — the cache's [exp] estimate may
-    have been off, or the server rotated signing keys. *)
-let send_with_auth_retry (t : t) (build_req : string -> Transport.request)
-  : Transport.response =
-  let token = Auth.current t.auth in
-  let resp = t.transport (build_req token) in
-  if resp.status = 401 then begin
-    t.auth.state <- None;   (* force refresh *)
-    let token' = Auth.current t.auth in
-    t.transport (build_req token')
-  end else resp
-
-let req_with_token ~meth ~url ~body token : Transport.request = {
+let req_with_token ~meth ~url ~body ~token : Http_transport.request = {
   meth;
   url;
   headers = [
@@ -60,31 +47,32 @@ let req_with_token ~meth ~url ~body token : Transport.request = {
   body;
 }
 
+(** Send a request carrying the current JWT; on 401 invalidate and
+    retry exactly once. The retry logic is shared with [Bcs.Rest] via
+    [Http_transport.with_auth_retry]. *)
+let send_with_auth_retry (t : t) ~meth ~url ~body =
+  Http_transport.with_auth_retry t.transport
+    ~get_token:(fun () -> Auth.current t.auth)
+    ~invalidate:(fun () -> Auth.invalidate t.auth)
+    ~build_request:(fun ~token ->
+      req_with_token ~meth ~url ~body ~token)
+
 let _ = auth_headers
 
 let get_json t path query : Yojson.Safe.t =
   let u = url t.cfg path query in
-  let resp =
-    send_with_auth_retry t
-      (req_with_token ~meth:`GET ~url:u ~body:None)
-  in
+  let resp = send_with_auth_retry t ~meth:`GET ~url:u ~body:None in
   Yojson.Safe.from_string (ensure_ok resp)
 
 let post_json t path (payload : Yojson.Safe.t) : Yojson.Safe.t =
   let u = url t.cfg path [] in
-  let resp =
-    send_with_auth_retry t
-      (req_with_token ~meth:`POST ~url:u
-         ~body:(Some (Yojson.Safe.to_string payload)))
-  in
+  let resp = send_with_auth_retry t ~meth:`POST ~url:u
+    ~body:(Some (Yojson.Safe.to_string payload)) in
   Yojson.Safe.from_string (ensure_ok resp)
 
 let delete t path =
   let u = url t.cfg path [] in
-  let resp =
-    send_with_auth_retry t
-      (req_with_token ~meth:`DELETE ~url:u ~body:None)
-  in
+  let resp = send_with_auth_retry t ~meth:`DELETE ~url:u ~body:None in
   ignore (ensure_ok resp)
 
 (** Finam's new API expects symbols in [TICKER@MIC] form. When the

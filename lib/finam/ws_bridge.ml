@@ -13,7 +13,7 @@ type bridge = {
 
 let connect ~env ~sw ~cfg ~auth : bridge =
   let authenticator =
-    match Eio_transport.load_authenticator () with
+    match Http_transport.load_authenticator () with
     | Ok a -> Some a
     | Error m ->
       Printf.eprintf "[ws_bridge] CA load failed: %s\n%!" m;

@@ -7,6 +7,8 @@ let () =
     "finam auth", Test_auth.tests;
     "finam ws frame", Test_ws_frame.tests;
     "finam ws client", Test_ws_client.tests;
+    "bcs auth", Test_bcs_auth.tests;
+    "bcs rest", Test_bcs_rest.tests;
     (* Indicators — one file per indicator under test/indicators/. *)
     "sma",       Sma_test.tests;
     "ema",       Ema_test.tests;

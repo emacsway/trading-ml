@@ -77,6 +77,11 @@ let with_lock t f =
   Mutex.lock t.mutex;
   Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
 
+(** Force-drop the cached access_token so the next [current] refreshes.
+    Called by the HTTP retry layer on 401. *)
+let invalidate (t : t) : unit =
+  with_lock t (fun () -> t.state <- None)
+
 let current (t : t) : string =
   let cached =
     with_lock t (fun () ->

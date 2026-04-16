@@ -26,7 +26,7 @@ let test_first_call_triggers_sessions_post () =
   let requests = ref [] in
   let exp = int_of_float (Unix.gettimeofday ()) + 600 in
   let token = make_jwt ~exp_epoch:exp in
-  let transport : Transport.t = fun req ->
+  let transport : Http_transport.t = fun req ->
     requests := req :: !requests;
     { status = 200; body = token_body token }
   in
@@ -52,7 +52,7 @@ let test_first_call_triggers_sessions_post () =
 let test_jwt_cached_until_expiry () =
   let requests = ref [] in
   let exp = int_of_float (Unix.gettimeofday ()) + 600 in
-  let transport : Transport.t = fun req ->
+  let transport : Http_transport.t = fun req ->
     requests := req :: !requests;
     { status = 200; body = token_body (make_jwt ~exp_epoch:exp) }
   in
@@ -68,7 +68,7 @@ let test_refresh_when_expired () =
   let requests = ref [] in
   let past = int_of_float (Unix.gettimeofday ()) - 1 in
   let future = int_of_float (Unix.gettimeofday ()) + 600 in
-  let transport : Transport.t = fun req ->
+  let transport : Http_transport.t = fun req ->
     requests := req :: !requests;
     let exp = if List.length !requests = 1 then past else future in
     { status = 200; body = token_body (make_jwt ~exp_epoch:exp) }
@@ -84,7 +84,7 @@ let test_accepts_jwt_key_variant () =
   let requests = ref [] in
   let future = int_of_float (Unix.gettimeofday ()) + 600 in
   let token = make_jwt ~exp_epoch:future in
-  let transport : Transport.t = fun req ->
+  let transport : Http_transport.t = fun req ->
     requests := req :: !requests;
     { status = 200;
       body = Yojson.Safe.to_string (`Assoc [ "jwt", `String token ]) }

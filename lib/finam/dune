@@ -1,6 +1,6 @@
 (library
  (name finam)
  (public_name trading.finam)
- (libraries core broker cohttp cohttp-eio eio eio.unix yojson uri
-            tls tls-eio x509
+ (libraries core broker http_transport eio eio.unix yojson uri
+            tls tls-eio
             base64 digestif digestif.c))
