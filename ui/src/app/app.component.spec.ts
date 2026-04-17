@@ -18,6 +18,7 @@ import { Candle } from './api.service';
 class ChartStubComponent {
   readonly candles = input<Candle[]>([]);
   readonly overlays = input<IndicatorOverlay[]>([]);
+  readonly seriesKey = input<string>('');
 }
 
 describe('AppComponent', () => {

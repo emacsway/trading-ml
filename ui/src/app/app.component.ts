@@ -156,7 +156,8 @@ let nextSlotId = 1;
         }
       </section>
 
-      <app-chart [candles]="candles()" [overlays]="overlays()"></app-chart>
+      <app-chart [candles]="candles()" [overlays]="overlays()"
+                 [seriesKey]="seriesKey()"></app-chart>
 
       @if (result(); as r) {
         <section class="result">
@@ -222,6 +223,11 @@ export class AppComponent {
     const b = this.board().trim();
     return b ? `${base}/${b}` : base;
   });
+  /** Series identity passed to the chart. Changes when the user
+   *  switches symbol / timeframe / bar count, which is exactly
+   *  when the chart should auto-fit. Live updates never touch it. */
+  readonly seriesKey = computed(() =>
+    `${this.symbol()}/${this.timeframe()}/${this.n()}`);
   readonly strategyName = signal('');
   readonly strategies = signal<StrategySpec[]>([]);
   readonly catalog = signal<IndicatorSpec[]>([]);
@@ -289,9 +295,15 @@ export class AppComponent {
       const s = this.symbol();
       const tf = this.timeframe();
       const count = this.n();
+      console.warn(`[candles-effect] fetching /api/candles s=${s} tf=${tf} n=${count}`);
       this.api.candles(s, count, tf)
         .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe(r => this.candles.set(r.candles));
+        .subscribe(r => {
+          console.warn(
+            `[candles-effect] candles.set len=${r.candles.length} ` +
+            `firstTs=${r.candles[0]?.ts} lastTs=${r.candles[r.candles.length-1]?.ts}`);
+          this.candles.set(r.candles);
+        });
     });
 
     // Live stream: one subscription at a time, re-opened when symbol or
@@ -301,11 +313,15 @@ export class AppComponent {
       if (!this.liveEnabled()) return;
       const s = this.symbol();
       const tf = this.timeframe();
+      console.warn(`[stream-effect] opening EventSource s=${s} tf=${tf}`);
       const sub = this.api.stream(s, tf).subscribe({
         next: (ev) => this.applyStreamEvent(ev),
-        error: (e) => console.warn('[stream]', e),
+        error: (e) => console.warn('[stream] error', e),
       });
-      onCleanup(() => sub.unsubscribe());
+      onCleanup(() => {
+        console.warn('[stream-effect] cleanup (closing EventSource)');
+        sub.unsubscribe();
+      });
     });
   }
 
@@ -351,29 +367,32 @@ export class AppComponent {
   applyStreamEvent(ev: StreamEvent): void {
     switch (ev.kind) {
       case 'seed':
+        console.warn(
+          `[sse] SEED len=${ev.candles.length} ` +
+          `firstTs=${ev.candles[0]?.ts} ` +
+          `lastTs=${ev.candles[ev.candles.length-1]?.ts}`);
         if (ev.candles.length) this.candles.set(ev.candles);
         break;
       case 'bar_update':
+        console.debug(`[sse] bar_update ts=${ev.candle.ts} close=${ev.candle.close}`);
         this.candles.update(cs => {
           if (!cs.length) return [ev.candle];
           const last = cs[cs.length - 1];
           // Same-ts: replace the trailing bar.
           if (last.ts === ev.candle.ts) return [...cs.slice(0, -1), ev.candle];
           // Strictly older than what we have: stale snapshot, ignore.
-          // (lightweight-charts asserts ascending order, so appending
-          //  backwards breaks the chart.)
           if (ev.candle.ts < last.ts) return cs;
           return [...cs, ev.candle];
         });
         break;
       case 'bar_closed':
+        console.debug(`[sse] bar_closed ts=${ev.candle.ts} close=${ev.candle.close}`);
         this.candles.update(cs => {
           if (!cs.length) return [ev.candle];
           const last = cs[cs.length - 1];
           if (last.ts === ev.candle.ts) {
             return [...cs.slice(0, -1), ev.candle];
           }
-          // Out-of-order defence — see bar_update above.
           if (ev.candle.ts < last.ts) return cs;
           const appended = [...cs, ev.candle];
           return appended.length > this.n()

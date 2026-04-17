@@ -34,14 +34,16 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
   readonly host = viewChild.required<ElementRef<HTMLDivElement>>('host');
   readonly candles = input<Candle[]>([]);
   readonly overlays = input<IndicatorOverlay[]>([]);
+  /** Opaque key identifying the current data series (e.g.
+   *  [symbol/timeframe/n]). When it changes the chart auto-fits;
+   *  otherwise the user's pan/zoom is preserved across live
+   *  appends and trailing-window trims. */
+  readonly seriesKey = input<string>('');
 
   private chart?: IChartApi;
   private candleSeries?: ISeriesApi<'Candlestick'>;
   private overlaySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
-  /** Timestamp of the first bar seen. When the first-bar [ts] changes
-   *  we assume it's a different data set (symbol / timeframe switch)
-   *  and auto-fit; otherwise the user's pan/zoom is preserved. */
-  private firstTsFitted?: number;
+  private lastFittedKey?: string;
 
   constructor() {
     effect(() => {
@@ -159,14 +161,20 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
       for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
     }
 
-    /* Auto-fit only when the data set itself changed (symbol or
-       timeframe switch ⇒ different first-bar ts). Within the same
-       series (live bar append / update) we preserve whatever range
-       the user has panned or zoomed to. */
-    const firstTs = candles[0]?.ts;
-    if (firstTs !== undefined && firstTs !== this.firstTsFitted) {
+    /* Auto-fit only when the caller signals a new series via
+       [seriesKey]. Live appends and trailing-window trims (which
+       change [candles[0].ts] but not the logical series) preserve
+       the current pan/zoom. */
+    const key = this.seriesKey();
+    if (key && key !== this.lastFittedKey && candles.length > 0) {
+      console.warn(
+        `[chart] fitContent: seriesKey ${this.lastFittedKey} → ${key}, ` +
+        `len=${candles.length}`);
       this.chart.timeScale().fitContent();
-      this.firstTsFitted = firstTs;
+      this.lastFittedKey = key;
+    } else {
+      console.debug(
+        `[chart] render (no fit): key=${key}, len=${candles.length}`);
     }
   }
 }
