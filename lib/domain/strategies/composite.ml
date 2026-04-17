@@ -13,6 +13,7 @@ type policy =
   | Majority
   | Any
   | Adaptive of { window : int }
+  | Learned of { weights : float array; threshold : float }
 
 type params = {
   policy : policy;
@@ -32,6 +33,9 @@ type child_track = {
 type state = {
   st_policy : policy;
   st_children : child_track list;
+  st_recent_closes : float list;
+  st_recent_volumes : float list;
+  st_context_window : int;
 }
 
 let name = "Composite"
@@ -55,8 +59,10 @@ let window_of_policy = function
 let init p =
   let w = window_of_policy p.policy in
   { st_policy = p.policy;
-    st_children =
-      List.map (init_track ~window:w) p.children }
+    st_children = List.map (init_track ~window:w) p.children;
+    st_recent_closes = [];
+    st_recent_volumes = [];
+    st_context_window = 20 }
 
 (** Push a return into the rolling window, capped at [window]. *)
 let push_return t r =
@@ -196,12 +202,38 @@ let pick_winner ~policy ~total (votes : vote_entry list)
         | Unanimous -> v.count = total
         | Majority  -> v.count * 2 > total
         | Any       -> v.count >= 1
-        | Adaptive _ -> true
+        | Adaptive _ | Learned _ -> true
       in
       if passes then Some (v.action, v.avg_strength) else None
 
+(** Maintain a bounded list of recent values (most recent first). *)
+let push_recent ~cap v xs =
+  let xs = v :: xs in
+  if List.length xs > cap
+  then List.filteri (fun i _ -> i < cap) xs
+  else xs
+
+(** Learned policy: run logistic model on the feature vector built
+    from child signals + market context. The model outputs
+    P(profitable long). If P > threshold → Enter_long; if
+    P < (1-threshold) → Enter_short; otherwise Hold. *)
+let learned_decide ~weights ~threshold ~signals ~candle
+    ~recent_closes ~recent_volumes : Signal.action * float =
+  let features = Features.extract
+    ~signals ~candle ~recent_closes ~recent_volumes in
+  let model = Logistic.of_weights weights in
+  let p = Logistic.predict model features in
+  if p > threshold then Signal.Enter_long, p
+  else if p < (1.0 -. threshold) then Signal.Enter_short, 1.0 -. p
+  else Signal.Hold, 0.0
+
 let on_candle st instrument candle =
   let close = Decimal.to_float candle.Candle.close in
+  let volume = Decimal.to_float candle.Candle.volume in
+  let recent_closes = push_recent ~cap:st.st_context_window
+    close st.st_recent_closes in
+  let recent_volumes = push_recent ~cap:st.st_context_window
+    volume st.st_recent_volumes in
   let children', signals =
     List.fold_left (fun (cs, sigs) (ct : child_track) ->
       let strat', sig_ = Strategy.on_candle ct.strategy instrument candle in
@@ -213,6 +245,9 @@ let on_candle st instrument candle =
   let signals = List.rev signals in
   let action, strength =
     match st.st_policy with
+    | Learned { weights; threshold } ->
+      learned_decide ~weights ~threshold ~signals ~candle
+        ~recent_closes ~recent_volumes
     | Adaptive _ ->
       (match weighted_tally children' signals with
        | Some (a, s) -> a, s
@@ -222,7 +257,7 @@ let on_candle st instrument candle =
         List.filter (fun (s : Signal.t) -> s.action <> Signal.Hold) signals in
       let total = match policy with
         | Unanimous | Majority -> List.length signals
-        | Any | Adaptive _ -> List.length non_hold
+        | Any | Adaptive _ | Learned _ -> List.length non_hold
       in
       let votes = tally non_hold in
       (match pick_winner ~policy ~total votes with
@@ -237,15 +272,17 @@ let on_candle st instrument candle =
         | Majority -> "majority"
         | Any -> "any"
         | Adaptive _ -> "adaptive"
+        | Learned _ -> "learned"
       in
       let n_children = List.length st.st_children in
       let n_voters =
         List.length
           (List.filter (fun (s : Signal.t) -> s.action = action) signals) in
-      Printf.sprintf "%d/%d %s (%s)"
+      Printf.sprintf "%d/%d %s (%s, p=%.2f)"
         n_voters n_children
         (Signal.action_to_string action)
         policy_name
+        strength
   in
   let sig_ = {
     Signal.ts = candle.Candle.ts;
@@ -256,4 +293,8 @@ let on_candle st instrument candle =
     take_profit = None;
     reason;
   } in
-  { st_policy = st.st_policy; st_children = children' }, sig_
+  { st_policy = st.st_policy;
+    st_children = children';
+    st_recent_closes = recent_closes;
+    st_recent_volumes = recent_volumes;
+    st_context_window = st.st_context_window }, sig_

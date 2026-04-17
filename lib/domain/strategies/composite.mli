@@ -10,7 +10,12 @@
       scaled by its rolling Sharpe ratio over [window] realized
       returns. Children that have been profitable get more influence;
       poorly-performing children are down-weighted toward zero. When
-      all Sharpes are non-positive, falls back to equal weights. *)
+      all Sharpes are non-positive, falls back to equal weights.
+    - [Learned]   — logistic-regression meta-learner: pre-trained
+      weights score (child_signals, market_context) → P(profitable).
+      Train offline via {!Trainer.train}, embed the weights here.
+      Combines signal interactions + volatility/volume awareness
+      that per-strategy Sharpe weighting cannot capture. *)
 
 open Core
 
@@ -19,6 +24,7 @@ type policy =
   | Majority
   | Any
   | Adaptive of { window : int }
+  | Learned of { weights : float array; threshold : float }
 
 type params = {
   policy : policy;

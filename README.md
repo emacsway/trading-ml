@@ -194,6 +194,113 @@ the pane key via `overlayRegistry`.
 2. Add one line to `lib/strategies/registry.ml`.
 3. Add a catalog entry to `ui/mock-server.mjs`.
 
+## Strategy composition
+
+Individual strategies (`SMA_Crossover`, `RSI_MeanReversion`,
+`MACD_Momentum`, `Bollinger_Breakout`) can be combined via
+`Composite` — itself an implementation of `Strategy.S`, so
+composites are indistinguishable from leaf strategies: they can be
+backtested, registered in the UI, or nested into other composites.
+
+### Voting policies
+
+| Policy | Rule | Hold semantics |
+|--------|------|----------------|
+| `Unanimous` | all children must emit the same action | Hold = "no" (counts against) |
+| `Majority` | >50% of all children | Hold = "no" |
+| `Any` | at least one active voter | Hold = abstain |
+| `Adaptive` | Sharpe-weighted ensemble | weight = max(0, rolling Sharpe) |
+| `Learned` | logistic-regression meta-learner | P(profitable) > threshold |
+
+Exit signals always take priority over Enter — safer for live
+trading: close first, then decide whether to re-enter.
+
+### Adaptive (Sharpe-weighted)
+
+Each child tracks a virtual position and accumulates a rolling
+window of realized returns. Per-child weight is proportional to
+`max(0, Sharpe ratio)`. Children performing well get louder votes;
+poorly-performing ones are silenced. When all Sharpes are
+non-positive, falls back to equal weights (1/N).
+
+    let strat = Strategy.make (module Composite) {
+      policy = Adaptive { window = 50 };
+      children = [sma; rsi; macd; boll];
+    }
+
+### Learned (logistic regression meta-learner)
+
+A lightweight ML layer trained offline, deployed as a fixed weight
+vector. No external dependencies — pure OCaml float arithmetic.
+
+**Feature vector** (for N children): `2·N + 2` floats:
+
+    [| signal₁(±1); strength₁; signal₂; strength₂; …;
+       volatility;   (* std(close)/mean(close) over last 20 bars *)
+       volume_ratio  (* current_volume / mean(volume) *)           |]
+
+The two market-context features let the model learn regime-dependent
+combinations ("SMA + RSI works in low-vol, but not high-vol") that
+per-strategy Sharpe weighting cannot capture.
+
+**Training** (`lib/domain/strategies/trainer.ml`):
+
+    let result = Trainer.train
+      ~children:[sma; rsi; macd; boll]
+      ~candles:historical_data
+      ~lookahead:5     (* target: is close[i+5] > close[i]? *)
+      ~epochs:10
+      () in
+    (* result.weights  : float array   — learned coefficients
+       result.train_loss / val_loss    — log-loss on 70/30 split
+       result.n_train / n_val          — sample counts            *)
+
+Walk-forward discipline: the target at bar `i` looks at
+`close[i+lookahead]`, so the training set uses only bars whose
+outcome is fully determined within the training window. No future
+information leaks into the model. The dataset is split 70/30
+(train/validation) chronologically, never shuffled.
+
+**Deployment:**
+
+    let strat = Strategy.make (module Composite) {
+      policy = Learned { weights = result.weights; threshold = 0.6 };
+      children = [sma; rsi; macd; boll];
+    }
+
+At each bar the model computes `P(profitable long)`:
+- `P > threshold` → `Enter_long` with `strength = P`
+- `P < 1 - threshold` → `Enter_short` with `strength = 1 - P`
+- otherwise → `Hold`
+
+**Modules:**
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `logistic.ml` | `sigmoid`, `predict`, `sgd_step`, `train` (multi-epoch SGD with L2 regularisation) | ~50 |
+| `features.ml` | `extract : signals → candle → recent_closes → float array` | ~35 |
+| `trainer.ml` | `train : children → candles → result` (walk-forward, 70/30 split) | ~70 |
+| `composite.ml` | `Learned` policy branch in `on_candle` | ~15 (delta) |
+
+**Risks and mitigations:**
+- *Overfitting* — L2 weight decay (`l2` parameter) + train/val split.
+  With 4 children the model has 11 parameters; 200+ decision-point
+  bars are needed for a reasonable fit.
+- *Non-stationarity* — retrain periodically (e.g. weekly) on a
+  sliding window. The weights are a plain `float array`; swapping
+  them is a config change, not a code change.
+- *Lookahead bias* — enforced structurally: `Trainer.train` never
+  lets a bar's target depend on data outside the training window.
+
+### Pre-registered composites
+
+| Name | Children | Default policy |
+|------|----------|----------------|
+| `Composite_SMA_RSI` | SMA Crossover + RSI MR | Majority |
+| `Composite_SMA_MACD` | SMA Crossover + MACD Momentum | Majority |
+| `Composite_All` | all four strategies | Majority |
+| `Adaptive_All` | all four strategies | Adaptive(window=50) |
+
 ## Broker adapters
 
 All adapters implement the shared `Broker.S` port (`lib/application/broker/`)
