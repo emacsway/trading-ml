@@ -23,6 +23,7 @@ let usage () =
 
   serve [--port 8080] [--broker synthetic|finam|bcs]
         [--secret SECRET] [--account ACCOUNT_ID]
+        [--log-level debug|info|warning|error]
       start HTTP API server (bound to localhost).
       --broker selects the data source (default: synthetic).
       Live brokers require a secret via --secret or the matching
@@ -240,12 +241,14 @@ let cmd_serve args =
     | Some v -> Some v
     | None -> Sys.getenv_opt (prefix ^ "_ACCOUNT_ID")
   in
+  let log_level = match arg_value "--log-level" args with
+    | Some "debug"   -> Logs.Debug
+    | Some "warning" -> Logs.Warning
+    | Some "error"   -> Logs.Error
+    | _              -> Logs.Info
+  in
+  Log.setup ~level:log_level ();
   Eio_main.run @@ fun env ->
-  (* Seed mirage-crypto-rng so TLS can do handshakes. Required by
-     tls-eio: without a seeded RNG every HTTPS client call blows up
-     with "default generator is not yet initialized". One call at
-     startup is enough — internally this installs a periodic
-     getrandom(2) reseeder. *)
   Mirage_crypto_rng_unix.use_default ();
   let need_secret () = match secret with
     | Some s -> s

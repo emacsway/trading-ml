@@ -1,4 +1,4 @@
 (library
  (name log)
  (public_name trading.log)
- (libraries unix))
+ (libraries logs logs.fmt fmt.tty))
