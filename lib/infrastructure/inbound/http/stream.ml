@@ -45,9 +45,9 @@ type sub_state = {
   mutable clients : client list;
   mutable last_candles : Candle.t list;
   mutable cancel : unit -> unit;
-  (** Last stale upstream ts we logged about, to rate-limit the
-      warning when a broker repeatedly pushes the same snapshot. *)
-  mutable last_stale_warned : int64 option;
+  (** True while stale bars are being dropped — log once on
+      transition to stale, stay silent until a fresh bar arrives. *)
+  mutable stale_warned : bool;
 }
 
 type fetch =
@@ -192,7 +192,7 @@ let subscribe t ~instrument ~timeframe : client * Candle.t list =
           clients = [client];
           last_candles = [];
           cancel = (fun () -> ());
-          last_stale_warned = None;
+          stale_warned = false;
         } in
         t.subs <- KMap.add key s t.subs;
         start_poll t key s;
@@ -257,17 +257,9 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
              before forwarding anything. *)
           None
         | Some cl when Int64.compare candle.Candle.ts cl.Candle.ts < 0 ->
-          (* Brokers (notably BCS) keep pushing the same snapshot bar
-             every few seconds between sessions. Log at most once per
-             distinct stale ts so the operator sees the quirk without
-             the log being flooded. *)
-          let should_warn = match s.last_stale_warned with
-            | Some t -> not (Int64.equal t candle.ts)
-            | None -> true
-          in
-          if should_warn then begin
-            s.last_stale_warned <- Some candle.ts;
-            Log.warn "stream: dropping stale upstream bar for %s/%s \
+          if not s.stale_warned then begin
+            s.stale_warned <- true;
+            Log.warn "stream: dropping stale upstream bars for %s/%s \
                       (upstream ts=%Ld < cached tail=%Ld)"
               (Instrument.to_qualified instrument)
               (Timeframe.to_string timeframe)
@@ -275,6 +267,7 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
           end;
           None
         | last_opt ->
+          s.stale_warned <- false;
           let event = match last_opt with
             | Some cl when Int64.equal cl.Candle.ts candle.ts ->
               Bar_update candle
