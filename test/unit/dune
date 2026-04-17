@@ -1,6 +1,6 @@
 (test
  (name unit_runner)
- (libraries core indicators strategies engine
+ (libraries core indicators strategies logistic_regression engine
             http_transport broker websocket finam bcs
             eio eio_main str
             alcotest qcheck-core))

@@ -14,7 +14,7 @@ type result = {
 }
 
 val train :
-  children:Strategy.t list ->
+  children:Strategies.Strategy.t list ->
   candles:Candle.t list ->
   ?lookahead:int ->
   ?epochs:int ->

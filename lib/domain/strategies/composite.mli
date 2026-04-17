@@ -11,20 +11,32 @@
       returns. Children that have been profitable get more influence;
       poorly-performing children are down-weighted toward zero. When
       all Sharpes are non-positive, falls back to equal weights.
-    - [Learned]   — logistic-regression meta-learner: pre-trained
-      weights score (child_signals, market_context) → P(profitable).
-      Train offline via {!Trainer.train}, embed the weights here.
-      Combines signal interactions + volatility/volume awareness
-      that per-strategy Sharpe weighting cannot capture. *)
+    - [Learned]   — caller-injected prediction function that scores
+      (child_signals, candle, market_context) → P(profitable).
+      The composite itself has no ML dependency; the logistic
+      regression model (or any other scorer) is wired in at
+      construction time via [predict]. Train offline via
+      {!Logistic_regression.Trainer.train}, then wrap the resulting
+      weights into a [predict] closure. *)
 
 open Core
+
+(** Prediction function injected into [Learned] policy.
+    Receives child signals, the current candle, and recent
+    market-context lists; returns P(profitable long) in [0, 1]. *)
+type predictor =
+  signals:Signal.t list ->
+  candle:Candle.t ->
+  recent_closes:float list ->
+  recent_volumes:float list ->
+  float
 
 type policy =
   | Unanimous
   | Majority
   | Any
   | Adaptive of { window : int }
-  | Learned of { weights : float array; threshold : float }
+  | Learned of { predict : predictor; threshold : float }
 
 type params = {
   policy : policy;

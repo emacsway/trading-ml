@@ -27,7 +27,7 @@ type result = {
 }
 
 let train
-    ~(children : Strategy.t list)
+    ~(children : Strategies.Strategy.t list)
     ~(candles : Candle.t list)
     ?(lookahead = 5)
     ?(epochs = 10)
@@ -57,7 +57,7 @@ let train
   List.iteri (fun i candle ->
     let children', signals =
       List.fold_left (fun (cs, sigs) child ->
-        let c', sig_ = Strategy.on_candle child inst candle in
+        let c', sig_ = Strategies.Strategy.on_candle child inst candle in
         c' :: cs, sig_ :: sigs)
         ([], []) !children_ref
     in

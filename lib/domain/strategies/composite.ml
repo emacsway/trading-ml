@@ -8,12 +8,19 @@
 
 open Core
 
+type predictor =
+  signals:Signal.t list ->
+  candle:Candle.t ->
+  recent_closes:float list ->
+  recent_volumes:float list ->
+  float
+
 type policy =
   | Unanimous
   | Majority
   | Any
   | Adaptive of { window : int }
-  | Learned of { weights : float array; threshold : float }
+  | Learned of { predict : predictor; threshold : float }
 
 type params = {
   policy : policy;
@@ -213,16 +220,9 @@ let push_recent ~cap v xs =
   then List.filteri (fun i _ -> i < cap) xs
   else xs
 
-(** Learned policy: run logistic model on the feature vector built
-    from child signals + market context. The model outputs
-    P(profitable long). If P > threshold → Enter_long; if
-    P < (1-threshold) → Enter_short; otherwise Hold. *)
-let learned_decide ~weights ~threshold ~signals ~candle
+let learned_decide ~predict ~threshold ~signals ~candle
     ~recent_closes ~recent_volumes : Signal.action * float =
-  let features = Features.extract
-    ~signals ~candle ~recent_closes ~recent_volumes in
-  let model = Logistic.of_weights weights in
-  let p = Logistic.predict model features in
+  let p = predict ~signals ~candle ~recent_closes ~recent_volumes in
   if p > threshold then Signal.Enter_long, p
   else if p < (1.0 -. threshold) then Signal.Enter_short, 1.0 -. p
   else Signal.Hold, 0.0
@@ -245,8 +245,8 @@ let on_candle st instrument candle =
   let signals = List.rev signals in
   let action, strength =
     match st.st_policy with
-    | Learned { weights; threshold } ->
-      learned_decide ~weights ~threshold ~signals ~candle
+    | Learned { predict; threshold } ->
+      learned_decide ~predict ~threshold ~signals ~candle
         ~recent_closes ~recent_volumes
     | Adaptive _ ->
       (match weighted_tally children' signals with
