@@ -48,6 +48,10 @@ type sub_state = {
   (** True while stale bars are being dropped — log once on
       transition to stale, stay silent until a fresh bar arrives. *)
   mutable stale_warned : bool;
+  (** Wall-clock time of the last upstream (WS) push. When WS is
+      actively streaming the polling fiber skips its tick, avoiding
+      duplicate REST round-trips for data the WS already delivered. *)
+  mutable last_upstream_push : float option;
 }
 
 type fetch =
@@ -136,7 +140,17 @@ let start_poll t (key : key) (sub : sub_state) =
          (Printexc.to_string e));
     while !running do
       Eio.Time.sleep clock interval;
-      if !running then
+      let ws_fresh =
+        match sub.last_upstream_push with
+        | None -> false
+        | Some ts ->
+          (* Skip this poll tick when WS delivered something recently.
+             Threshold: 2× the poll interval. If WS goes quiet for
+             that long (disconnect, session boundary, broker stall),
+             polling resumes automatically. *)
+          Eio.Time.now clock -. ts < 2.0 *. interval
+      in
+      if !running && not ws_fresh then
         (try
            let fresh = t.fetch ~instrument ~n:500 ~timeframe in
            let events, clients =
@@ -193,6 +207,7 @@ let subscribe t ~instrument ~timeframe : client * Candle.t list =
           last_candles = [];
           cancel = (fun () -> ());
           stale_warned = false;
+          last_upstream_push = None;
         } in
         t.subs <- KMap.add key s t.subs;
         start_poll t key s;
@@ -232,11 +247,13 @@ let unsubscribe t ~instrument ~timeframe (client : client) =
     no subscribers yet. *)
 let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
   let key = (instrument, timeframe) in
+  let now = Eio.Time.now (Eio.Stdenv.clock t.env) in
   let chunk_opt =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       match KMap.find_opt key t.subs with
       | None -> None
       | Some s ->
+        s.last_upstream_push <- Some now;
         (* Monotonicity guard. Upstream brokers occasionally ship a
            stale snapshot right after subscribe (BCS sends the last
            closed candle from the previous session when there's no
