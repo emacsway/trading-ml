@@ -1,13 +1,24 @@
 (** Composite strategy: combines N child strategies under a voting
     policy. Implements [Strategy.S] so it's indistinguishable from a
-    leaf — can be backtested, registered, or nested. *)
+    leaf — can be backtested, registered, or nested.
+
+    Policies:
+    - [Unanimous] — all children must agree (Hold = "no").
+    - [Majority]  — >50% of all children.
+    - [Any]       — at least one active voter.
+    - [Adaptive]  — Sharpe-weighted ensemble: each child's vote is
+      scaled by its rolling Sharpe ratio over [window] realized
+      returns. Children that have been profitable get more influence;
+      poorly-performing children are down-weighted toward zero. When
+      all Sharpes are non-positive, falls back to equal weights. *)
 
 open Core
 
 type policy =
-  | Unanimous   (** all non-Hold children must agree *)
-  | Majority    (** >50% of non-Hold children *)
-  | Any         (** at least one child *)
+  | Unanimous
+  | Majority
+  | Any
+  | Adaptive of { window : int }
 
 type params = {
   policy : policy;

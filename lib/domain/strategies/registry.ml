@@ -132,6 +132,19 @@ let composite_specs : spec list = [
       ] in
       Strategy.make (module Composite)
         Composite.{ policy; children } };
+
+  { name = "Adaptive_All";
+    params = [ "window", Int 50 ];
+    build = fun p ->
+      let window = get_int p "window" 50 in
+      let children = [
+        build_child Sma_crossover.name [];
+        build_child Rsi_mean_reversion.name [];
+        build_child Macd_momentum.name [];
+        build_child Bollinger_breakout.name [];
+      ] in
+      Strategy.make (module Composite)
+        Composite.{ policy = Adaptive { window }; children } };
 ]
 
 let all_specs = specs @ composite_specs
