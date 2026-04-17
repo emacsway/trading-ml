@@ -212,6 +212,161 @@ let test_portfolio_updates_on_fill () =
   Alcotest.(check decimal_testable) "cash debited"
     expected_cash pf.cash
 
+let bar_v ~ts ~o ~h ~l ~c ~v =
+  Candle.make
+    ~ts:(Int64.of_int ts)
+    ~open_:(d o) ~high:(d h) ~low:(d l) ~close:(d c)
+    ~volume:(d_int v)
+
+let test_fee_charged_on_fill () =
+  let p = Paper.Paper_broker.make
+    ~initial_cash:(d_int 100_000)
+    ~fee_rate:0.0005   (* 5 bps, mirrors backtest default *)
+    ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:100 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0);
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 10)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-fee"
+  in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:200 ~o:101.0 ~h:101.0 ~l:101.0 ~c:101.0);
+  match Paper.Paper_broker.fills p with
+  | [f] ->
+    (* fee = qty * price * rate = 10 * 101 * 0.0005 = 0.505 *)
+    Alcotest.(check (float 1e-4)) "fee charged"
+      0.505 (Decimal.to_float f.fee)
+  | _ -> Alcotest.fail "expected one fill"
+
+let test_slippage_market_buy_pays_premium () =
+  let p = Paper.Paper_broker.make
+    ~slippage_bps:10.0   (* 10 bps *)
+    ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:100 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0);
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 1)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-slip-buy"
+  in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:200 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0);
+  match Paper.Paper_broker.fills p with
+  | [f] ->
+    Alcotest.(check (float 1e-4)) "buy paid ~10 bps up"
+      100.1 (Decimal.to_float f.price)
+  | _ -> Alcotest.fail "expected one fill"
+
+let test_slippage_market_sell_receives_discount () =
+  let p = Paper.Paper_broker.make
+    ~slippage_bps:10.0 ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:100 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0);
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Sell ~quantity:(d_int 1)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-slip-sell"
+  in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:200 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0);
+  match Paper.Paper_broker.fills p with
+  | [f] ->
+    Alcotest.(check (float 1e-4)) "sell received ~10 bps less"
+      99.9 (Decimal.to_float f.price)
+  | _ -> Alcotest.fail "expected one fill"
+
+let test_slippage_does_not_apply_to_limit () =
+  let p = Paper.Paper_broker.make
+    ~slippage_bps:50.0 ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:100 ~o:105.0 ~h:105.0 ~l:105.0 ~c:105.0);
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 1)
+    ~kind:(Order.Limit (d 100.0)) ~tif:Order.DAY
+    ~client_order_id:"cid-lim-noslip"
+  in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar ~ts:200 ~o:99.0 ~h:100.0 ~l:98.0 ~c:99.5);
+  match Paper.Paper_broker.fills p with
+  | [f] ->
+    (* Bar opens at 99 — below 100 limit — fills at open, no slippage. *)
+    Alcotest.(check decimal_testable) "limit fills at stated open"
+      (d 99.0) f.price
+  | _ -> Alcotest.fail "expected one fill"
+
+let test_partial_fill_splits_across_bars () =
+  let p = Paper.Paper_broker.make
+    ~participation_rate:1.0   (* can consume 100% of each bar's volume *)
+    ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  (* Seed first, then place a 10-qty order whose bars carry only 4
+     volume each — should fill 4, 4, 2 across three bars. *)
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:100 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:4);
+  let order = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 10)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-partial"
+  in
+  Alcotest.(check status_testable) "new on place" Order.New order.status;
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:200 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:4);
+  let s1 = Paper.Paper_broker.get_order p ~client_order_id:"cid-partial" in
+  Alcotest.(check status_testable) "partial after first bar"
+    Order.Partially_filled s1.status;
+  Alcotest.(check decimal_testable) "4 filled" (d_int 4) s1.filled;
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:300 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:4);
+  let s2 = Paper.Paper_broker.get_order p ~client_order_id:"cid-partial" in
+  Alcotest.(check status_testable) "still partial"
+    Order.Partially_filled s2.status;
+  Alcotest.(check decimal_testable) "8 filled" (d_int 8) s2.filled;
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:400 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:4);
+  let s3 = Paper.Paper_broker.get_order p ~client_order_id:"cid-partial" in
+  Alcotest.(check status_testable) "filled after third bar"
+    Order.Filled s3.status;
+  Alcotest.(check decimal_testable) "10 filled" (d_int 10) s3.filled;
+  Alcotest.(check int) "three fill records"
+    3 (List.length (Paper.Paper_broker.fills p))
+
+let test_participation_rate_caps_per_bar () =
+  let p = Paper.Paper_broker.make
+    ~participation_rate:0.25   (* 25% of bar volume *)
+    ~source:(mk_source ()) () in
+  let inst = mk_instrument "SBER" in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:100 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:100);
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 10)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-rate"
+  in
+  (* Bar volume 100, rate 0.25 → cap 25. Remaining 10 ≤ 25, so full fill. *)
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:200 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:100);
+  let o = Paper.Paper_broker.get_order p ~client_order_id:"cid-rate" in
+  Alcotest.(check status_testable) "full fill when cap exceeds qty"
+    Order.Filled o.status;
+  (* Different order: qty 50 against bar volume 100 — cap 25 → partial. *)
+  let _ = Paper.Paper_broker.place_order p
+    ~instrument:inst ~side:Buy ~quantity:(d_int 50)
+    ~kind:Order.Market ~tif:Order.DAY
+    ~client_order_id:"cid-rate-2"
+  in
+  Paper.Paper_broker.on_bar p ~instrument:inst
+    (bar_v ~ts:300 ~o:100.0 ~h:100.0 ~l:100.0 ~c:100.0 ~v:100);
+  let o2 = Paper.Paper_broker.get_order p ~client_order_id:"cid-rate-2" in
+  Alcotest.(check status_testable) "partial when qty exceeds cap"
+    Order.Partially_filled o2.status;
+  Alcotest.(check decimal_testable) "25 filled = rate * volume"
+    (d_int 25) o2.filled
+
 let tests = [
   "market fills at next open",   `Quick, test_market_fills_at_next_open;
   "same bar does not fill",      `Quick, test_same_bar_does_not_fill;
@@ -222,4 +377,10 @@ let tests = [
   "get_orders chronological",    `Quick, test_get_orders_returns_insertion_order;
   "cross-instrument isolation",  `Quick, test_cross_instrument_isolation;
   "portfolio updates on fill",   `Quick, test_portfolio_updates_on_fill;
+  "fee charged on fill",         `Quick, test_fee_charged_on_fill;
+  "slippage buy pays premium",   `Quick, test_slippage_market_buy_pays_premium;
+  "slippage sell discount",      `Quick, test_slippage_market_sell_receives_discount;
+  "slippage skipped on limit",   `Quick, test_slippage_does_not_apply_to_limit;
+  "partial fill across bars",    `Quick, test_partial_fill_splits_across_bars;
+  "participation caps per bar",  `Quick, test_participation_rate_caps_per_bar;
 ]

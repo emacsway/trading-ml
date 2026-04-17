@@ -24,10 +24,36 @@ open Core
 
 type t
 
-val make : ?initial_cash:Decimal.t -> source:Broker.client -> unit -> t
+val make :
+  ?initial_cash:Decimal.t ->
+  ?fee_rate:float ->
+  ?slippage_bps:float ->
+  ?participation_rate:float ->
+  source:Broker.client ->
+  unit -> t
 (** [initial_cash] defaults to 1_000_000 — the same scale as
     {!Engine.Backtest.default_config}, so paper and backtest P&L are
-    comparable out of the box. *)
+    comparable out of the box.
+
+    [fee_rate] (default [0.0]) is a multiplier on fill notional
+    ([qty * price]) — set to [0.0005] to match the backtester's
+    5-bps commission model.
+
+    [slippage_bps] (default [0.0]) shifts the fill price against the
+    trader on {!Market} and {!Stop} orders: buys pay [(1 + bps/1e4) *
+    price], sells receive [(1 - bps/1e4) * price]. {!Limit} and
+    {!Stop_limit} orders fill at their stated price and are not
+    slipped — a limit order that triggers has already locked in its
+    worst acceptable price.
+
+    [participation_rate] (default [None] = unconstrained) caps how
+    much of a bar's volume the engine is willing to consume, forcing
+    partial fills for orders larger than [rate * bar.volume]. Leave
+    it unset when bar volume is synthetic; set to e.g. [0.1] in live
+    scenarios so a large order realistically splits across several
+    bars. An order partially filled through this path transitions
+    [New → Partially_filled] and only reaches [Filled] once its
+    [remaining] reaches zero. *)
 
 val as_broker : t -> Broker.client
 (** Re-wrap [t] as a {!Broker.client} implementing the extended
@@ -59,6 +85,7 @@ type fill = {
   side : Side.t;
   quantity : Decimal.t;
   price : Decimal.t;
+  fee : Decimal.t;
 }
 
 val fills : t -> fill list

@@ -444,15 +444,39 @@ Tests drive `on_bar` directly — unit tests in
 fill at next open, same-bar non-fill, limit fill with and without gap,
 stop trigger, cancel-before-fill, and cross-instrument isolation.
 
+### Frictions: fees, slippage, partial fills
+
+`Paper.Paper_broker.make` accepts three optional knobs that control
+how realistic the simulation is:
+
+| Parameter            | Default     | Effect                                         |
+| -------------------- | ----------- | ---------------------------------------------- |
+| `fee_rate`           | `0.0`       | Multiplier on fill notional (`qty*price`). Use `0.0005` to mirror the backtester's 5-bps commission. |
+| `slippage_bps`       | `0.0`       | Basis-point shift against the trader on `Market` and `Stop` orders. Buys pay `(1 + bps/1e4) * price`, sells receive `(1 - bps/1e4) * price`. `Limit` and `Stop_limit` fills are not slipped — the trader already chose a worst-acceptable price. |
+| `participation_rate` | `None`      | When set, caps per-bar fill quantity at `rate * bar.volume`. Orders larger than the cap transition `New → Partially_filled` and continue filling on subsequent bars. `None` means one-shot fills regardless of volume. |
+
+Example: a configuration that roughly matches the backtester with a
+10% participation ceiling for large orders:
+
+    let paper = Paper.Paper_broker.make
+      ~initial_cash:(Decimal.of_int 1_000_000)
+      ~fee_rate:0.0005
+      ~slippage_bps:5.0
+      ~participation_rate:0.1
+      ~source:broker_client ()
+
+The portfolio exposed via `Paper.Paper_broker.portfolio` accounts for
+both the fill price (including slippage) and the fee, so
+`Portfolio.equity` compares directly against a backtest run with the
+same `fee_rate`.
+
 ### What paper does not do (yet)
 
-- No partial fills — orders go straight from `New` to `Filled`.
-- No fees or slippage modelling.
-- No position / cash accounting on the decorator itself (the
-  backtester's `Portfolio` is the reference for that; a live engine
-  running on top of paper can wrap the same structure).
-- Stop-limit orders are accepted but never transition past `New`.
-
-These are natural follow-ups once a live strategy engine is in place;
-the decorator's surface area is intentionally small so those additions
-land without breaking the current API.
+- **Stop-limit** orders are accepted but never transition past `New`;
+  implementing the two-phase state machine (trigger on stop, then
+  behave as a limit) is a follow-up.
+- **No rejection modelling** — the broker never refuses an order for
+  margin, halts, or lot-size reasons. Risk checks happen upstream in
+  the live engine via `Engine.Risk`, not in Paper.
+- **No market-impact model beyond volume participation** — large
+  orders consume bar volume but do not move the next bar's prices.

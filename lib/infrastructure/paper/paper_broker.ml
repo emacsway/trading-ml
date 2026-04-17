@@ -7,6 +7,7 @@ type fill = {
   side : Side.t;
   quantity : Decimal.t;
   price : Decimal.t;
+  fee : Decimal.t;
 }
 
 type entry = {
@@ -25,15 +26,30 @@ type t = {
   mutable portfolio : Engine.Portfolio.t;
   last_ts : (Instrument.t, int64) Hashtbl.t;
   mutex : Mutex.t;
+  fee_rate : float;
+  slippage_bps : float;
+  (** When [None], every matching order fills in one go on its
+      triggering bar (the simple model). When [Some rate], per-bar
+      fill qty is capped at [rate * bar.volume], forcing partial
+      fills across bars for orders large relative to traded volume. *)
+  participation_rate : float option;
 }
 
-let make ?(initial_cash = Decimal.of_int 1_000_000) ~source () = {
+let make
+    ?(initial_cash = Decimal.of_int 1_000_000)
+    ?(fee_rate = 0.0)
+    ?(slippage_bps = 0.0)
+    ?participation_rate
+    ~source () = {
   source;
   book = [];
   fills = [];
   portfolio = Engine.Portfolio.empty ~cash:initial_cash;
   last_ts = Hashtbl.create 8;
   mutex = Mutex.create ();
+  fee_rate;
+  slippage_bps;
+  participation_rate;
 }
 
 (** Paper's critical sections are non-blocking (no IO, no effects) so
@@ -62,13 +78,11 @@ let new_order ~instrument ~side ~quantity ~kind ~tif ~client_order_id : Order.t 
     client_order_id;
   }
 
-(** Decide whether bar [c] fills [e]. Returns [Some price] if it does,
-    [None] otherwise. Market: fill at [open_]. Limit: fill at the most
-    conservative price that's still inside the bar's range — [open_]
+(** Decide whether bar [c] triggers a fill for [e] and return the
+    canonical price. Market: [open_]. Limit: conservative — [open_]
     when the bar gaps past the limit, else the limit itself. Stops
-    mirror limits but with inverse polarity. Stop-limit is left
-    pending; a full implementation would need two-phase state and is
-    out of scope for this first cut. *)
+    mirror limits but with inverse polarity. Stop-limit is not
+    simulated in this cut (stays [New]). *)
 let price_if_filled (e : entry) (c : Candle.t) : Decimal.t option =
   let open_ = c.Candle.open_ in
   let low = c.low in
@@ -93,27 +107,72 @@ let price_if_filled (e : entry) (c : Candle.t) : Decimal.t option =
     else None
   | Stop_limit _, _ -> None
 
-let apply_fill t (e : entry) (c : Candle.t) (price : Decimal.t) =
+(** Slippage applies only to orders that pay for immediacy: {!Market}
+    eats the spread, {!Stop} triggers and is filled at whatever's
+    there. {!Limit} and {!Stop_limit} have a price ceiling/floor that
+    the trader selected — no slippage beyond the stated price. *)
+let is_slippable (k : Order.kind) =
+  match k with
+  | Market | Stop _ -> true
+  | Limit _ | Stop_limit _ -> false
+
+let apply_slippage ~bps (side : Side.t) (price : Decimal.t) : Decimal.t =
+  if bps = 0.0 then price
+  else
+    let factor = match side with
+      | Buy  -> 1.0 +. bps /. 10_000.0
+      | Sell -> 1.0 -. bps /. 10_000.0
+    in
+    Decimal.mul price (Decimal.of_float factor)
+
+(** How much of [remaining] can fill against bar [c], given the
+    configured participation cap. With [None] (default), no cap. *)
+let fillable_qty t (remaining : Decimal.t) (c : Candle.t) : Decimal.t =
+  match t.participation_rate with
+  | None -> remaining
+  | Some rate ->
+    let cap = Decimal.mul c.volume (Decimal.of_float rate) in
+    Decimal.min remaining cap
+
+let apply_fill t (e : entry) (c : Candle.t) (price_intent : Decimal.t) =
   let o = e.order in
-  e.order <- { o with
-    status = Order.Filled;
-    filled = o.quantity;
-    remaining = Decimal.zero;
-    exec_id = o.client_order_id ^ "-" ^ Int64.to_string c.ts;
-  };
-  t.fills <- {
-    client_order_id = o.client_order_id;
-    ts = c.ts;
-    instrument = o.instrument;
-    side = o.side;
-    quantity = o.quantity;
-    price;
-  } :: t.fills;
-  (* No fees in this cut — add a [fee_rate] parameter to [make] when
-     slippage modelling is introduced. *)
-  t.portfolio <- Engine.Portfolio.fill t.portfolio
-    ~instrument:o.instrument ~side:o.side
-    ~quantity:o.quantity ~price ~fee:Decimal.zero
+  let qty = fillable_qty t o.remaining c in
+  if Decimal.is_zero qty then ()  (* volume too thin; try again next bar *)
+  else
+    let price =
+      if is_slippable o.kind
+      then apply_slippage ~bps:t.slippage_bps o.side price_intent
+      else price_intent
+    in
+    let fee =
+      if t.fee_rate = 0.0 then Decimal.zero
+      else Decimal.mul
+        (Decimal.mul qty price) (Decimal.of_float t.fee_rate)
+    in
+    let new_filled = Decimal.add o.filled qty in
+    let new_remaining = Decimal.sub o.remaining qty in
+    let new_status =
+      if Decimal.is_zero new_remaining then Order.Filled
+      else Order.Partially_filled
+    in
+    e.order <- { o with
+      status = new_status;
+      filled = new_filled;
+      remaining = new_remaining;
+      exec_id = o.client_order_id ^ "-" ^ Int64.to_string c.ts;
+    };
+    t.fills <- {
+      client_order_id = o.client_order_id;
+      ts = c.ts;
+      instrument = o.instrument;
+      side = o.side;
+      quantity = qty;
+      price;
+      fee;
+    } :: t.fills;
+    t.portfolio <- Engine.Portfolio.fill t.portfolio
+      ~instrument:o.instrument ~side:o.side
+      ~quantity:qty ~price ~fee
 
 let on_bar t ~instrument (c : Candle.t) =
   with_lock t (fun () ->
