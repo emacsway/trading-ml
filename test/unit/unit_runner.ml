@@ -50,4 +50,5 @@ let () =
     "bcs auth",    Bcs_auth_test.tests;
     "bcs rest",    Bcs_rest_test.tests;
     "bcs ws",      Bcs_ws_test.tests;
+    "bcs orders",  Bcs_order_test.tests;
   ]

@@ -122,6 +122,226 @@ let exchanges _t : Yojson.Safe.t =
     `Assoc [ "mic", `String "SPBXM"; "name", `String "SPB — foreign" ];
   ]]
 
+(** --- Orders (trade-api-bff-operations) --- *)
+
+let ops_path = "/trade-api-bff-operations/api/v1"
+
+let post_json t path (payload : Yojson.Safe.t) : Yojson.Safe.t =
+  let base = t.cfg.Config.rest_base in
+  let url = Uri.with_path base (Uri.path base ^ path) in
+  let resp = send_with_auth_retry t ~meth:`POST ~url
+    ~body:(Some (Yojson.Safe.to_string payload)) in
+  if resp.status < 200 || resp.status >= 300 then
+    failwith (Printf.sprintf "BCS REST %d on %s: %s"
+                resp.status (Uri.to_string url) resp.body);
+  Yojson.Safe.from_string resp.body
+
+let put_json t path (payload : Yojson.Safe.t) : Yojson.Safe.t =
+  let base = t.cfg.Config.rest_base in
+  let url = Uri.with_path base (Uri.path base ^ path) in
+  let resp = send_with_auth_retry t ~meth:`PUT ~url
+    ~body:(Some (Yojson.Safe.to_string payload)) in
+  if resp.status < 200 || resp.status >= 300 then
+    failwith (Printf.sprintf "BCS REST %d on %s: %s"
+                resp.status (Uri.to_string url) resp.body);
+  Yojson.Safe.from_string resp.body
+
+let delete_json t path : Yojson.Safe.t =
+  let base = t.cfg.Config.rest_base in
+  let url = Uri.with_path base (Uri.path base ^ path) in
+  let resp = send_with_auth_retry t ~meth:`DELETE ~url ~body:None in
+  if resp.status < 200 || resp.status >= 300 then
+    failwith (Printf.sprintf "BCS REST %d on %s: %s"
+                resp.status (Uri.to_string url) resp.body);
+  Yojson.Safe.from_string resp.body
+
+(** BCS status strings → domain [Order.status]. BCS sends plain
+    strings like ["NEW"], ["FILLED"], ["CANCELED"]. *)
+let bcs_status_of_wire = function
+  | "NEW" -> Order.New
+  | "PARTIALLY_FILLED" -> Partially_filled
+  | "FILLED" -> Filled
+  | "CANCELED" | "CANCELLED" -> Cancelled
+  | "REJECTED" -> Rejected
+  | "EXPIRED" -> Expired
+  | "PENDING_CANCEL" -> Pending_cancel
+  | "PENDING_NEW" -> Pending_new
+  | "SUSPENDED" -> Suspended
+  | "FAILED" -> Failed
+  | _ -> New
+
+(** BCS side enum: ["1"] = buy, ["2"] = sell. *)
+let bcs_side_of (s : Side.t) : string = match s with
+  | Buy -> "1" | Sell -> "2"
+
+let bcs_side_to (s : string) : Side.t = match s with
+  | "1" -> Buy | "2" -> Sell | _ -> Buy
+
+(** BCS order type enum: ["1"] = market, ["2"] = limit. *)
+let bcs_order_type_of (k : Order.kind) : string = match k with
+  | Market -> "1" | Limit _ | Stop _ | Stop_limit _ -> "2"
+
+(** Decode a single BCS [OrderStatus] JSON into [Order.t]. *)
+let bcs_order_of_json cfg (j : Yojson.Safe.t) : Order.t =
+  let open Yojson.Safe.Util in
+  let str k = match member k j with `String s -> s | _ -> "" in
+  let int_d k = match member k j with
+    | `Int n -> Decimal.of_int n | `Float f -> Decimal.of_float f
+    | _ -> Decimal.zero in
+  let float_d k = match member k j with
+    | `Float f -> Decimal.of_float f | `Int n -> Decimal.of_int n
+    | _ -> Decimal.zero in
+  let ticker = str "ticker" in
+  let class_code = str "classCode" in
+  let instrument = Instrument.make
+    ~ticker:(Ticker.of_string (if ticker = "" then "UNKNOWN" else ticker))
+    ~venue:(Mic.of_string "MISX")
+    ~board:(Board.of_string
+              (if class_code = "" then cfg.Config.default_class_code
+               else class_code))
+    ()
+  in
+  let price = float_d "price" in
+  let kind = match str "orderType" with
+    | "2" -> Order.Limit price
+    | _ -> Market
+  in
+  let ts = match member "createdAt" j with
+    | `String s -> Candle_json.parse_iso8601 s | _ -> 0L in
+  {
+    Order.id = str "clientOrderId";
+    exec_id = str "exchangeId";
+    instrument;
+    side = bcs_side_to (str "side");
+    quantity = int_d "orderQuantity";
+    filled = int_d "filledQuantity";
+    remaining = Decimal.sub (int_d "orderQuantity") (int_d "filledQuantity");
+    kind;
+    tif = Order.DAY;
+    status = bcs_status_of_wire
+      (match str "status" with
+       | "" -> "NEW"
+       | s -> String.uppercase_ascii s);
+    created_ts = ts;
+    client_order_id = str "clientOrderId";
+  }
+
+(** POST /trade-api-bff-operations/api/v1/orders — create order. *)
+let create_order t
+    ~(instrument : Instrument.t)
+    ~(side : Side.t)
+    ~(quantity : int)
+    ~(kind : Order.kind)
+    ~client_order_id
+    () : Order.t =
+  let ticker, class_code = route_instrument t.cfg instrument in
+  let price_field = match kind with
+    | Market -> []
+    | Limit p -> [ "price", `Float (Decimal.to_float p) ]
+    | Stop p -> [ "price", `Float (Decimal.to_float p) ]
+    | Stop_limit { limit; _ } -> [ "price", `Float (Decimal.to_float limit) ]
+  in
+  let payload : Yojson.Safe.t = `Assoc ([
+    "clientOrderId", `String client_order_id;
+    "side",          `String (bcs_side_of side);
+    "orderType",     `String (bcs_order_type_of kind);
+    "orderQuantity", `Int quantity;
+    "ticker",        `String ticker;
+    "classCode",     `String class_code;
+  ] @ price_field)
+  in
+  let j = post_json t (ops_path ^ "/orders") payload in
+  (* BCS create returns just {clientOrderId, status}; build a minimal
+     Order.t from the request params + response. *)
+  let open Yojson.Safe.Util in
+  let status_str = match member "status" j with
+    | `String s -> s | _ -> "NEW" in
+  {
+    Order.id = client_order_id;
+    exec_id = "";
+    instrument;
+    side;
+    quantity = Decimal.of_int quantity;
+    filled = Decimal.zero;
+    remaining = Decimal.of_int quantity;
+    kind;
+    tif = DAY;
+    status = bcs_status_of_wire (String.uppercase_ascii status_str);
+    created_ts = Int64.of_float (Unix.gettimeofday ());
+    client_order_id;
+  }
+
+(** GET /trade-api-bff-operations/api/v1/orders — all orders. *)
+let get_orders t : Order.t list =
+  let j = get_json t (ops_path ^ "/orders") [] in
+  let open Yojson.Safe.Util in
+  match member "orders" j with
+  | `List items -> List.map (bcs_order_of_json t.cfg) items
+  | _ -> []
+
+(** GET /trade-api-bff-operations/api/v1/orders/{id} — single order status. *)
+let get_order t ~client_order_id : Order.t =
+  let path = ops_path ^ "/orders/" ^ client_order_id in
+  bcs_order_of_json t.cfg (get_json t path [])
+
+(** PUT /trade-api-bff-operations/api/v1/orders/{id} — edit qty/price. *)
+let edit_order t ~client_order_id
+    ?quantity ?price () : Order.t =
+  let path = ops_path ^ "/orders/" ^ client_order_id in
+  let fields =
+    (match quantity with
+     | Some q -> [ "orderQuantity", `Int q ]
+     | None -> [])
+    @
+    (match price with
+     | Some p -> [ "price", `Float (Decimal.to_float p) ]
+     | None -> [])
+  in
+  let j = put_json t path (`Assoc fields) in
+  let open Yojson.Safe.Util in
+  let status_str = match member "status" j with
+    | `String s -> s | _ -> "NEW" in
+  {
+    Order.id = client_order_id;
+    exec_id = "";
+    instrument = Instrument.make
+      ~ticker:(Ticker.of_string "UNKNOWN")
+      ~venue:(Mic.of_string "MISX") ();
+    side = Buy;
+    quantity = (match quantity with Some q -> Decimal.of_int q | None -> Decimal.zero);
+    filled = Decimal.zero;
+    remaining = (match quantity with Some q -> Decimal.of_int q | None -> Decimal.zero);
+    kind = (match price with Some p -> Order.Limit p | None -> Market);
+    tif = DAY;
+    status = bcs_status_of_wire status_str;
+    created_ts = 0L;
+    client_order_id;
+  }
+
+(** DELETE /trade-api-bff-operations/api/v1/orders/{id} — cancel. *)
+let cancel_order t ~client_order_id : Order.t =
+  let path = ops_path ^ "/orders/" ^ client_order_id in
+  let j = delete_json t path in
+  let open Yojson.Safe.Util in
+  let status_str = match member "status" j with
+    | `String s -> s | _ -> "CANCELLED" in
+  {
+    Order.id = client_order_id;
+    exec_id = "";
+    instrument = Instrument.make
+      ~ticker:(Ticker.of_string "UNKNOWN")
+      ~venue:(Mic.of_string "MISX") ();
+    side = Buy;
+    quantity = Decimal.zero;
+    filled = Decimal.zero;
+    remaining = Decimal.zero;
+    kind = Market;
+    tif = DAY;
+    status = bcs_status_of_wire (String.uppercase_ascii status_str);
+    created_ts = 0L;
+    client_order_id;
+  }
+
 (** Accessors for [Ws_bridge] to share auth state and config. *)
 let auth t = t.auth
 let cfg t = t.cfg
