@@ -1,0 +1,4 @@
+(library
+ (name log)
+ (public_name trading.log)
+ (libraries unix))

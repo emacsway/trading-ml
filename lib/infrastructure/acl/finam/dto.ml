@@ -13,7 +13,7 @@ let debug_sample_logged = ref false
 let debug_log_sample ?(label = "bar") (j : Yojson.Safe.t) : unit =
   if not !debug_sample_logged then begin
     debug_sample_logged := true;
-    Printf.eprintf "[finam dto] sample %s: %s\n%!"
+    Log.debug "[finam dto] sample %s: %s"
       label (Yojson.Safe.to_string j)
   end
 

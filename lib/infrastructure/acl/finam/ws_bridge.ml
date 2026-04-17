@@ -44,7 +44,7 @@ let make ~env ~sw ~cfg ~auth ~on_event : bridge =
     match Http_transport.load_authenticator () with
     | Ok a -> Some a
     | Error m ->
-      Printf.eprintf "[finam ws] CA load failed: %s\n%!" m;
+      Log.warn "[finam ws] CA load failed: %s" m;
       None
   in
   { env; sw; cfg; auth; authenticator; on_event;
@@ -66,7 +66,7 @@ let spawn_reader t client =
            (try t.on_event (Ws.event_of_json
                               (Yojson.Safe.from_string payload))
             with e ->
-              Printf.eprintf "[finam ws] decode failed: %s\n%!  raw: %s\n%!"
+              Log.warn "[finam ws] decode failed: %s raw: %s"
                 (Printexc.to_string e) payload)
          | Binary _ | Close _ -> running := false
        done

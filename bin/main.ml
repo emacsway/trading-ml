@@ -167,9 +167,9 @@ let finam_live_setup ~env (rest : Finam.Rest.t) ~sw : Server.Http.live_setup =
               ) bars)
        | None, _ -> ())
     | Error_ev { code; type_; message } ->
-      Server.Log.warn "[finam ws] error %d %s: %s" code type_ message
+      Log.warn "[finam ws] error %d %s: %s" code type_ message
     | Lifecycle { event; code; reason } ->
-      Server.Log.info "[finam ws] %s (%d) %s" event code reason
+      Log.info "[finam ws] %s (%d) %s" event code reason
     | _ -> ()
   in
   let bridge = Finam.Ws_bridge.make ~env ~sw ~cfg ~auth ~on_event in
@@ -178,12 +178,12 @@ let finam_live_setup ~env (rest : Finam.Rest.t) ~sw : Server.Http.live_setup =
     on_first = (fun ~instrument ~timeframe ->
       try Finam.Ws_bridge.subscribe_bars bridge ~instrument ~timeframe
       with e ->
-        Server.Log.warn "[finam ws] subscribe failed: %s"
+        Log.warn "[finam ws] subscribe failed: %s"
           (Printexc.to_string e));
     on_last = (fun ~instrument ~timeframe ->
       try Finam.Ws_bridge.unsubscribe_bars bridge ~instrument ~timeframe
       with e ->
-        Server.Log.warn "[finam ws] unsubscribe failed: %s"
+        Log.warn "[finam ws] unsubscribe failed: %s"
           (Printexc.to_string e));
     bind = (fun r -> registry_ref := Some r);
   }
@@ -208,12 +208,12 @@ let bcs_live_setup ~env (rest : Bcs.Rest.t) ~sw : Server.Http.live_setup =
       try Bcs.Ws_bridge.subscribe_bars bridge ~instrument ~timeframe
             ~on_candle:push
       with e ->
-        Server.Log.warn "[bcs ws] subscribe failed: %s"
+        Log.warn "[bcs ws] subscribe failed: %s"
           (Printexc.to_string e));
     on_last = (fun ~instrument ~timeframe ->
       try Bcs.Ws_bridge.unsubscribe_bars bridge ~instrument ~timeframe
       with e ->
-        Server.Log.warn "[bcs ws] unsubscribe failed: %s"
+        Log.warn "[bcs ws] unsubscribe failed: %s"
           (Printexc.to_string e));
     bind = (fun r -> registry_ref := Some r);
   }
@@ -264,14 +264,14 @@ let cmd_serve args =
                 ^ " (expected synthetic|finam|bcs)")
   in
   let client = opened_client opened in
-  Server.Log.info "broker: %s (account=%s)"
+  Log.info "broker: %s (account=%s)"
     (Broker.name client) (Option.value account ~default:"<none>");
   let ws_setup = match opened with
     | Opened_finam     { rest; _ } -> Some (finam_live_setup ~env rest)
     | Opened_bcs       { rest; _ } -> Some (bcs_live_setup   ~env rest)
     | Opened_synthetic _           -> None
   in
-  Server.Log.info "listening on http://127.0.0.1:%d (%s)"
+  Log.info "listening on http://127.0.0.1:%d (%s)"
     port (Broker.name client);
   Server.Http.run ?setup:ws_setup ~env ~port ~client ()
 

@@ -1,5 +1,5 @@
 (library
  (name server)
  (public_name trading.server)
- (libraries core broker indicators strategies engine
+ (libraries core broker indicators strategies engine log
             cohttp-eio eio eio.unix yojson uri))

@@ -35,7 +35,7 @@ let make ~env ~sw ~cfg ~auth : bridge =
     match Http_transport.load_authenticator () with
     | Ok a -> Some a
     | Error m ->
-      Printf.eprintf "[bcs ws] CA load failed: %s\n%!" m;
+      Log.warn "[bcs ws] CA load failed: %s" m;
       None
   in
   { env; sw; cfg; auth; authenticator;
@@ -92,16 +92,15 @@ let subscribe_bars (t : bridge) ~instrument ~timeframe
                       frames. *)
                    on_candle instrument timeframe candle
                  | Subscribe_ack { subscribe_type; _ } ->
-                   Printf.eprintf
-                     "[bcs ws] %s ack for %s/%s\n%!"
+                   Log.info "[bcs ws] %s ack for %s/%s"
                      (if subscribe_type = 0 then "subscribe" else "unsubscribe")
                      (Instrument.to_qualified instrument)
                      (Timeframe.to_string timeframe)
                  | Error_ev { code; message } ->
-                   Printf.eprintf "[bcs ws] error %s: %s\n%!" code message
+                   Log.warn "[bcs ws] error %s: %s" code message
                  | Other _ -> ())
               with e ->
-                Printf.eprintf "[bcs ws] decode failed: %s\n%!"
+                Log.warn "[bcs ws] decode failed: %s"
                   (Printexc.to_string e))
            | Binary _ | Close _ -> running := false
          done
