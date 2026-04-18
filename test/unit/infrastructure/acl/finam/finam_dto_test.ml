@@ -77,10 +77,52 @@ let test_asset_drops_invalid_isin () =
   Alcotest.(check (option string)) "bad isin dropped" None
     (Option.map Isin.to_string (Instrument.isin i))
 
+(** Sample [accountsTradesResponse] payload:
+    list of [v1AccountTrade] records. *)
+let test_account_trades_parse () =
+  let j = Yojson.Safe.from_string {|
+    { "trades": [
+        { "trade_id": "T1", "order_id": "O1",
+          "price": {"value": "101.5"}, "size": {"value": "10"},
+          "side": "SIDE_BUY",
+          "timestamp": "2024-01-02T10:30:00Z" },
+        { "trade_id": "T2", "order_id": "O1",
+          "price": {"value": "101.7"}, "size": {"value": "5"},
+          "side": "SIDE_BUY",
+          "timestamp": "2024-01-02T10:31:00Z" },
+        { "trade_id": "T3", "order_id": "O2",
+          "price": {"value": "99.0"}, "size": {"value": "20"},
+          "side": "SIDE_SELL",
+          "timestamp": "2024-01-02T10:32:00Z" }
+      ] } |}
+  in
+  let trades = Finam.Dto.account_trades_of_json j in
+  Alcotest.(check int) "three trades" 3 (List.length trades);
+  let (first : Finam.Dto.account_trade) = List.nth trades 0 in
+  Alcotest.(check string) "order_id" "O1" first.order_id;
+  Alcotest.(check (float 1e-6)) "price"
+    101.5 (Decimal.to_float first.execution.price);
+  Alcotest.(check (float 1e-6)) "size"
+    10.0 (Decimal.to_float first.execution.quantity);
+  Alcotest.(check bool) "ts > 0"
+    true (Int64.compare first.execution.ts 0L > 0);
+  Alcotest.(check (float 1e-6)) "fee defaults to zero (no field in payload)"
+    0.0 (Decimal.to_float first.execution.fee)
+
+let test_account_trades_empty () =
+  let j = Yojson.Safe.from_string {| { "trades": [] } |} in
+  Alcotest.(check int) "empty" 0
+    (List.length (Finam.Dto.account_trades_of_json j));
+  let j' = Yojson.Safe.from_string {| {} |} in
+  Alcotest.(check int) "missing key → empty" 0
+    (List.length (Finam.Dto.account_trades_of_json j'))
+
 let tests = [
   "candle parse",            `Quick, test_candle_parse;
   "candles list",            `Quick, test_candles_list;
   "asset full",              `Quick, test_asset_full;
   "asset without isin",      `Quick, test_asset_no_isin;
   "asset drops invalid isin",`Quick, test_asset_drops_invalid_isin;
+  "account trades parse",    `Quick, test_account_trades_parse;
+  "account trades empty",    `Quick, test_account_trades_empty;
 ]

@@ -169,6 +169,15 @@ let place_order
   in
   Dto.order_of_json (post_json t path payload)
 
+(** GET /v1/accounts/{account_id}/trades — account-wide execution
+    history. Caller filters by [order_id] to get the executions
+    for one specific order; Finam has no per-order trade endpoint.
+    Returns records carrying their parent [order_id] so the
+    filtering is client-side. *)
+let get_trades t ~account_id : Dto.account_trade list =
+  let path = Printf.sprintf "/v1/accounts/%s/trades" account_id in
+  Dto.account_trades_of_json (get_json t path [])
+
 (** DELETE /v1/accounts/{account_id}/orders/{order_id} — cancel. *)
 let cancel_order t ~account_id ~order_id : Order.t =
   let path = Printf.sprintf "/v1/accounts/%s/orders/%s" account_id order_id in

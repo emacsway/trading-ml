@@ -283,6 +283,51 @@ let orders_of_json (j : Yojson.Safe.t) : Order.t list =
   | `List items -> List.map order_of_json items
   | _ -> []
 
+(** Per-trade record from [GET /v1/accounts/{account_id}/trades].
+    Shape (from the Finam swagger's [v1AccountTrade]):
+    {v
+    { "trade_id": "...",
+      "order_id": "...",
+      "price": typeDecimal,
+      "size": typeDecimal,
+      "side": "SIDE_BUY" | "SIDE_SELL",
+      "timestamp": "2026-04-18T10:00:00Z" }
+    v}
+    Finam's trade payload does not currently carry a per-trade
+    fee field; we default to zero. If commission becomes needed
+    for accurate reconcile P&L, fetch from the order state and
+    prorate by fill quantity. Returns the parent [order_id] so
+    the caller can filter to the trades relevant to their
+    [client_order_id]. *)
+type account_trade = {
+  order_id : string;
+  execution : Order.execution;
+}
+
+let account_trade_of_json (j : Yojson.Safe.t) : account_trade =
+  let open Yojson.Safe.Util in
+  let str k = match member k j with `String s -> s | _ -> "" in
+  let dec k =
+    try decimal_of_json (member k j) with _ -> Decimal.zero in
+  let ts = match member "timestamp" j with
+    | `String s -> parse_iso8601 s | _ -> 0L
+  in
+  {
+    order_id = str "order_id";
+    execution = {
+      ts;
+      quantity = dec "size";
+      price = dec "price";
+      fee = Decimal.zero;
+    };
+  }
+
+let account_trades_of_json (j : Yojson.Safe.t) : account_trade list =
+  let open Yojson.Safe.Util in
+  match member "trades" j with
+  | `List items -> List.map account_trade_of_json items
+  | _ -> []
+
 let candles_of_json j : Candle.t list =
   let arr = match Yojson.Safe.Util.member "bars" j with
     | `List l -> l

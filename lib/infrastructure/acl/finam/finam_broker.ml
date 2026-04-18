@@ -89,15 +89,18 @@ let cancel_order t ~client_order_id =
   let server_id = resolve_server_id t ~client_order_id in
   Rest.cancel_order t.rest ~account_id:t.account_id ~order_id:server_id
 
-(** TODO: wire up [GET /v1/accounts/{account_id}/trades].
-    The Finam REST schema has no [averagePrice] field on orders —
-    the per-execution trade list is the source of actual fill
-    prices. {!Rest.get_trades} + filter by [order_id] will produce
-    the {!Order.execution} records. Left as failwith until the Rest
-    helper lands (planned alongside live smoke-testing). *)
-let get_executions _ ~client_order_id:_ =
-  failwith "Finam.Finam_broker.get_executions: not yet implemented \
-            (pending /v1/accounts/{id}/trades integration)"
+(** Project account-wide trades into per-execution records for
+    the order identified by [client_order_id]. Pulls the
+    broker-assigned server id from the cid map (or [GET /orders]
+    fallback), then filters [Rest.get_trades] by that id.
+    Returns [] if the order has no executions yet (broker holds
+    it in the book but hasn't filled). *)
+let get_executions t ~client_order_id =
+  let server_id = resolve_server_id t ~client_order_id in
+  Rest.get_trades t.rest ~account_id:t.account_id
+  |> List.filter_map (fun (at : Dto.account_trade) ->
+    if at.order_id = server_id then Some at.execution
+    else None)
 
 let as_broker (t : t) : Broker.client =
   Broker.make (module struct

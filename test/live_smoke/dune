@@ -1,13 +1,16 @@
-(test
+; Live smoke tests — explicit opt-in via `dune build @live_smoke`.
+; Not part of the default @runtest alias because they require
+; real broker credentials and network reach; failures are not
+; regressions. The test binaries themselves skip cleanly when
+; credentials are absent from the environment.
+
+(executable
  (name live_smoke_runner)
  (libraries core finam bcs http_transport
             eio eio_main mirage-crypto-rng.unix
-            alcotest)
- ; Skipped from the default [@runtest] alias — live tests need real
- ; broker credentials and network reach, and would fail CI otherwise.
- ; Run explicitly: `dune build @live_smoke`.
- (enabled_if false))
+            alcotest))
 
-(alias
- (name live_smoke)
- (deps (alias_rec all)))
+(rule
+ (alias live_smoke)
+ (deps live_smoke_runner.exe)
+ (action (run %{dep:./live_smoke_runner.exe})))
