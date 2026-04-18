@@ -85,14 +85,30 @@ val commit_fill :
   actual_price:Core.Decimal.t ->
   actual_fee:Core.Decimal.t ->
   state
-(** Settle a reservation with actual broker numbers. Used in Live
-    mode when a broker fill event arrives — the engine looks up the
-    reservation by [reservation_id] and applies
-    {!Portfolio.commit_fill}. Raises [Not_found] when the id is
-    unknown (already settled or never existed).
+(** Settle a reservation fully with actual broker numbers. Used in
+    Live mode when a broker fill event arrives with
+    [actual_quantity] matching the remaining reserved amount. Raises
+    [Not_found] when the id is unknown (already settled or never
+    existed).
 
     Not called in Backtest: [auto_commit = true] handles it inside
     {!execute_pending}. *)
+
+val commit_partial_fill :
+  state ->
+  reservation_id:int ->
+  actual_quantity:Core.Decimal.t ->
+  actual_price:Core.Decimal.t ->
+  actual_fee:Core.Decimal.t ->
+  state
+(** Partially settle a reservation — shrinks the reservation by
+    [actual_quantity] and applies that slice as a fill. When the
+    remaining amount reaches zero the reservation is removed
+    automatically.
+
+    Used when a broker reports a partial fill (split over several
+    executions). Raises [Not_found] / [Invalid_argument] per
+    {!Portfolio.commit_partial_fill}. *)
 
 val release :
   state -> reservation_id:int -> state

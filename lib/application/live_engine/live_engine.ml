@@ -8,6 +8,7 @@ type config = {
   limits : Engine.Risk.limits;
   tif : Order.time_in_force;
   fee_rate : float;
+  reconcile_every : int;
 }
 
 (** Live state = {!Engine.Step.state} (shared with Backtest) plus
@@ -16,6 +17,10 @@ type config = {
 type pending = {
   reservation_id : int;
   intended_quantity : Decimal.t;
+  remaining_quantity : Decimal.t;
+  (** Starts equal to [intended_quantity]; decreases on each
+      partial fill event. When it hits zero, the reservation is
+      fully settled and the [pending] entry is removed. *)
   intended_price : Decimal.t;
   intended_fee : Decimal.t;
   (** Snapshot of the numbers Step reserved against — used by
@@ -34,6 +39,9 @@ type t = {
       broker and are waiting to confirm. Populated at [submit_order];
       consumed by {!on_fill_event} (actual numbers) or
       {!reconcile} (intended numbers as fallback). *)
+  mutable bars_since_reconcile : int;
+  (** Counter reset on every reconcile — triggers auto-reconcile
+      after [cfg.reconcile_every] bars. *)
   mutex : Mutex.t;
 }
 
@@ -55,6 +63,7 @@ let make (cfg : config) : t =
     seq = 0;
     placed = [];
     pending = Hashtbl.create 16;
+    bars_since_reconcile = 0;
     mutex = Mutex.create ();
   }
 
@@ -80,6 +89,7 @@ let submit_order t ~(strat_name : string) (settled : Engine.Step.settled) =
   Hashtbl.replace t.pending cid {
     reservation_id = settled.reservation_id;
     intended_quantity = settled.quantity;
+    remaining_quantity = settled.quantity;
     intended_price = settled.price;
     intended_fee = settled.fee;
   };
@@ -111,6 +121,42 @@ let apply_event t (event : Engine.Pipeline.event) =
   | Some (_sig, settled) -> submit_order t ~strat_name settled
   | None -> ()
 
+(** Same as {!reconcile} but assumes the caller already holds the
+    mutex — used internally by {!on_bar} to auto-trigger without
+    re-entering the lock. *)
+let reconcile_unsafe t =
+  t.bars_since_reconcile <- 0;
+  let orders = try Broker.get_orders t.cfg.broker with e ->
+    Log.warn "[engine] reconcile: get_orders failed: %s"
+      (Printexc.to_string e); []
+  in
+  List.iter (fun (o : Order.t) ->
+    match Hashtbl.find_opt t.pending o.client_order_id with
+    | None -> ()
+    | Some p ->
+      match o.status with
+      | Filled ->
+        Hashtbl.remove t.pending o.client_order_id;
+        t.state <- Engine.Step.commit_fill t.state
+          ~reservation_id:p.reservation_id
+          ~actual_quantity:p.intended_quantity
+          ~actual_price:p.intended_price
+          ~actual_fee:p.intended_fee;
+        Log.info "[engine] reconcile commit cid=%s (fallback)"
+          o.client_order_id
+      | Cancelled | Rejected | Expired | Failed ->
+        Hashtbl.remove t.pending o.client_order_id;
+        t.state <- Engine.Step.release t.state
+          ~reservation_id:p.reservation_id;
+        Log.info "[engine] reconcile release cid=%s (%s)"
+          o.client_order_id (Order.status_to_string o.status)
+      | Partially_filled | New
+      | Pending_new | Pending_cancel | Suspended ->
+        ()    (* still in flight; check again next tick *)
+  ) orders
+
+let reconcile t = with_lock t (fun () -> reconcile_unsafe t)
+
 let on_bar t (c : Candle.t) =
   with_lock t (fun () ->
     (* One-bar driver: feed a singleton stream through the same
@@ -118,7 +164,11 @@ let on_bar t (c : Candle.t) =
        of-order bars are filtered inside Pipeline, not here. *)
     Stream.of_list [c]
     |> Engine.Pipeline.run t.step_cfg t.state
-    |> Stream.iter (apply_event t))
+    |> Stream.iter (apply_event t);
+    t.bars_since_reconcile <- t.bars_since_reconcile + 1;
+    if t.cfg.reconcile_every > 0
+    && t.bars_since_reconcile >= t.cfg.reconcile_every then
+      reconcile_unsafe t)
 
 let run t ~source =
   (* Stream driver: WS bridge pushes candles into [source], pipeline
@@ -145,51 +195,38 @@ let on_fill_event t (fe : fill_event) =
       Log.warn "[engine] fill_event for unknown cid=%s (ignored)"
         fe.client_order_id
     | Some p ->
-      Hashtbl.remove t.pending fe.client_order_id;
-      t.state <- Engine.Step.commit_fill t.state
-        ~reservation_id:p.reservation_id
-        ~actual_quantity:fe.actual_quantity
-        ~actual_price:fe.actual_price
-        ~actual_fee:fe.actual_fee;
-      Log.info "[engine] commit cid=%s qty=%s @ %s"
-        fe.client_order_id
-        (Decimal.to_string fe.actual_quantity)
-        (Decimal.to_string fe.actual_price))
-
-(** Check broker state and settle reservations that have reached
-    terminal status. Paper's in-process callback normally handles
-    this first; reconcile catches anything the callback missed
-    (network drops, WS reconnects, broker restart). *)
-let reconcile t =
-  with_lock t (fun () ->
-    let orders = try Broker.get_orders t.cfg.broker with e ->
-      Log.warn "[engine] reconcile: get_orders failed: %s"
-        (Printexc.to_string e); []
-    in
-    List.iter (fun (o : Order.t) ->
-      match Hashtbl.find_opt t.pending o.client_order_id with
-      | None -> ()
-      | Some p ->
-        match o.status with
-        | Filled ->
-          Hashtbl.remove t.pending o.client_order_id;
-          t.state <- Engine.Step.commit_fill t.state
-            ~reservation_id:p.reservation_id
-            ~actual_quantity:p.intended_quantity
-            ~actual_price:p.intended_price
-            ~actual_fee:p.intended_fee;
-          Log.info "[engine] reconcile commit cid=%s (fallback)"
-            o.client_order_id
-        | Cancelled | Rejected | Expired | Failed ->
-          Hashtbl.remove t.pending o.client_order_id;
-          t.state <- Engine.Step.release t.state
-            ~reservation_id:p.reservation_id;
-          Log.info "[engine] reconcile release cid=%s (%s)"
-            o.client_order_id (Order.status_to_string o.status)
-        | Partially_filled | New
-        | Pending_new | Pending_cancel | Suspended ->
-          ()    (* still in flight; check again next tick *)
-    ) orders)
+      let new_remaining =
+        Decimal.sub p.remaining_quantity fe.actual_quantity in
+      if Decimal.compare new_remaining Decimal.zero <= 0 then begin
+        (* Full or over-fill — close out the pending entry; the
+           reservation in Portfolio is removed by commit_fill. *)
+        Hashtbl.remove t.pending fe.client_order_id;
+        t.state <- Engine.Step.commit_fill t.state
+          ~reservation_id:p.reservation_id
+          ~actual_quantity:fe.actual_quantity
+          ~actual_price:fe.actual_price
+          ~actual_fee:fe.actual_fee;
+        Log.info "[engine] commit (full) cid=%s qty=%s @ %s"
+          fe.client_order_id
+          (Decimal.to_string fe.actual_quantity)
+          (Decimal.to_string fe.actual_price)
+      end else begin
+        (* Partial — shrink both our pending entry and the
+           Portfolio reservation; wait for more fills. *)
+        Hashtbl.replace t.pending fe.client_order_id
+          { p with remaining_quantity = new_remaining };
+        t.state <- Engine.Step.commit_partial_fill t.state
+          ~reservation_id:p.reservation_id
+          ~actual_quantity:fe.actual_quantity
+          ~actual_price:fe.actual_price
+          ~actual_fee:fe.actual_fee;
+        Log.info "[engine] commit (partial) cid=%s qty=%s @ %s, \
+                  %s remaining"
+          fe.client_order_id
+          (Decimal.to_string fe.actual_quantity)
+          (Decimal.to_string fe.actual_price)
+          (Decimal.to_string new_remaining)
+      end)
 
 let position t = with_lock t (fun () ->
   match Engine.Portfolio.position t.state.portfolio t.cfg.instrument with

@@ -103,6 +103,13 @@ let commit_fill state ~reservation_id
     ~actual_quantity ~actual_price ~actual_fee in
   { state with portfolio = portfolio' }
 
+let commit_partial_fill state ~reservation_id
+    ~actual_quantity ~actual_price ~actual_fee =
+  let portfolio' = Portfolio.commit_partial_fill state.portfolio
+    ~id:reservation_id
+    ~actual_quantity ~actual_price ~actual_fee in
+  { state with portfolio = portfolio' }
+
 let release state ~reservation_id =
   let portfolio' = Portfolio.release state.portfolio ~id:reservation_id in
   { state with portfolio = portfolio' }

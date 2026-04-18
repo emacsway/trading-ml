@@ -147,6 +147,61 @@ let test_commit_unknown_id_raises () =
         ~actual_price:(d 1.0) ~actual_fee:Decimal.zero in
       ())
 
+let test_commit_partial_fill_shrinks_reservation () =
+  let p = Engine.Portfolio.empty ~cash:(d 10_000.0) in
+  let p = Engine.Portfolio.reserve p
+    ~id:10 ~side:Buy ~instrument:inst
+    ~quantity:(d 10.0) ~price:(d 100.0)
+    ~slippage_buffer:0.0 ~fee_rate:0.0
+  in
+  (* Available_cash = 10000 - 10 * 100 = 9000. *)
+  Alcotest.(check (float 1e-6)) "available after reserve"
+    9000.0 (Decimal.to_float (Engine.Portfolio.available_cash p));
+  (* Commit partial: 3 shares @ 100. *)
+  let p = Engine.Portfolio.commit_partial_fill p
+    ~id:10 ~actual_quantity:(d 3.0)
+    ~actual_price:(d 100.0) ~actual_fee:Decimal.zero
+  in
+  (* Portfolio cash: -300 (3 shares × 100). Remaining reservation
+     7 shares × 100 = 700. Available = 9700 - 700 = 9000... wait.
+     Actually: cash = 10000 - 300 = 9700. Reservation shrinks to
+     quantity=7, per_unit_cash=100. reserved_cash = 700.
+     available_cash = 9700 - 700 = 9000. Unchanged. That's correct —
+     the fill moved cash into a position but didn't change "what's
+     available to spend". *)
+  Alcotest.(check (float 1e-6)) "cash after partial"
+    9700.0 (Decimal.to_float p.cash);
+  Alcotest.(check (float 1e-6)) "available after partial"
+    9000.0 (Decimal.to_float (Engine.Portfolio.available_cash p));
+  Alcotest.(check int) "reservation still open"
+    1 (List.length p.reservations);
+  (* Commit remaining 7 @ 100. *)
+  let p = Engine.Portfolio.commit_partial_fill p
+    ~id:10 ~actual_quantity:(d 7.0)
+    ~actual_price:(d 100.0) ~actual_fee:Decimal.zero
+  in
+  Alcotest.(check (float 1e-6)) "cash after full fill"
+    9000.0 (Decimal.to_float p.cash);
+  Alcotest.(check int) "reservation closed on zero remaining"
+    0 (List.length p.reservations)
+
+let test_commit_partial_fill_over_reserve_raises () =
+  let p = Engine.Portfolio.empty ~cash:(d 10_000.0) in
+  let p = Engine.Portfolio.reserve p
+    ~id:11 ~side:Buy ~instrument:inst
+    ~quantity:(d 5.0) ~price:(d 100.0)
+    ~slippage_buffer:0.0 ~fee_rate:0.0
+  in
+  Alcotest.check_raises "overfill raises"
+    (Invalid_argument
+      "Portfolio.commit_partial_fill: actual_quantity \
+       exceeds remaining reserved quantity")
+    (fun () ->
+      let _ = Engine.Portfolio.commit_partial_fill p
+        ~id:11 ~actual_quantity:(d 10.0)
+        ~actual_price:(d 100.0) ~actual_fee:Decimal.zero
+      in ())
+
 let test_multiple_reservations_stack () =
   let p = Engine.Portfolio.empty ~cash:(d 10_000.0) in
   let p = Engine.Portfolio.reserve p
@@ -172,4 +227,6 @@ let tests = [
   "release does not touch cash",         `Quick, test_release_removes_reservation_without_touching_cash;
   "commit unknown id raises",            `Quick, test_commit_unknown_id_raises;
   "multiple reservations stack",         `Quick, test_multiple_reservations_stack;
+  "partial fill shrinks reservation",    `Quick, test_commit_partial_fill_shrinks_reservation;
+  "overfill on partial raises",          `Quick, test_commit_partial_fill_over_reserve_raises;
 ]

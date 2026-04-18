@@ -331,6 +331,7 @@ let cmd_serve args =
           limits = Engine.Risk.default_limits ~equity;
           tif = Order.DAY;
           fee_rate = 0.0005;
+          reconcile_every = 10;
         } in
         Some (Live_engine.make cfg)
   in

@@ -124,7 +124,7 @@ let mk_engine ~broker ~action =
     initial_cash = equity;
     limits = Engine.Risk.default_limits ~equity;
     tif = Order.DAY;
-    fee_rate = 0.0;
+    fee_rate = 0.0; reconcile_every = 0;
   } in
   Live_engine.make cfg
 
@@ -190,7 +190,7 @@ let test_enter_then_exit_roundtrip () =
     initial_cash = equity;
     limits = Engine.Risk.default_limits ~equity;
     tif = Order.DAY;
-    fee_rate = 0.0;
+    fee_rate = 0.0; reconcile_every = 0;
   } in
   let e = Live_engine.make cfg in
   let flush = auto_confirm_fills rec_ e in
@@ -372,4 +372,118 @@ let tests = [
   "reconcile commits filled",    `Quick, test_reconcile_commits_filled;
   "reconcile releases rejected", `Quick, test_reconcile_releases_rejected;
   "reconcile idempotent",        `Quick, test_reconcile_idempotent;
+  "auto-reconcile after N bars", `Quick, (fun () ->
+    let r = Reporting_broker.create () in
+    let broker = mk_reporting_broker r in
+    let strat = Strategies.Strategy.make
+      (module Fixed_signal_strategy) { action = Signal.Enter_long } in
+    let equity = d_int 1_000_000 in
+    let cfg : Live_engine.config = {
+      broker; strategy = strat;
+      instrument = mk_instrument "SBER";
+      initial_cash = equity;
+      limits = Engine.Risk.default_limits ~equity;
+      tif = Order.DAY;
+      fee_rate = 0.0;
+      reconcile_every = 3;   (* every 3 bars *)
+    } in
+    let e = Live_engine.make cfg in
+    (* Bar 1: signal queued. Bar 2: signal fires → order placed,
+       reservation created. Broker reports New. Bars 3-4: further
+       signals / orders. After bar 3 (3 bars total), auto-reconcile
+       should trigger — broker still has New, so nothing committed.
+       Mark the order as Filled, then feed one more bar (bar 4) —
+       count was reset at bar 3, so bar 4 is counter 1. No trigger
+       yet. Feed bars 5, 6 → counter reaches 3 again → reconcile
+       runs, commits the Filled order. *)
+    Live_engine.on_bar e (bar ~ts:100 ~px:100.0);
+    Live_engine.on_bar e (bar ~ts:200 ~px:100.0);
+    Live_engine.on_bar e (bar ~ts:300 ~px:100.0);
+    (* Mark the first order as Filled *)
+    (match Reporting_broker.(r.orders) with
+     | o :: _ -> set_status r o.client_order_id Order.Filled
+     | [] -> Alcotest.fail "no orders placed yet");
+    (* Position not committed yet — reconcile hasn't seen Filled. *)
+    let pos_before = Live_engine.position e in
+    Alcotest.(check bool) "no commit before next trigger" true
+      (Decimal.is_zero pos_before);
+    (* Three more bars → counter reaches 3 → auto-reconcile fires. *)
+    Live_engine.on_bar e (bar ~ts:400 ~px:100.0);
+    Live_engine.on_bar e (bar ~ts:500 ~px:100.0);
+    Live_engine.on_bar e (bar ~ts:600 ~px:100.0);
+    Alcotest.(check bool) "auto-reconcile committed Filled order"
+      true (Decimal.is_positive (Live_engine.position e)));
+  "partial fills via paper",     `Quick, (fun () ->
+    (* Paper with participation_rate=0.25 splits a 10-qty order
+       over multiple bars; Live_engine should commit each slice via
+       commit_partial_fill and finish with the full qty committed. *)
+    let source = Paper.Paper_broker.make
+      ~initial_cash:(d_int 100_000)
+      ~participation_rate:0.25
+      ~source:(let module S = struct
+        type t = unit
+        let name = "stub"
+        let bars () ~n:_ ~instrument:_ ~timeframe:_ = []
+        let venues () = []
+        let place_order () ~instrument:_ ~side:_ ~quantity:_
+            ~kind:_ ~tif:_ ~client_order_id:_ = failwith "n/a"
+        let get_orders () = []
+        let get_order () ~client_order_id:_ = failwith "n/a"
+        let cancel_order () ~client_order_id:_ = failwith "n/a"
+      end in Broker.make (module S) ()) ()
+    in
+    let strat = Strategies.Strategy.make
+      (module Fixed_signal_strategy) { action = Enter_long }
+    in
+    let equity = d_int 100_000 in
+    let cfg : Live_engine.config = {
+      broker = Paper.Paper_broker.as_broker source;
+      strategy = strat;
+      instrument = mk_instrument "SBER";
+      initial_cash = equity;
+      limits = Engine.Risk.default_limits ~equity;
+      tif = Order.DAY;
+      fee_rate = 0.0; reconcile_every = 0;
+    } in
+    let eng = Live_engine.make cfg in
+    Paper.Paper_broker.on_fill source
+      (fun (f : Paper.Paper_broker.fill) ->
+        Live_engine.on_fill_event eng {
+          client_order_id = f.client_order_id;
+          actual_quantity = f.quantity;
+          actual_price = f.price;
+          actual_fee = f.fee;
+        });
+    (* Feed bars with volume=20 → participation cap = 5/bar.
+       Fixed_signal emits Enter_long every bar → sizing will pick
+       some qty. We drive 5 bars to let fills accumulate. *)
+    let inst = mk_instrument "SBER" in
+    let mk_bar ts px =
+      Candle.make
+        ~ts:(Int64.of_int ts)
+        ~open_:(d px) ~high:(d px) ~low:(d px) ~close:(d px)
+        ~volume:(d_int 20)
+    in
+    let candles = List.map (fun ts -> mk_bar ts 100.0)
+      [100; 200; 300; 400; 500; 600; 700; 800] in
+    List.iter (fun c ->
+      Live_engine.on_bar eng c;
+      Paper.Paper_broker.on_bar source ~instrument:inst c
+    ) candles;
+    (* After several bars, Live should have committed position > 0
+       and paper's fills count > orders submitted (partials). *)
+    let live_pos = Live_engine.position eng in
+    let paper_fills = Paper.Paper_broker.fills source in
+    Alcotest.(check bool) "Live position grew via partials"
+      true (Decimal.is_positive live_pos);
+    Alcotest.(check bool) "Paper emitted multiple fill events"
+      true (List.length paper_fills >= 2);
+    (* Live's portfolio should match Paper's (both produced from
+       the same sequence of actual fill events). *)
+    let live_cash = (Live_engine.portfolio eng).cash in
+    let paper_cash = (Paper.Paper_broker.portfolio source).cash in
+    Alcotest.(check (float 1e-6))
+      "Live cash == Paper cash after partial fills"
+      (Decimal.to_float paper_cash)
+      (Decimal.to_float live_cash))
 ]

@@ -24,19 +24,31 @@ type position = {
   avg_price : Core.Decimal.t;  (** VWAP entry price *)
 }
 
-(** A pending trade — cash/qty reserved but not yet applied. *)
+(** A pending trade — cash/qty reserved but not yet applied.
+    Scales down on partial fills: [quantity] is the *remaining*
+    reserved amount, [per_unit_cash] is immutable after {!reserve}
+    so proration stays linear. *)
 type reservation = {
   id : int;
   side : Core.Side.t;
   instrument : Core.Instrument.t;
-  reserved_cash : Core.Decimal.t;
-  (** Cash earmarked for this reservation — for Buy this is
-      [qty × price × (1 + slippage_buffer) + fee_estimate], for
-      Sell it's zero (sells free cash, they don't consume it). *)
-  reserved_qty : Core.Decimal.t;
-  (** Quantity of position earmarked — for Sell this is the absolute
-      quantity being closed/flipped, for Buy it's zero. *)
+  quantity : Core.Decimal.t;
+  (** Remaining reserved quantity — decreases on
+      {!commit_partial_fill}, hits zero on {!commit_fill}. *)
+  per_unit_cash : Core.Decimal.t;
+  (** For Buy: per-unit cash impact including slippage buffer and
+      fee estimate — set at {!reserve} and never changes. For Sell
+      it's zero (sells free cash, they don't consume it). *)
 }
+
+val reserved_cash : reservation -> Core.Decimal.t
+(** [quantity × per_unit_cash]. Earmarked cash still pending
+    (drops as partial fills commit). *)
+
+val reserved_qty : reservation -> Core.Decimal.t
+(** [quantity] for a Sell reservation, [0] for a Buy. Earmarked
+    position qty locking out further sells on the same
+    instrument. *)
 
 type t = private {
   cash : Core.Decimal.t;
@@ -98,10 +110,29 @@ val commit_fill :
   actual_price:Core.Decimal.t ->
   actual_fee:Core.Decimal.t ->
   t
-(** Settle reservation [id] with actual broker numbers. Removes the
-    reservation and applies a real {!fill} using the actual values.
-    If the reservation is absent (already committed or never
+(** Settle reservation [id] fully with actual broker numbers. Removes
+    the reservation and applies a real {!fill} using the actual
+    values. If the reservation is absent (already committed or never
     existed), raises [Not_found]. *)
+
+val commit_partial_fill :
+  t ->
+  id:int ->
+  actual_quantity:Core.Decimal.t ->
+  actual_price:Core.Decimal.t ->
+  actual_fee:Core.Decimal.t ->
+  t
+(** Settle part of reservation [id]. Shrinks the reservation by
+    [actual_quantity] (its [reserved_cash] / [reserved_qty] scale
+    down proportionally) and applies a {!fill} for that slice; the
+    reservation stays open for the remaining amount. When the
+    remaining quantity reaches zero the reservation is removed
+    automatically (equivalent to {!commit_fill}).
+
+    Raises [Not_found] when the id is absent. Raises
+    [Invalid_argument] if [actual_quantity] exceeds the
+    reservation's current [reserved_qty] (for sells) or if the
+    caller tries to fill more than originally reserved (for buys). *)
 
 val release : t -> id:int -> t
 (** Drop reservation [id] with no other state change — used on

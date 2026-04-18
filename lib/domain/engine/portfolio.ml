@@ -10,9 +10,16 @@ type reservation = {
   id : int;
   side : Side.t;
   instrument : Instrument.t;
-  reserved_cash : Decimal.t;
-  reserved_qty : Decimal.t;
+  quantity : Decimal.t;           (* remaining *)
+  per_unit_cash : Decimal.t;      (* immutable after reserve *)
 }
+
+let reserved_cash r = Decimal.mul r.quantity r.per_unit_cash
+
+let reserved_qty r =
+  match r.side with
+  | Side.Sell -> r.quantity
+  | Buy -> Decimal.zero
 
 type t = {
   cash : Decimal.t;
@@ -30,14 +37,14 @@ let position p instrument =
   List.find_opt (fun (i, _) -> Instrument.equal i instrument) p.positions
   |> Option.map snd
 
-let set_position positions instrument pos =
+let set_position positions instrument (pos : position) =
   let rest =
     List.filter (fun (i, _) -> not (Instrument.equal i instrument)) positions
   in
   if Decimal.is_zero pos.quantity then rest
   else (instrument, pos) :: rest
 
-let fill p ~instrument ~side ~quantity ~price ~fee =
+let fill (p : t) ~instrument ~side ~quantity ~price ~fee : t =
   if not (Decimal.is_positive quantity) then
     invalid_arg "Portfolio.fill: non-positive quantity";
   if Decimal.is_negative fee then
@@ -56,8 +63,9 @@ let fill p ~instrument ~side ~quantity ~price ~fee =
   let pos', realized =
     match existing with
     | None ->
-      { instrument; quantity = signed_qty; avg_price = price }, Decimal.zero
-    | Some cur ->
+      ({ instrument; quantity = signed_qty; avg_price = price } : position),
+      Decimal.zero
+    | Some (cur : position) ->
       let cur_sign = Decimal.compare cur.quantity Decimal.zero in
       let new_sign = Decimal.compare signed_qty Decimal.zero in
       if cur_sign = 0 || cur_sign = new_sign then
@@ -99,33 +107,25 @@ let fill p ~instrument ~side ~quantity ~price ~fee =
     realized_pnl = Decimal.add p.realized_pnl realized;
   }
 
-(** Compute the cash-impact of a future fill for reservation
-    purposes. For Buy: notional × (1 + slip) plus fee estimate;
-    for Sell: zero (sells free cash). *)
-let reserved_cash_of ~side ~quantity ~price ~slippage_buffer ~fee_rate =
+(** Per-unit cash impact of a future fill for reservation purposes.
+    For Buy: price × (1 + slip) + price × fee_rate. For Sell:
+    zero (sells free cash). Immutable after reserve — proration on
+    partial fills just scales by remaining quantity. *)
+let per_unit_cash_of ~side ~price ~slippage_buffer ~fee_rate =
   match side with
   | Side.Sell -> Decimal.zero
   | Buy ->
     let slip_mult = Decimal.of_float (1.0 +. slippage_buffer) in
-    let notional_with_slip =
-      Decimal.mul (Decimal.mul quantity price) slip_mult in
-    let fee_est =
-      Decimal.mul (Decimal.mul quantity price) (Decimal.of_float fee_rate) in
-    Decimal.add notional_with_slip fee_est
-
-(** Qty reserved per reservation: for Sell we lock the shares being
-    exited; Buy doesn't lock position qty. *)
-let reserved_qty_of ~side ~quantity =
-  match side with
-  | Side.Buy -> Decimal.zero
-  | Sell -> quantity
+    let fee_mult = Decimal.of_float fee_rate in
+    Decimal.add
+      (Decimal.mul price slip_mult)
+      (Decimal.mul price fee_mult)
 
 let reserve p ~id ~side ~instrument ~quantity ~price
     ~slippage_buffer ~fee_rate =
-  let reserved_cash = reserved_cash_of ~side ~quantity ~price
+  let per_unit_cash = per_unit_cash_of ~side ~price
     ~slippage_buffer ~fee_rate in
-  let reserved_qty = reserved_qty_of ~side ~quantity in
-  let r = { id; side; instrument; reserved_cash; reserved_qty } in
+  let r = { id; side; instrument; quantity; per_unit_cash } in
   { p with reservations = r :: p.reservations }
 
 let find_reservation reservations id =
@@ -144,22 +144,40 @@ let commit_fill p ~id ~actual_quantity ~actual_price ~actual_fee =
     fill p' ~instrument:r.instrument ~side:r.side
       ~quantity:actual_quantity ~price:actual_price ~fee:actual_fee
 
+let commit_partial_fill p ~id ~actual_quantity ~actual_price ~actual_fee =
+  let matched, rest = find_reservation p.reservations id in
+  match matched with
+  | [] -> raise Not_found
+  | r :: _ ->
+    if Decimal.compare actual_quantity r.quantity > 0 then
+      invalid_arg
+        "Portfolio.commit_partial_fill: actual_quantity \
+         exceeds remaining reserved quantity";
+    let new_remaining = Decimal.sub r.quantity actual_quantity in
+    let reservations' =
+      if Decimal.is_zero new_remaining then rest
+      else { r with quantity = new_remaining } :: rest
+    in
+    let p' = { p with reservations = reservations' } in
+    fill p' ~instrument:r.instrument ~side:r.side
+      ~quantity:actual_quantity ~price:actual_price ~fee:actual_fee
+
 let available_cash p =
   List.fold_left (fun acc r ->
     match r.side with
-    | Buy -> Decimal.sub acc r.reserved_cash
+    | Buy -> Decimal.sub acc (reserved_cash r)
     | Sell -> acc)
     p.cash p.reservations
 
 let available_qty p instrument =
   let base = match position p instrument with
-    | Some pos -> pos.quantity
+    | Some (pos : position) -> pos.quantity
     | None -> Decimal.zero
   in
   List.fold_left (fun acc r ->
     if Instrument.equal r.instrument instrument then
       match r.side with
-      | Sell -> Decimal.sub acc r.reserved_qty
+      | Sell -> Decimal.sub acc (reserved_qty r)
       | Buy -> acc
     else acc)
     base p.reservations

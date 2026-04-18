@@ -37,6 +37,12 @@ type config = {
       {!Engine.Backtest.config.fee_rate} so a live-engine run with
       the same value produces the same Portfolio P&L as a backtest
       over identical candles. *)
+  reconcile_every : int;
+  (** {!reconcile} is invoked automatically every [reconcile_every]
+      bars processed by {!on_bar}. Set to [0] to disable (manual
+      [reconcile] only — tests often prefer this). A modest value
+      like [10] trades a bit of broker API load for bounded drift
+      detection latency. *)
 }
 
 type t
