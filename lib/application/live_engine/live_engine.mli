@@ -47,7 +47,22 @@ val on_bar : t -> Candle.t -> unit
 (** Feed one bar into the engine. Executes any signal queued on the
     previous bar at [c.open_], then advances the strategy and queues
     any new non-Hold signal for the next bar. Re-entrant-safe via an
-    internal mutex; idempotent on older-or-equal timestamps. *)
+    internal mutex; idempotent on older-or-equal timestamps.
+
+    Intended for single-threaded test driving. Live deployments use
+    {!run} which drains an Eio stream in its own fiber. *)
+
+val run : t -> source:Candle.t Eio.Stream.t -> unit
+(** Stream-driver variant: pulls bars from [source] and feeds them
+    into {!on_bar} one by one. Blocks (never returns on an
+    unbounded source) — intended to be invoked inside
+    [Eio.Fiber.fork_daemon], with WS bridges pushing upstream
+    candles into [source] from their own fibers.
+
+    Semantically equivalent to
+    [Stream.iter (on_bar t) (Eio_stream.of_eio_stream source)] —
+    this is the boundary at which the pull-driven pure pipeline
+    meets Eio's push-driven concurrency. *)
 
 val position : t -> Decimal.t
 (** Running net position for [config.instrument] (positive = long,

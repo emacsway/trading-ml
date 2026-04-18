@@ -83,6 +83,10 @@ let on_bar t (c : Candle.t) =
       t.state <- state2
     end)
 
+let run t ~source =
+  Eio_stream.of_eio_stream source
+  |> Stream.iter (fun c -> on_bar t c)
+
 let position t = with_lock t (fun () ->
   match Engine.Portfolio.position t.state.portfolio t.cfg.instrument with
   | Some p -> p.quantity

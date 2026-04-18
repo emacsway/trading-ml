@@ -342,28 +342,46 @@ let cmd_serve args =
      | Some n -> Printf.sprintf " [engine: %s on %s]"
                    n (Instrument.to_qualified engine_symbol)
      | None -> "");
-  (* Bar sinks fan out every upstream candle to (a) the Paper decorator
-     so pending orders can fill without a UI poll and (b) the live
-     engine so strategy signals translate into orders. Both are no-ops
-     when the corresponding feature is disabled. *)
+  (* Engine source is an [Eio.Stream] the WS sinks push candles into;
+     [Live_engine.run] reads from it in its own fiber (spawned below
+     inside the server's switch). This replaces the previous direct
+     on_bar callback with a proper pull-driven pipeline, decoupling
+     the WS producer from the engine consumer. *)
+  let engine_source = Option.map (fun _ -> Eio.Stream.create 64) engine_t in
   let paper_sink = match paper_t with
     | Some p -> fun instrument candle ->
       Paper.Paper_broker.on_bar p ~instrument candle
     | None -> fun _ _ -> ()
   in
-  let engine_sink = match engine_t with
-    | Some e -> fun instrument candle ->
+  let engine_sink = match engine_source with
+    | Some src -> fun instrument candle ->
       if Instrument.equal instrument engine_symbol
-      then Live_engine.on_bar e candle
+      then Eio.Stream.add src candle
     | None -> fun _ _ -> ()
   in
   let bar_sink instrument candle =
     paper_sink instrument candle;
     engine_sink instrument candle
   in
+  (* Wrap any [Server.Http.live_setup] factory so that, when the
+     server's switch opens, we also spawn the engine fiber on the
+     same switch. Engine's lifetime is thereby tied to the server's
+     — shutdown the server, the engine daemon winds down with it. *)
+  let with_engine (base : sw:Eio.Switch.t -> Server.Http.live_setup)
+      ~sw : Server.Http.live_setup =
+    (match engine_t, engine_source with
+     | Some e, Some src ->
+       Eio.Fiber.fork_daemon ~sw (fun () ->
+         Live_engine.run e ~source:src;
+         `Stop_daemon)
+     | _ -> ());
+    base ~sw
+  in
   let ws_setup = match opened with
-    | Opened_finam     { rest; _ } -> Some (finam_live_setup ~env ~paper_sink:bar_sink rest)
-    | Opened_bcs       { rest; _ } -> Some (bcs_live_setup   ~env ~paper_sink:bar_sink rest)
+    | Opened_finam     { rest; _ } ->
+      Some (with_engine (finam_live_setup ~env ~paper_sink:bar_sink rest))
+    | Opened_bcs       { rest; _ } ->
+      Some (with_engine (bcs_live_setup   ~env ~paper_sink:bar_sink rest))
     | Opened_synthetic _           -> None
   in
   Log.info "listening on http://127.0.0.1:%d (%s)"

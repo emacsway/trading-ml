@@ -1,4 +1,4 @@
 (library
  (name engine)
  (public_name trading.engine)
- (libraries core indicators strategies))
+ (libraries core indicators strategies stream))
