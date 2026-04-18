@@ -1,0 +1,3 @@
+(library
+ (name stream)
+ (public_name trading.stream))
