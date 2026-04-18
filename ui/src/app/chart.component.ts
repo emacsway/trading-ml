@@ -1,10 +1,11 @@
 import {
   AfterViewInit, ChangeDetectionStrategy, Component, ElementRef,
-  OnDestroy, effect, input, viewChild,
+  OnDestroy, effect, input, signal, viewChild,
 } from '@angular/core';
 import {
-  createChart, IChartApi, ISeriesApi, LineData, CandlestickData,
-  HistogramData, CandlestickSeries, LineSeries, HistogramSeries,
+  createChart, IChartApi, IPriceLine, ISeriesApi,
+  LineData, CandlestickData, HistogramData,
+  CandlestickSeries, LineSeries, HistogramSeries,
   LineStyle as LwLineStyle, Time,
 } from 'lightweight-charts';
 import { Candle } from './api.service';
@@ -26,8 +27,23 @@ const LINE_STYLE: Record<LineStyle, LwLineStyle> = {
 @Component({
   selector: 'app-chart',
   standalone: true,
-  template: `<div #host class="chart-host"></div>`,
-  styles: [`.chart-host { width: 100%; height: 720px; }`],
+  template: `
+    <div class="chart-wrap">
+      <div #host class="chart-host"></div>
+      <div class="measure-hud">{{ measureLabel() || 'Shift+click — measure' }}</div>
+    </div>
+  `,
+  styles: [`
+    .chart-wrap { position: relative; }
+    .chart-host { width: 100%; height: 720px; }
+    .measure-hud {
+      position: absolute; top: 8px; left: 12px; z-index: 10;
+      background: rgba(18,20,26,0.9); color: #ffcc00;
+      padding: 4px 8px; border: 1px solid #3a3f4a; border-radius: 4px;
+      font: 12px/1.4 ui-monospace, monospace;
+      pointer-events: none; user-select: none;
+    }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChartComponent implements AfterViewInit, OnDestroy {
@@ -44,6 +60,22 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
   private candleSeries?: ISeriesApi<'Candlestick'>;
   private overlaySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
   private lastFittedKey?: string;
+
+  /** Price measurement tool. Anchor is set on first Shift+click;
+   *  subsequent Shift+clicks move the second point and update the
+   *  delta. Escape (or a new [seriesKey]) clears the measurement. */
+  private shiftDown = false;
+  private anchor?: { price: number };
+  private anchorLine?: IPriceLine;
+  private endpointLine?: IPriceLine;
+  readonly measureLabel = signal<string>('');
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Shift') this.shiftDown = true;
+    if (e.key === 'Escape') this.clearMeasure();
+  };
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === 'Shift') this.shiftDown = false;
+  };
 
   constructor() {
     effect(() => {
@@ -81,11 +113,70 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
       borderVisible: false,
       wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     });
+    this.chart.subscribeClick((param) => this.handleMeasureClick(param));
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
     this.render(this.candles(), this.overlays());
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
     this.chart?.remove();
+  }
+
+  /** Two-click price-delta tool. Shift+click #1 sets the anchor;
+   *  each subsequent Shift+click moves the endpoint. The HUD and
+   *  the endpoint price-line show [Δ abs (Δ rel %)]. A non-shift
+   *  click or a new [seriesKey] clears the state. */
+  private handleMeasureClick(param: {
+    point?: { x: number; y: number };
+  }): void {
+    if (!this.candleSeries || !param.point) return;
+    if (!this.shiftDown) return;
+    const price = this.candleSeries.coordinateToPrice(param.point.y);
+    if (price === null) return;
+    if (!this.anchor) {
+      this.anchor = { price };
+      this.anchorLine = this.candleSeries.createPriceLine({
+        price, color: '#ffcc00', lineWidth: 1,
+        lineStyle: LwLineStyle.Dashed, axisLabelVisible: true, title: 'A',
+      });
+      this.measureLabel.set(`A = ${this.fmt(price)}`);
+    } else {
+      const abs = price - this.anchor.price;
+      const rel = this.anchor.price !== 0
+        ? abs / this.anchor.price * 100 : 0;
+      const sign = abs >= 0 ? '+' : '';
+      const label = `Δ ${sign}${this.fmt(abs)} (${sign}${rel.toFixed(2)}%)`;
+      if (this.endpointLine) this.candleSeries.removePriceLine(this.endpointLine);
+      this.endpointLine = this.candleSeries.createPriceLine({
+        price, color: '#ffcc00', lineWidth: 1,
+        lineStyle: LwLineStyle.Dashed, axisLabelVisible: true, title: 'B',
+      });
+      this.measureLabel.set(
+        `A = ${this.fmt(this.anchor.price)}   B = ${this.fmt(price)}   ${label}`);
+    }
+  }
+
+  private clearMeasure(): void {
+    if (!this.candleSeries) return;
+    if (this.anchorLine) this.candleSeries.removePriceLine(this.anchorLine);
+    if (this.endpointLine) this.candleSeries.removePriceLine(this.endpointLine);
+    this.anchor = undefined;
+    this.anchorLine = undefined;
+    this.endpointLine = undefined;
+    this.measureLabel.set('');
+  }
+
+  /** Four significant decimals is enough for equities in roubles
+   *  (kopeck precision) and loose enough for typical FX/crypto
+   *  pairs shown on this UI. */
+  private fmt(x: number): string {
+    const abs = Math.abs(x);
+    if (abs >= 100) return x.toFixed(2);
+    if (abs >= 1)   return x.toFixed(4);
+    return x.toFixed(6);
   }
 
   /** Recreates all overlay series and the secondary panes they require.
@@ -171,6 +262,7 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
         `[chart] fitContent: seriesKey ${this.lastFittedKey} → ${key}, ` +
         `len=${candles.length}`);
       this.chart.timeScale().fitContent();
+      this.clearMeasure();
       this.lastFittedKey = key;
     } else {
       console.debug(
