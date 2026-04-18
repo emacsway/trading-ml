@@ -66,12 +66,36 @@ through `dune` library dependencies and `.mli` files; see
 [ADR 0002: .mli guardrails](../adr/0002-mli-guardrails.md).
 
 ```
-domain           ◀───── application ◀───── infrastructure
-  (pure)                (orchestrates)           (IO, ports)
-
-no external deps     imports domain           imports both
-no IO                 depends on ports         implements ports
+┌─────────────────────────────────────┐
+│ Domain (pure)                       │  ← no IO, no external deps
+│   core / engine / strategies /      │
+│   indicators / stream / ml          │
+└─────────────────────────────────────┘
+                  ▲
+                  │  (application imports domain)
+                  │
+┌─────────────────────────────────────┐
+│ Application                         │  ← orchestrates via ports
+│   broker (port Broker.S)            │
+│   live_engine                       │
+└─────────────────────────────────────┘
+                  ▲
+                  │  (infra implements ports)
+                  │
+┌─────────────────────────────────────┐
+│ Infrastructure                      │  ← IO, adapters
+│   acl/finam, acl/bcs, acl/synthetic │
+│   paper, inbound/http, eio_stream   │
+│   websocket, http_transport, log    │
+└─────────────────────────────────────┘
 ```
+
+**Broker.S** is the key port: it lives in Application
+(`lib/application/broker/`) and declares what the engine needs
+from a broker. Infrastructure adapters (Finam, BCS, Paper,
+Synthetic) implement it. The engine programs against the
+existential `Broker.client` without naming a concrete adapter,
+so swapping brokers is a one-line wiring change.
 
 ## The core abstraction: Broker.S
 
