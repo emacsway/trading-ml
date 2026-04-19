@@ -38,3 +38,7 @@ _opam/
 ui/node_modules
 ui/.angular
 ui/dist
+
+docs/_site
+docs/.soupault-cache
+

@@ -1,0 +1,182 @@
+### soupault configuration for the trading project documentation ###
+
+[settings]
+  soupault_version = "5.0.0"
+
+  verbose = true
+  debug = false
+
+  # Clean URLs: docs/architecture/overview.md -> /architecture/overview/
+  clean_urls = true
+
+  # Output directory (gitignored)
+  build_dir = "_site"
+
+  # Sources are the docs directory itself
+  site_dir = "."
+
+  # Insert page content into <main>
+  default_content_selector = "main#content"
+  default_content_action = "append_child"
+
+  default_template_file = "templates/main.html"
+
+  # Treat README.md as the section index
+  index_page = "README"
+
+  markdown_extensions = ["md"]
+  page_file_extensions = ["md", "html"]
+
+  # Don't process or copy soupault's own machinery
+  ignore_directories = ["_site", "templates", "plugins"]
+  ignore_extensions = ["toml", "lua"]
+  ignore_path_regexes = ["Makefile$", "\\.gitignore$"]
+
+  doctype = "<!DOCTYPE html>"
+
+
+### Custom plugins ###
+
+[plugins.internal-links]
+  file = "plugins/internal-links.lua"
+
+[plugins.footnotes-cleanup]
+  file = "plugins/footnotes-cleanup.lua"
+
+[plugins.site-nav]
+  file = "plugins/site-nav.lua"
+
+
+### Index hook: tag every page with section + manual order ###
+
+[hooks.post-index]
+  lua_source = '''
+    -- Section = top-level directory of the source path
+    rel = Regex.replace(page_file, "^\\./", "")
+    section_match = Regex.find_all(rel, "^[^/]+/")
+    if section_match and (size(section_match) > 0) then
+      index_fields["section"] = Regex.replace(section_match[1], "/$", "")
+    else
+      index_fields["section"] = "_root"
+    end
+
+    -- Order: numeric prefix from filename for ADRs, manual map for architecture
+    basename = Sys.basename(page_file)
+    stem = Regex.replace(basename, "\\.md$", "")
+
+    arch_order = "50"
+    if stem == "README"        then arch_order = "00" end
+    if stem == "overview"      then arch_order = "01" end
+    if stem == "domain-model"  then arch_order = "02" end
+    if stem == "state-machine" then arch_order = "03" end
+    if stem == "streams"       then arch_order = "04" end
+    if stem == "reservations"  then arch_order = "05" end
+    if stem == "live-engine"   then arch_order = "06" end
+    if stem == "testing"       then arch_order = "07" end
+
+    num_match = Regex.find_all(stem, "^\\d+")
+    if num_match and (size(num_match) > 0) then
+      index_fields["order"] = num_match[1]
+    else
+      index_fields["order"] = arch_order
+    end
+  '''
+
+
+### Index: drives the sidebar nav ###
+
+[index]
+  sort_by = "order"
+  sort_type = "numeric"
+  sort_descending = false
+  force_indexing_path_regex = [".*"]
+
+[index.fields]
+  title = { selector = ["#page-title", "h1"] }
+
+
+### Widgets ###
+
+# Build sidebar navigation from the site index
+[widgets.site-nav]
+  widget = "site-nav"
+  nav_selector = "nav#site-nav"
+  nav_template = '''
+    <div class="nav-group">
+      <div class="nav-group-title">Overview</div>
+      <ul class="nav-list">
+        <li><a href="/">Documentation home</a></li>
+      </ul>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Architecture</div>
+      <ul class="nav-list">
+        {% for e in entries %}{% if e.section == "architecture" %}
+          <li><a href="{{ e.url }}">{{ e.title }}</a></li>
+        {% endif %}{% endfor %}
+      </ul>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Decision records</div>
+      <ul class="nav-list nav-list-numbered">
+        {% for e in entries %}{% if e.section == "adr" %}
+          <li><a href="{{ e.url }}">{{ e.title }}</a></li>
+        {% endif %}{% endfor %}
+      </ul>
+    </div>
+  '''
+
+
+# Page <title>
+[widgets.page-title]
+  widget = "title"
+  selector = "h1"
+  default = "Trading docs"
+  append = " — Trading docs"
+
+# Inline table of contents (right rail on wide screens)
+[widgets.table-of-contents]
+  widget = "toc"
+  selector = "nav#page-toc"
+  action = "append_child"
+  exclude_page = ["README.md"]
+
+  min_level = 2
+  max_level = 3
+
+  toc_list_class = "page-toc-list"
+  toc_class_levels = false
+  numbered_list = false
+
+  heading_links = true
+  heading_link_text = "#"
+  heading_link_class = "anchor"
+
+  use_heading_slug = true
+
+# Remove empty TOC container on pages without headings
+[widgets.cleanup-toc]
+  widget = "delete_element"
+  after = "table-of-contents"
+  selector = "nav#page-toc"
+  only_if_empty = true
+
+# Footnotes
+[widgets.footnotes]
+  widget = "footnotes"
+  selector = "div#footnotes"
+  footnote_selector = [".footnote"]
+  footnote_link_class = "footnote-ref"
+
+[widgets.footnotes-container-cleanup]
+  widget = "footnotes-cleanup"
+  after = "footnotes"
+  footnote_link_selector = "a.footnote-ref"
+  footnotes_container_selector = "div#footnotes"
+
+# Rewrite *.md links to clean URLs
+[widgets.internal-links]
+  widget = "internal-links"
+
