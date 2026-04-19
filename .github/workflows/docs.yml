@@ -1,0 +1,64 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# Permissions required by actions/deploy-pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent Pages deploy; never cancel an in-progress one
+# so a partially-deployed site doesn't get left around.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build docs
+    # Hard-pin to the canonical repo so forks don't try to publish.
+    if: github.repository == 'krew-solutions/trading-ml'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install soupault
+        env:
+          SOUPAULT_VERSION: 5.2.0
+        run: |
+          set -eu
+          archive="soupault-${SOUPAULT_VERSION}-linux-x86_64.tar.gz"
+          wget -q "https://github.com/dmbaturin/soupault/releases/download/${SOUPAULT_VERSION}/${archive}"
+          tar xzf "${archive}"
+          sudo install -m 0755 \
+            "soupault-${SOUPAULT_VERSION}-linux-x86_64/soupault" \
+            /usr/local/bin/soupault
+          soupault --version-number
+
+      - name: Build site
+        working-directory: docs
+        run: make site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.repository == 'krew-solutions/trading-ml'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
