@@ -67,8 +67,20 @@ let load_authenticator () =
     | Error (`Msg m) -> Error ("CA decode failed: " ^ m)
     | Ok certs -> Ok (X509.Authenticator.chain_of_trust ~time:now certs)
 
+(** Per-request deadline. Without a cap a stalled remote or a
+    half-open TCP session silently freezes the caller; 15 s is long
+    enough for fat payloads like [/v1/accounts/…/orders] over a slow
+    uplink, short enough that smoke tests fail rather than hang a
+    session.
+
+    Covers both connect and response-read; [Eio.Time.with_timeout]
+    cancels the switch and all its flow reads when the budget runs
+    out. *)
+let request_timeout_s = 15.0
+
 let make_eio ~env : t =
   let net = Eio.Stdenv.net env in
+  let clock = Eio.Stdenv.clock env in
   let authenticator =
     match load_authenticator () with
     | Ok a -> a
@@ -97,38 +109,58 @@ let make_eio ~env : t =
   in
   let client = Cohttp_eio.Client.make ~https net in
   let send_once (req : request) : response =
-    Eio.Switch.run @@ fun sw ->
-    let headers = Cohttp.Header.of_list req.headers in
-    let body = Option.map Cohttp_eio.Body.of_string req.body in
-    let resp, body_in =
-      match req.meth with
-      | `GET    -> Cohttp_eio.Client.get    ~sw ~headers client req.url
-      | `DELETE -> Cohttp_eio.Client.delete ~sw ~headers client req.url
-      | `POST   ->
-        Cohttp_eio.Client.post ~sw ~headers ?body client req.url
-      | `PUT    ->
-        Cohttp_eio.Client.put ~sw ~headers ?body client req.url
-    in
-    let status = Cohttp.Code.code_of_status (Cohttp.Response.status resp) in
-    let body_str = Eio.Flow.read_all body_in in
-    { status; body = body_str }
+    match
+      Eio.Time.with_timeout clock request_timeout_s @@ fun () ->
+      Eio.Switch.run @@ fun sw ->
+      let headers = Cohttp.Header.of_list req.headers in
+      let body = Option.map Cohttp_eio.Body.of_string req.body in
+      let resp, body_in =
+        match req.meth with
+        | `GET    -> Cohttp_eio.Client.get    ~sw ~headers client req.url
+        | `DELETE -> Cohttp_eio.Client.delete ~sw ~headers client req.url
+        | `POST   ->
+          Cohttp_eio.Client.post ~sw ~headers ?body client req.url
+        | `PUT    ->
+          Cohttp_eio.Client.put ~sw ~headers ?body client req.url
+      in
+      let status = Cohttp.Code.code_of_status (Cohttp.Response.status resp) in
+      let body_str = Eio.Flow.read_all body_in in
+      Ok { status; body = body_str }
+    with
+    | Ok r -> r
+    | Error `Timeout ->
+      failwith (Printf.sprintf
+        "HTTP timeout after %.0fs on %s %s"
+        request_timeout_s
+        (match req.meth with
+         | `GET -> "GET" | `POST -> "POST"
+         | `PUT -> "PUT" | `DELETE -> "DELETE")
+        (Uri.to_string req.url))
   in
   (* Cohttp's client keeps a pool of TCP+TLS connections for keepalive.
      Brokers (notably BCS) close idle pooled connections after a few
      seconds; the next request through that stale entry surfaces
      either as [End_of_file] (clean FIN) or as [Eio.Io Net
-     Connection_reset] (abortive RST). Retry once on both — a fresh
+     Connection_reset] (abortive RST). Retry once on those — a fresh
      pool entry skips the dead connection.
 
-     Safe for our current call sites: GET/DELETE are idempotent, and
-     the only POSTs we make today are auth token exchanges (also
-     idempotent). Revisit when we start placing orders — then the
-     retry must be gated on a client-order-id for at-most-once. *)
+     Retry only on idempotent methods. A POST that fails after its
+     request bytes hit the wire could already have landed on the
+     broker (e.g. a placed order whose response we never saw); a
+     blind retry would risk duplicate orders. The auth POST endpoint
+     [/v1/sessions] is idempotent for our purposes (issuing another
+     JWT is fine), but filtering by URL here would be brittle, so we
+     don't retry any POST at this layer. *)
   let is_stale_keepalive : exn -> bool = function
     | End_of_file -> true
     | Eio.Io (Eio.Net.E (Connection_reset _), _) -> true
     | _ -> false
   in
+  let retryable_method = function
+    | `GET | `DELETE -> true
+    | `POST | `PUT -> false
+  in
   fun (req : request) : response ->
     try send_once req
-    with e when is_stale_keepalive e -> send_once req
+    with e when is_stale_keepalive e && retryable_method req.meth ->
+      send_once req
