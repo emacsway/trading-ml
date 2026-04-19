@@ -46,6 +46,9 @@
 [plugins.site-nav]
   file = "plugins/site-nav.lua"
 
+[plugins.repo-link]
+  file = "plugins/repo-link.lua"
+
 
 ### Index hook: tag every page with section + manual order ###
 
@@ -96,6 +99,13 @@
 
 
 ### Widgets ###
+
+# GitHub repo badge in the page header (octocat + live star/fork counts)
+[widgets.repo-link]
+  widget = "repo-link"
+  url = "https://github.com/krew-solutions/trading-ml"
+  selector = "header.site-header"
+  # label = "krew-solutions/trading-ml"   # optional override
 
 # Build sidebar navigation from the site index
 [widgets.site-nav]
@@ -180,4 +190,4 @@
 # Must run last so it processes links inserted by every other widget.
 [widgets.urls]
   widget = "urls"
-  after = ["site-nav", "table-of-contents", "footnotes"]
+  after = ["site-nav", "repo-link", "table-of-contents", "footnotes"]
