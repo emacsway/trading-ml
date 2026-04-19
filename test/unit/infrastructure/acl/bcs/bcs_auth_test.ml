@@ -27,11 +27,13 @@ let token_body ~access ~expires_in =
     "expires_in",   `Int expires_in;
   ])
 
-let make_cfg ~refresh_token =
+let make_cfg () =
   Config.make
-    ~refresh_token
     ~token_endpoint:(Uri.of_string "https://example.test/token")
     ()
+
+let make_store ~refresh_token =
+  Token_store.memory ~initial:refresh_token ()
 
 let test_initial_call_posts_form_encoded () =
   let requests = ref [] in
@@ -41,8 +43,9 @@ let test_initial_call_posts_form_encoded () =
     requests := req :: !requests;
     { status = 200; body = token_body ~access:tok ~expires_in:600 }
   in
-  let cfg = make_cfg ~refresh_token:"REFRESH" in
-  let auth = Auth.make ~transport ~cfg in
+  let cfg = make_cfg () in
+  let auth = Auth.make ~transport ~cfg
+    ~token_store:(make_store ~refresh_token:"REFRESH") in
   let fetched = Auth.current auth in
   Alcotest.(check string) "access_token returned" tok fetched;
   Alcotest.(check int) "one request" 1 (List.length !requests);
@@ -77,8 +80,9 @@ let test_caches_until_expiry () =
     requests := req :: !requests;
     { status = 200; body = token_body ~access:tok ~expires_in:600 }
   in
-  let cfg = make_cfg ~refresh_token:"R" in
-  let auth = Auth.make ~transport ~cfg in
+  let cfg = make_cfg () in
+  let auth = Auth.make ~transport ~cfg
+    ~token_store:(make_store ~refresh_token:"R") in
   let _ = Auth.current auth in
   let _ = Auth.current auth in
   let _ = Auth.current auth in
@@ -93,8 +97,9 @@ let test_invalidate_triggers_reauth () =
     requests := req :: !requests;
     { status = 200; body = token_body ~access:tok ~expires_in:600 }
   in
-  let cfg = make_cfg ~refresh_token:"R" in
-  let auth = Auth.make ~transport ~cfg in
+  let cfg = make_cfg () in
+  let auth = Auth.make ~transport ~cfg
+    ~token_store:(make_store ~refresh_token:"R") in
   let _ = Auth.current auth in
   Auth.invalidate auth;
   let _ = Auth.current auth in
@@ -114,8 +119,9 @@ let test_refresh_when_expiry_near () =
     let expires_in = if List.length !requests = 1 then 0 else 600 in
     { status = 200; body = token_body ~access:tok ~expires_in }
   in
-  let cfg = make_cfg ~refresh_token:"R" in
-  let auth = Auth.make ~transport ~cfg in
+  let cfg = make_cfg () in
+  let auth = Auth.make ~transport ~cfg
+    ~token_store:(make_store ~refresh_token:"R") in
   let _ = Auth.current auth in
   let _ = Auth.current auth in
   Alcotest.(check int) "stale cache refreshes"

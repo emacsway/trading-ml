@@ -1,6 +1,6 @@
 (library
  (name bcs)
  (public_name trading.bcs)
- (libraries core broker http_transport websocket log
+ (libraries core broker http_transport token_store websocket log
             eio eio.unix yojson uri
             tls x509))

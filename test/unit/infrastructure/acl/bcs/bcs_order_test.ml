@@ -14,7 +14,6 @@ let sber = Instrument.make
 
 let make_cfg () =
   Config.make
-    ~refresh_token:"R"
     ~rest_base:(Uri.of_string "https://api.test")
     ~token_endpoint:(Uri.of_string "https://api.test/token")
     ()

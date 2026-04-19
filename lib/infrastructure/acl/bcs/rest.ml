@@ -11,8 +11,8 @@ type t = {
   auth : Auth.t;
 }
 
-let make ~transport ~cfg =
-  let auth = Auth.make ~transport ~cfg in
+let make ~transport ~cfg ~token_store =
+  let auth = Auth.make ~transport ~cfg ~token_store in
   { transport; cfg; auth }
 
 let req_with_token ~meth ~url ~body ~token : Http_transport.request = {

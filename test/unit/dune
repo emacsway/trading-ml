@@ -1,8 +1,9 @@
 (test
  (name unit_runner)
  (libraries core indicators strategies logistic_regression engine
-            http_transport broker websocket finam bcs paper live_engine stream eio_stream
-            eio eio_main str
+            http_transport broker websocket finam bcs token_store paper
+            live_engine stream eio_stream
+            eio eio_main str unix
             alcotest qcheck-core))
 
 ; Unqualified flattens the subdirectory tree into a single module namespace.

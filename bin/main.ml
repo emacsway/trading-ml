@@ -137,10 +137,31 @@ let open_finam ~env ~secret ~account : opened =
   let adapter = Finam.Finam_broker.make ~account_id rest in
   Opened_finam { client = Finam.Finam_broker.as_broker adapter; rest }
 
-let open_bcs ~env ~secret ~account : opened =
-  let cfg = Bcs.Config.make ?account_id:account ~refresh_token:secret () in
+(** State path for the persisted BCS refresh-token. [$XDG_STATE_HOME]
+    per the XDG Base Directory spec, with [~/.local/state] as the
+    documented fallback. The file is [chmod 0o600] by [Token_store]. *)
+let bcs_refresh_token_path () =
+  let state_home = match Sys.getenv_opt "XDG_STATE_HOME" with
+    | Some p when p <> "" -> p
+    | _ -> Filename.concat (Sys.getenv "HOME") ".local/state"
+  in
+  let dir = Filename.concat state_home "trading" in
+  (try Unix.mkdir dir 0o700
+   with Unix.Unix_error (EEXIST, _, _) -> ());
+  Filename.concat dir "bcs-refresh-token"
+
+let open_bcs ~env ~secret:_ ~account : opened =
+  (* Layering: the persistent file wins if it exists (holds the most
+     recently rotated token); the env var is a one-shot bootstrap for
+     first-run setup. The [~secret] argument is kept for CLI symmetry
+     with Finam but ignored — BCS credentials flow through the store. *)
+  let token_store = Token_store.fallback
+    (Token_store.file ~path:(bcs_refresh_token_path ()))
+    (Token_store.env ~name:"BCS_REFRESH_TOKEN")
+  in
+  let cfg = Bcs.Config.make ?account_id:account () in
   let transport = Http_transport.make_eio ~env in
-  let rest = Bcs.Rest.make ~transport ~cfg in
+  let rest = Bcs.Rest.make ~transport ~cfg ~token_store in
   Opened_bcs { client = Bcs.Bcs_broker.as_broker rest; rest }
 
 let open_synthetic () : opened =

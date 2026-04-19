@@ -10,4 +10,5 @@
 let () =
   Alcotest.run "trading-live-smoke" [
     "finam", Finam_smoke.tests;
+    "bcs",   Bcs_smoke.tests;
   ]

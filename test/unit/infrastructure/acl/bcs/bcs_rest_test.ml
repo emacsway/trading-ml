@@ -7,10 +7,11 @@ open Bcs
 
 let make_cfg () =
   Config.make
-    ~refresh_token:"R"
     ~rest_base:(Uri.of_string "https://api.test")
     ~token_endpoint:(Uri.of_string "https://api.test/token")
     ()
+
+let make_store () = Token_store.memory ~initial:"R" ()
 
 (** Fake transport that answers token exchange first, then the caller's
     actual request, capturing the second one for assertions. *)
@@ -64,7 +65,7 @@ let sample_bars_newest_first = {|
 let test_bars_request_url_and_params () =
   let t, captured = scripted_transport ~bars_response:sample_bars_newest_first in
   let cfg = make_cfg () in
-  let rest = Rest.make ~transport:t ~cfg in
+  let rest = Rest.make ~transport:t ~cfg ~token_store:(make_store ()) in
   let _ = Rest.bars rest ~n:100
     ~instrument:(Instrument.make
       ~ticker:(Ticker.of_string "SBER")
@@ -91,7 +92,7 @@ let test_bars_request_url_and_params () =
 let test_bars_sorted_chronologically () =
   let t, _ = scripted_transport ~bars_response:sample_bars_newest_first in
   let cfg = make_cfg () in
-  let rest = Rest.make ~transport:t ~cfg in
+  let rest = Rest.make ~transport:t ~cfg ~token_store:(make_store ()) in
   let bars = Rest.bars rest ~n:100
     ~instrument:(Instrument.make
       ~ticker:(Ticker.of_string "SBER")
@@ -106,7 +107,7 @@ let test_bars_sorted_chronologically () =
 let test_bars_decimal_decoded () =
   let t, _ = scripted_transport ~bars_response:sample_bars_newest_first in
   let cfg = make_cfg () in
-  let rest = Rest.make ~transport:t ~cfg in
+  let rest = Rest.make ~transport:t ~cfg ~token_store:(make_store ()) in
   let bars = Rest.bars rest ~n:100
     ~instrument:(Instrument.make
       ~ticker:(Ticker.of_string "SBER")
@@ -122,13 +123,12 @@ let test_bars_decimal_decoded () =
 let test_bare_ticker_uses_default_class_code () =
   let t, captured = scripted_transport ~bars_response:sample_bars_newest_first in
   let cfg = Config.make
-    ~refresh_token:"R"
     ~rest_base:(Uri.of_string "https://api.test")
     ~token_endpoint:(Uri.of_string "https://api.test/token")
     ~default_class_code:"SPBXM"
     ()
   in
-  let rest = Rest.make ~transport:t ~cfg in
+  let rest = Rest.make ~transport:t ~cfg ~token_store:(make_store ()) in
   let _ = Rest.bars rest ~n:10
     ~instrument:(Instrument.make
       ~ticker:(Ticker.of_string "AAPL")
@@ -145,7 +145,7 @@ let test_bare_ticker_uses_default_class_code () =
 let test_bars_caps_n_at_max () =
   let t, captured = scripted_transport ~bars_response:sample_bars_newest_first in
   let cfg = make_cfg () in
-  let rest = Rest.make ~transport:t ~cfg in
+  let rest = Rest.make ~transport:t ~cfg ~token_store:(make_store ()) in
   let _ = Rest.bars rest ~n:10_000
     ~instrument:(Instrument.make
       ~ticker:(Ticker.of_string "SBER")
@@ -174,7 +174,6 @@ let test_route_instrument_uses_board () =
 
 let test_route_instrument_falls_back_to_default () =
   let cfg = Config.make
-    ~refresh_token:"R"
     ~default_class_code:"SPBXM"
     ~rest_base:(Uri.of_string "https://api.test")
     ~token_endpoint:(Uri.of_string "https://api.test/token") () in

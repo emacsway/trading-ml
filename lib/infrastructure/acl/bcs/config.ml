@@ -1,10 +1,12 @@
 (** BCS Trade API endpoint config.
 
     Authentication is OAuth2 refresh-token flow served by a Keycloak
-    realm. The user holds a long-lived *refresh_token*; every so often
-    it must be exchanged for a short-lived *access_token* that goes
-    into [Authorization: Bearer …] on API calls. [Bcs.Auth] handles
-    the exchange and caches the access token.
+    realm. The refresh-token itself lives outside [Config.t] in a
+    {!Token_store.t} — Keycloak rotates it on every exchange, so the
+    caller needs a mutable credential store (env + file, OS keyring,
+    etc.). [Bcs.Auth] calls [Token_store.load] / [Token_store.save]
+    transparently; [Config.t] just carries the non-rotating bits
+    (URLs, client_id, board defaults).
 
     [token_endpoint] is the Keycloak `…/protocol/openid-connect/token`
     URL. The default was picked from the [iss] claim observed in a
@@ -14,7 +16,6 @@ type t = {
   rest_base : Uri.t;
   token_endpoint : Uri.t;
   client_id : string;
-  refresh_token : string;
   account_id : string option;
   (** BCS identifies instruments by (classCode, ticker) rather than a
       single composite symbol. When the UI sends a bare ticker ("SBER")
@@ -49,7 +50,6 @@ let make
     ?(ws_market_data_url = Uri.of_string
         "wss://ws.broker.ru/trade-api-market-data-connector/api/v1\
          /market-data/ws")
-    ~refresh_token
     () =
-  { rest_base; token_endpoint; client_id; refresh_token; account_id;
+  { rest_base; token_endpoint; client_id; account_id;
     default_class_code; ws_market_data_url }

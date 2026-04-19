@@ -64,6 +64,8 @@ let () =
     "bcs ws",      Bcs_ws_test.tests;
     "bcs orders",  Bcs_order_test.tests;
     "bcs deals",   Bcs_deals_test.tests;
+    (* Infrastructure: secret storage *)
+    "token store", Token_store_test.tests;
     (* Infrastructure: Paper decorator *)
     "paper broker", Paper_broker_test.tests;
     (* Application: live engine *)
