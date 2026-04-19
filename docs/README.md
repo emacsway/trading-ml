@@ -1,8 +1,90 @@
 # Documentation
 
-This directory contains the project's design and architecture
-documentation. For installation, quickstart and CLI reference see
-the top-level [`README.md`](../README.md).
+This directory contains the design and architecture documentation
+for an algorithmic-trading system written in OCaml. The project
+streams market data, runs indicator-and-strategy pipelines, and
+routes signals through a broker-agnostic order layer to live
+brokers (Finam, BCS) or a paper simulator. For installation,
+quickstart and CLI reference see the top-level
+[`README.md`](../README.md).
+
+## Why OCaml
+
+OCaml is a practical, industrially-proven functional language
+designed by researchers and used where correctness matters more than
+hype. Three things drove the choice for this system:
+
+- **Speed + reliability.** OCaml compiles to efficient native code
+  comparable to C/C++ on numeric workloads, yet runs a GC and never
+  segfaults. A backtest that touches millions of bars stays
+  predictable both in throughput and memory.
+- **A type system that models the domain.** Variants, records, and
+  module signatures make invariants explicit: an `Order` can be
+  `New | Partially_filled | Filled | …` but never an invalid
+  in-between state; a `Signal` carries its `Instrument` by
+  construction. The compiler refuses to build code that contradicts
+  the model — the same property that keeps [Jane Street's trading
+  stack][jane-street] safe under pressure.
+- **Formal-methods ecosystem.** OCaml is the implementation
+  language behind proof assistants like Coq/Rocq and F* — the same
+  tools that verify cryptographic libraries and proof-oriented
+  languages (Lean, F*). If a piece of the risk layer ever needs
+  mechanical verification, the path is open and well-trodden.
+
+The language is developed by [INRIA][inria] (French national
+research institute) and stewarded by the [OCaml Software
+Foundation][osf]; fintech companies like Jane Street drive much of
+the industrial tooling. It's "a language by scientists for
+scientists" that also pays professional bills.
+
+For a broader personal take see
+[*Why I chose OCaml as my primary language*][xvw-why-ocaml] by
+Xavier Van de Woestyne.
+
+## Why OCaml pairs well with LLM-assisted development
+
+LLMs are stochastic code generators — every line is a guess shaped
+by training, and the only way to converge on correct output is a
+fast, specific feedback loop. OCaml gives exactly that, more than
+most languages:
+
+- **Compiler as reviewer.** The OCaml type-checker rejects
+  mismatched variants, wrong arities, missing cases in pattern
+  matches, and signature/implementation drift — usually in one
+  pass, with precise line-level errors. An LLM loop that "compile →
+  read errors → fix" converges in seconds, not minutes.
+- **Types that force modeling, not just annotation.** Writing a
+  `.mli` signature or a variant type ahead of implementation pins
+  down the shape of the problem. An LLM that reads a good signature
+  produces code that already lines up with the domain; the few
+  remaining mistakes are caught at compile time rather than at
+  runtime.
+- **Exhaustiveness and totality.** Pattern-match warnings turn
+  "forgot a case" into a compile error. When an LLM adds a new
+  variant constructor, every downstream match lights up — no silent
+  fall-throughs, no runtime surprises.
+- **Functional paradigm controls complexity.** Immutability and
+  pure functions by default make code easier to reason about both
+  for humans and for statistical models: side effects are visible
+  in types (`Eio`, `Mutex`), data flows from input to output
+  without hidden global state, and composition is the primary
+  reuse mechanism instead of inheritance. An LLM asked to extend a
+  small pure function rarely breaks unrelated modules.
+- **Pathway to formal verification.** As components stabilize, the
+  same OCaml ecosystem (Coq/Rocq, F*, QuickCheck-style generators)
+  lets humans — and, increasingly, LLM-assisted workflows — prove
+  key properties rather than hope they hold. That upper bound on
+  "how much correctness is achievable" is a real ceiling other
+  mainstream languages don't offer.
+
+The net effect: the model-level reasoning the type system demands
+nudges LLM output toward well-factored designs, and the compiler's
+fast, specific feedback catches the rest.
+
+[jane-street]: https://blog.janestreet.com/
+[inria]: https://www.inria.fr/
+[osf]: https://ocaml-sf.org/
+[xvw-why-ocaml]: https://xvw.lol/en/articles/why-ocaml.html
 
 ## Architecture
 
