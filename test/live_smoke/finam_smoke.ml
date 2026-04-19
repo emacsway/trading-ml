@@ -86,7 +86,9 @@ let test_limit_order_lifecycle () =
         | [] -> failwith "no bars to anchor limit price" in
       (* 20% below market → practically unfillable for a session. *)
       let limit_px = Decimal.of_float (last_close *. 0.80) in
-      let cid = Printf.sprintf "smoke-%d" (int_of_float (Unix.gettimeofday ())) in
+      (* Finam's client_order_id filter allows letters, digits and
+         spaces only — no dashes or underscores. *)
+      let cid = Printf.sprintf "smoke%d" (int_of_float (Unix.gettimeofday ())) in
       let placed = Finam.Rest.place_order rest
         ~account_id:account ~instrument:sber
         ~side:Side.Buy ~quantity:(Decimal.of_int 1)

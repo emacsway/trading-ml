@@ -81,9 +81,25 @@ let with_lock t f =
   Mutex.lock t.mutex;
   Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
 
+(** Client-order-id generator. Keeps only [A-Za-z0-9] — Finam's REST
+    validator rejects anything with dashes / underscores ("letters,
+    numbers and space" per the 400 response), and other brokers we
+    target are at least as strict. Uniqueness rests on the
+    monotonic timestamp + [seq] suffix; punctuation in
+    [broker_name]/[strat_name] is silently dropped, so two strategy
+    names that differ only in punctuation would collide — fix by
+    keeping strategy names alphanumeric at the source. *)
 let next_cid ~broker_name ~strat_name ~seq =
-  Printf.sprintf "eng-%s-%s-%d-%d"
-    broker_name strat_name
+  let alnum s =
+    String.to_seq s
+    |> Seq.filter (fun c ->
+      (c >= 'a' && c <= 'z')
+      || (c >= 'A' && c <= 'Z')
+      || (c >= '0' && c <= '9'))
+    |> String.of_seq
+  in
+  Printf.sprintf "eng%s%s%d%d"
+    (alnum broker_name) (alnum strat_name)
     (int_of_float (Unix.gettimeofday ()))
     seq
 
