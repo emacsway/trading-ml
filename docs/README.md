@@ -6,7 +6,7 @@ streams market data, runs indicator-and-strategy pipelines, and
 routes signals through a broker-agnostic order layer to live
 brokers (Finam, BCS) or a paper simulator. For installation,
 quickstart and CLI reference see the top-level
-[`README.md`](../README.md).
+[`README.md`](https://github.com/krew-solutions/trading-ml/blob/main/README.md).
 
 ## Why OCaml
 
