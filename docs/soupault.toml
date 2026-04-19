@@ -133,8 +133,8 @@
 [widgets.page-title]
   widget = "title"
   selector = "h1"
-  default = "Trading docs"
-  append = " — Trading docs"
+  default = "Trading-ml docs"
+  append = " — Trading-ml docs"
 
 # Inline table of contents (right rail on wide screens)
 [widgets.table-of-contents]
@@ -181,4 +181,3 @@
 [widgets.urls]
   widget = "urls"
   after = ["site-nav", "table-of-contents", "footnotes"]
-
