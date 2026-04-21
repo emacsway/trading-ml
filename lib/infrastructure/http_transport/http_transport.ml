@@ -68,15 +68,16 @@ let load_authenticator () =
     | Ok certs -> Ok (X509.Authenticator.chain_of_trust ~time:now certs)
 
 (** Per-request deadline. Without a cap a stalled remote or a
-    half-open TCP session silently freezes the caller; 15 s is long
-    enough for fat payloads like [/v1/accounts/…/orders] over a slow
-    uplink, short enough that smoke tests fail rather than hang a
-    session.
+    half-open TCP session silently freezes the caller. 30 s is wide
+    enough for Finam's [/v1/sessions] and BCS's [/token] under
+    occasional broker-side throttling (we've observed 15 s+ bursts
+    during smoke runs), while still keeping a dead session from
+    hanging the whole process.
 
     Covers both connect and response-read; [Eio.Time.with_timeout]
     cancels the switch and all its flow reads when the budget runs
     out. *)
-let request_timeout_s = 15.0
+let request_timeout_s = 30.0
 
 let make_eio ~env : t =
   let net = Eio.Stdenv.net env in
