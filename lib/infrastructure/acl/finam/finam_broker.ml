@@ -102,6 +102,15 @@ let get_executions t ~client_order_id =
     if at.order_id = server_id then Some at.execution
     else None)
 
+(** UUID v4 with dashes stripped. Finam's REST validator returns
+    400 on dashes ("letters, numbers and space" only), and 32 hex
+    digits comfortably satisfy that rule while retaining full UUIDv4
+    collision resistance. *)
+let generate_client_order_id _ =
+  let uuid = Uuidm.v4_gen (Random.State.make_self_init ()) ()
+             |> Uuidm.to_string in
+  String.concat "" (String.split_on_char '-' uuid)
+
 let as_broker (t : t) : Broker.client =
   Broker.make (module struct
     type nonrec t = t
@@ -113,4 +122,5 @@ let as_broker (t : t) : Broker.client =
     let get_order = get_order
     let cancel_order = cancel_order
     let get_executions = get_executions
+    let generate_client_order_id = generate_client_order_id
   end) t

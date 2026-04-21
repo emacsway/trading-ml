@@ -82,6 +82,13 @@ let get_order _ ~client_order_id:_ = unsupported "get_order"
 let cancel_order _ ~client_order_id:_ = unsupported "cancel_order"
 let get_executions _ ~client_order_id:_ = unsupported "get_executions"
 
+(** Synthetic has no wire format so any fresh string works. Use a
+    dashed UUIDv4 for log readability; nothing else depends on the
+    shape. *)
+let generate_client_order_id _ =
+  Uuidm.v4_gen (Random.State.make_self_init ()) ()
+  |> Uuidm.to_string
+
 let as_broker (t : t) : Broker.client =
   Broker.make (module struct
     type nonrec t = t
@@ -93,4 +100,5 @@ let as_broker (t : t) : Broker.client =
     let get_order = get_order
     let cancel_order = cancel_order
     let get_executions = get_executions
+    let generate_client_order_id = generate_client_order_id
   end) t

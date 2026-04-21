@@ -262,6 +262,13 @@ let bars t ~n ~instrument ~timeframe =
 
 let venues t = Broker.venues t.source
 
+(** Paper is a decorator — delegate to [source] so the cid format
+    matches whatever the wrapped live broker expects. That keeps
+    backtests routed through Paper→BCS emitting dashed UUIDs and
+    Paper→Finam emitting 32-hex, even though Paper itself doesn't
+    care what the cid looks like. *)
+let generate_client_order_id t = Broker.generate_client_order_id t.source
+
 let as_broker (t : t) : Broker.client =
   Broker.make (module struct
     type nonrec t = t
@@ -273,4 +280,5 @@ let as_broker (t : t) : Broker.client =
     let get_order = get_order
     let cancel_order = cancel_order
     let get_executions = get_executions
+    let generate_client_order_id = generate_client_order_id
   end) t

@@ -92,10 +92,12 @@ let test_limit_order_lifecycle () =
       (* BCS accepts UUID-style client ids, including dashes. Use a
          stable "smokeN" prefix so partial runs are easy to spot in
          the orders list. *)
-      (* BCS validates [clientOrderId] as a UUID (dashed v4 form).
-         A free-form "smoke-NNN" gets 400 INVALID_FORMAT. *)
-      let cid = Uuidm.v4_gen (Random.State.make_self_init ()) ()
-                |> Uuidm.to_string in
+      (* Exercise the adapter's own cid generator — BCS's
+         [generate_client_order_id] owns the wire-format rule
+         (UUIDv4 with dashes), and the smoke test is how we
+         verify that contract end-to-end. *)
+      let broker = Bcs.Bcs_broker.as_broker rest in
+      let cid = Broker.generate_client_order_id broker in
       let place_at px = Bcs.Rest.create_order rest
         ~instrument:sber ~side:Side.Buy ~quantity:1
         ~kind:(Order.Limit px) ~client_order_id:cid () in

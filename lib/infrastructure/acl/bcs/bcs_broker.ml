@@ -55,6 +55,12 @@ let get_executions t ~client_order_id =
     |> List.filter_map (fun (order_num, exec) ->
       if order_num = order.exec_id then Some exec else None)
 
+(** UUIDv4 in canonical dashed form — BCS validates [clientOrderId]
+    as "UUID format" and 400s on anything else. *)
+let generate_client_order_id _ =
+  Uuidm.v4_gen (Random.State.make_self_init ()) ()
+  |> Uuidm.to_string
+
 let as_broker (rest : Rest.t) : Broker.client =
   Broker.make (module struct
     type nonrec t = t
@@ -66,4 +72,5 @@ let as_broker (rest : Rest.t) : Broker.client =
     let get_order = get_order
     let cancel_order = cancel_order
     let get_executions = get_executions
+    let generate_client_order_id = generate_client_order_id
   end) rest

@@ -62,6 +62,9 @@ let mk_broker (rec_ : Recording_broker.t) : Broker.client =
     let get_order _ ~client_order_id:_ = failwith "n/a"
     let cancel_order _ ~client_order_id:_ = failwith "n/a"
     let get_executions _ ~client_order_id:_ = []
+    let generate_client_order_id =
+      let n = ref 0 in
+      fun _ -> incr n; Printf.sprintf "test-cid-%d" !n
   end in
   Broker.make (module M) rec_
 
@@ -305,6 +308,9 @@ let mk_reporting_broker (r : Reporting_broker.t) : Broker.client =
     let get_order _ ~client_order_id:_ = failwith "n/a"
     let cancel_order _ ~client_order_id:_ = failwith "n/a"
     let get_executions _ ~client_order_id:_ = []
+    let generate_client_order_id =
+      let n = ref 0 in
+      fun _ -> incr n; Printf.sprintf "test-cid-%d" !n
   end in
   Broker.make (module M) r
 
@@ -484,6 +490,9 @@ let tests = [
         let get_order () ~client_order_id:_ = failwith "n/a"
         let cancel_order () ~client_order_id:_ = failwith "n/a"
         let get_executions () ~client_order_id:_ = []
+        let generate_client_order_id =
+          let n = ref 0 in
+          fun _ -> incr n; Printf.sprintf "test-cid-%d" !n
       end in Broker.make (module S) ()) () in
     let strat = Strategies.Strategy.make
       (module Fixed_signal_strategy) { action = Enter_long } in
@@ -575,7 +584,10 @@ let tests = [
         let get_orders () = []
         let get_order () ~client_order_id:_ = failwith "n/a"
         let cancel_order () ~client_order_id:_ = failwith "n/a"
-    let get_executions () ~client_order_id:_ = []
+        let get_executions () ~client_order_id:_ = []
+        let generate_client_order_id =
+          let n = ref 0 in
+          fun _ -> incr n; Printf.sprintf "test-cid-%d" !n
       end in Broker.make (module S) ()) ()
     in
     let strat = Strategies.Strategy.make

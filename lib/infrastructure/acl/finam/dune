@@ -2,6 +2,6 @@
  (name finam)
  (public_name trading.finam)
  (libraries core broker http_transport websocket log
-            eio eio.unix yojson uri
+            eio eio.unix yojson uri uuidm
             tls tls-eio x509
             base64 digestif digestif.c))

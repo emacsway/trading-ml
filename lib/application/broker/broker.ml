@@ -75,6 +75,16 @@ module type S = sig
       Returning an empty list is a valid response for adapters that
       don't (yet) surface per-execution detail — callers must fall
       back to intended numbers in that case. *)
+
+  val generate_client_order_id : t -> string
+  (** Produce a fresh [client_order_id] in whatever format this
+      broker's wire validator accepts. Examples from real broker
+      validators we've hit: BCS requires dashed UUID ("UUID" format),
+      Finam accepts "letters, numbers and space" only and rejects
+      dashes. Owning the format inside the adapter keeps the engine
+      broker-agnostic — no ["finam" | "bcs"] branches upstream — and
+      lets us round-trip the same exact string through the broker's
+      [place_order] → [get_order] path without a wire↔engine id map. *)
 end
 
 type client = E : (module S with type t = 't) * 't -> client
@@ -103,3 +113,6 @@ let cancel_order (E ((module M), t)) ~client_order_id =
 
 let get_executions (E ((module M), t)) ~client_order_id =
   M.get_executions t ~client_order_id
+
+let generate_client_order_id (E ((module M), t)) =
+  M.generate_client_order_id t

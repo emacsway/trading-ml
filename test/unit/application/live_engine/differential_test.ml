@@ -30,6 +30,9 @@ let mk_stub_source () : Broker.client =
     let get_order () ~client_order_id:_ = failwith "n/a"
     let cancel_order () ~client_order_id:_ = failwith "n/a"
     let get_executions () ~client_order_id:_ = []
+    let generate_client_order_id =
+      let n = ref 0 in
+      fun _ -> incr n; Printf.sprintf "test-cid-%d" !n
   end in
   Broker.make (module M) ()
 

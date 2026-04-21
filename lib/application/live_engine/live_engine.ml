@@ -81,25 +81,6 @@ let with_lock t f =
   Mutex.lock t.mutex;
   Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
 
-(** Client-order-id generator. Each broker has its own validator:
-    BCS rejects anything not matching UUID format (dashes required);
-    Finam accepts "letters, numbers and space" (no dashes). A plain
-    UUIDv4 with dashes stripped happens to satisfy Finam; a dashed
-    UUIDv4 satisfies BCS. For other / unknown brokers we default to
-    the dashed form.
-
-    [seq] is accepted (and advanced by the caller) for deterministic
-    ordering in logs / reconcile traces, but the wire cid is the raw
-    UUID — embedding [seq] or [strat_name] would break the UUID
-    validators. *)
-let next_cid ~broker_name ~seq:_ =
-  let uuid =
-    Uuidm.v4_gen (Random.State.make_self_init ()) ()
-    |> Uuidm.to_string
-  in
-  match broker_name with
-  | "finam" -> String.concat "" (String.split_on_char '-' uuid)
-  | _ -> uuid
 
 (** Prune [recent_order_ts] to entries within the last
     [window_seconds]; return whether the resulting count is under
@@ -129,9 +110,7 @@ let submit_order t ~(strat_name : string) (settled : Engine.Step.settled) =
     t.state <- Engine.Step.release t.state
       ~reservation_id:settled.reservation_id
   | `Allow ->
-    let cid = next_cid
-      ~broker_name:(Broker.name t.cfg.broker)
-      ~seq:t.seq in
+    let cid = Broker.generate_client_order_id t.cfg.broker in
     t.seq <- t.seq + 1;
     (* Record [cid → pending] BEFORE the broker call so we're ready
        for an instant fill event (Paper's listener fires synchronously
