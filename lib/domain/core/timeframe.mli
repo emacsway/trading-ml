@@ -8,6 +8,3 @@ type t =
 val to_seconds : t -> int
 val to_string : t -> string
 val of_string : string -> t
-
-val yojson_of_t : t -> Yojson.Safe.t
-val t_of_yojson : Yojson.Safe.t -> t

@@ -70,36 +70,19 @@ let decimal_field_any ?(required = true) j candidates =
 
 let decimal_field k j = decimal_field_any j [k]
 
-(** Minimal ISO-8601 → epoch seconds (UTC). Finam returns Z-suffixed UTC. *)
-let parse_iso8601 (s : string) : int64 =
-  try
-    Scanf.sscanf s "%d-%d-%dT%d:%d:%d"
-      (fun y mo d h mi se ->
-         let y = if mo <= 2 then y - 1 else y in
-         let era = (if y >= 0 then y else y - 399) / 400 in
-         let yoe = y - era * 400 in
-         let m' = if mo > 2 then mo - 3 else mo + 9 in
-         let doy = (153 * m' + 2) / 5 + d - 1 in
-         let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy in
-         let days = era * 146097 + doe - 719468 in
-         Int64.(add (mul (of_int days) 86400L)
-                  (of_int (h * 3600 + mi * 60 + se))))
-  with _ ->
-    try Int64.of_string s with _ -> 0L
-
 let candle_of_json j : Candle.t =
   (* On the first decode, log the raw shape so we can see what the
      server actually sends without adding an ad-hoc debug flag. *)
   debug_log_sample ~label:"bar" j;
   let ts =
     match Yojson.Safe.Util.member "timestamp" j with
-    | `String s -> parse_iso8601 s
+    | `String s -> Infra_common.Iso8601.parse s
     | `Int n -> Int64.of_int n
     | `Intlit s -> Int64.of_string s
     | `Null ->
       (* Alternative common names: 'time', 't'. *)
       (match Yojson.Safe.Util.member "time" j with
-       | `String s -> parse_iso8601 s
+       | `String s -> Infra_common.Iso8601.parse s
        | `Int n -> Int64.of_int n
        | _ -> 0L)
     | _ -> 0L
@@ -215,7 +198,7 @@ let place_order_payload
     ~(tif : Order.time_in_force)
     ?client_order_id
     () : Yojson.Safe.t =
-  let w = Decimal_json.yojson_of_t_wrapped in
+  let w = Acl_common.Decimal_wire.yojson_of_t_wrapped in
   let price_fields = match kind with
     | Market -> []
     | Limit p -> [ "limit_price", w p ]
@@ -260,7 +243,7 @@ let order_of_json (j : Yojson.Safe.t) : Order.t =
   let side = finam_side_of_wire (inner_str "side") in
   let status = finam_status_of_wire (str "status") in
   let created_ts = match member "transact_at" j with
-    | `String s -> parse_iso8601 s | _ -> 0L
+    | `String s -> Infra_common.Iso8601.parse s | _ -> 0L
   in
   {
     Order.id = str "order_id";
@@ -310,7 +293,7 @@ let account_trade_of_json (j : Yojson.Safe.t) : account_trade =
   let dec k =
     try decimal_of_json (member k j) with _ -> Decimal.zero in
   let ts = match member "timestamp" j with
-    | `String s -> parse_iso8601 s | _ -> 0L
+    | `String s -> Infra_common.Iso8601.parse s | _ -> 0L
   in
   {
     order_id = str "order_id";

@@ -42,7 +42,7 @@ let usage () =
     midnight UTC so the range boundaries are unambiguous. *)
 let parse_date s =
   let s = if String.contains s 'T' then s else s ^ "T00:00:00Z" in
-  Candle_json.parse_iso8601 s
+  Infra_common.Iso8601.parse s
 
 let scalar_1 ind =
   match Indicators.Indicator.value ind with

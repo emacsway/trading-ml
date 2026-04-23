@@ -18,8 +18,3 @@ let equal   = String.equal
 let compare = String.compare
 let hash    = Hashtbl.hash
 let pp ppf s = Format.pp_print_string ppf s
-
-let yojson_of_t s = `String s
-let t_of_yojson = function
-  | `String s -> of_string s
-  | j -> invalid_arg ("Mic.t_of_yojson: " ^ Yojson.Safe.to_string j)

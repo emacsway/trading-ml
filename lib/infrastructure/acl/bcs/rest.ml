@@ -110,7 +110,7 @@ let bars
   let items = match Yojson.Safe.Util.member "bars" j with
     | `List l -> l | _ -> []
   in
-  List.map Candle_json.of_yojson_flex items
+  List.map Acl_common.Candle_wire.of_yojson_flex items
   |> List.sort (fun (a : Candle.t) b -> Int64.compare a.ts b.ts)
 
 (** BCS doesn't expose a generic exchanges/venues endpoint that we've
@@ -192,7 +192,7 @@ let bcs_order_of_json cfg (j : Yojson.Safe.t) : Order.t =
     | _ -> Market
   in
   let ts = match member "createdAt" j with
-    | `String s -> Candle_json.parse_iso8601 s | _ -> 0L in
+    | `String s -> Infra_common.Iso8601.parse s | _ -> 0L in
   {
     Order.id = str "clientOrderId";
     exec_id = str "exchangeId";
@@ -389,7 +389,7 @@ let bcs_execution_of_json (j : Yojson.Safe.t) : string * Order.execution =
     | `Intlit s -> Decimal.of_float (float_of_string s)
     | _ -> Decimal.zero in
   let ts = match member "tradeDateTime" j with
-    | `String s -> Candle_json.parse_iso8601 s | _ -> 0L in
+    | `String s -> Infra_common.Iso8601.parse s | _ -> 0L in
   int_or_str "orderNum", {
     Order.ts;
     quantity = float_d "tradeQuantity";

@@ -8,8 +8,3 @@ let of_string = function
 
 let opposite = function Buy -> Sell | Sell -> Buy
 let sign = function Buy -> 1 | Sell -> -1
-
-let yojson_of_t t = `String (to_string t)
-let t_of_yojson = function
-  | `String s -> of_string s
-  | j -> invalid_arg ("Side.t_of_yojson: " ^ Yojson.Safe.to_string j)

@@ -18,6 +18,3 @@ val equal   : t -> t -> bool
 val compare : t -> t -> int
 val hash    : t -> int
 val pp      : Format.formatter -> t -> unit
-
-val yojson_of_t : t -> Yojson.Safe.t
-val t_of_yojson : Yojson.Safe.t -> t

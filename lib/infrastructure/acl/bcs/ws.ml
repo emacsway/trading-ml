@@ -128,7 +128,7 @@ let event_of_json (j : Yojson.Safe.t) : event =
         Option.value (timeframe_of_string tf) ~default:Timeframe.H1 in
       let instrument = instrument_from ~ticker ~class_code in
       let ts = match member "dateTime" j with
-        | `String s -> Candle_json.parse_iso8601 s
+        | `String s -> Infra_common.Iso8601.parse s
         | _ -> 0L
       in
       let candle = Candle.make ~ts

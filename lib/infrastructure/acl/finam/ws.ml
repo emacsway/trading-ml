@@ -192,7 +192,7 @@ let event_of_json (j : Yojson.Safe.t) : event =
           let bid = Dto.decimal_field "bid" q in
           let ask = Dto.decimal_field "ask" q in
           let ts = match member "timestamp" q with
-            | `String s -> Dto.parse_iso8601 s
+            | `String s -> Infra_common.Iso8601.parse s
             | `Int n -> Int64.of_int n
             | _ -> 0L
           in

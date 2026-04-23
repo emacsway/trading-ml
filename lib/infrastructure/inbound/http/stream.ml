@@ -15,13 +15,13 @@ let encode_event : event -> string = function
   | Bar_update c ->
     let j : Yojson.Safe.t = `Assoc [
       "kind",   `String "bar_update";
-      "candle", Candle_json.yojson_of_t c;
+      "candle", Api.candle_json c;
     ] in
     "data: " ^ Yojson.Safe.to_string j ^ "\n\n"
   | Bar_closed c ->
     let j : Yojson.Safe.t = `Assoc [
       "kind",   `String "bar_closed";
-      "candle", Candle_json.yojson_of_t c;
+      "candle", Api.candle_json c;
     ] in
     "data: " ^ Yojson.Safe.to_string j ^ "\n\n"
 

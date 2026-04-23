@@ -1,24 +1,32 @@
-(** JSON encoders for the HTTP API. Stable format consumed by the Angular UI. *)
+(** JSON encoders for the HTTP API. Per-resource projection goes
+    through {!Queries.View_model.S} modules: domain value →
+    [of_domain] → [yojson_of_t]. HTTP-response framing (the
+    [{"candles": [...]}] wrappers, catalogs, catch-all shapes)
+    stays here. *)
 
 open Core
+open Queries
 
 let ts_field (ts : int64) : string * Yojson.Safe.t =
   "ts", `Intlit (Int64.to_string ts)
 
+(** Thin wrapper used for readability at call sites:
+    [project Candle_view_model c] instead of a longer
+    [Candle_view_model.yojson_of_t (Candle_view_model.of_domain c)]. *)
+let project (type d)
+    (module V : View_model.S with type domain = d)
+    (x : d) : Yojson.Safe.t =
+  V.yojson_of_t (V.of_domain x)
+
 let candle_json (c : Candle.t) : Yojson.Safe.t =
-  `Assoc [
-    ts_field c.ts;
-    "open",   `Float (Decimal.to_float c.open_);
-    "high",   `Float (Decimal.to_float c.high);
-    "low",    `Float (Decimal.to_float c.low);
-    "close",  `Float (Decimal.to_float c.close);
-    "volume", `Float (Decimal.to_float c.volume);
-  ]
+  project (module Candle_view_model) c
 
 let candles_json (cs : Candle.t list) : Yojson.Safe.t =
   `Assoc [ "candles", `List (List.map candle_json cs) ]
 
-(** Compute an indicator series over the full candle list for charting. *)
+(** Compute an indicator series over the full candle list for
+    charting. Indicators are computed projections, not entities,
+    so no VM — built directly from the registry spec. *)
 let indicator_series (candles : Candle.t list) (spec : Indicators.Registry.spec)
   (params : (string * Indicators.Registry.param) list) : Yojson.Safe.t =
   let ind = spec.build params in
@@ -42,35 +50,10 @@ let indicator_series (candles : Candle.t list) (spec : Indicators.Registry.spec)
   ]
 
 let signal_json (s : Signal.t) : Yojson.Safe.t =
-  `Assoc [
-    ts_field s.ts;
-    "action", `String (Signal.action_to_string s.action);
-    "strength", `Float s.strength;
-    "reason", `String s.reason;
-  ]
+  project (module Signal_view_model) s
 
 let backtest_result_json (r : Engine.Backtest.result) : Yojson.Safe.t =
-  `Assoc [
-    "num_trades", `Int r.num_trades;
-    "total_return", `Float r.total_return;
-    "max_drawdown", `Float r.max_drawdown;
-    "final_cash", `Float (Decimal.to_float r.final.cash);
-    "realized_pnl", `Float (Decimal.to_float r.final.realized_pnl);
-    "equity_curve",
-      `List (List.map (fun (t, eq) ->
-        `Assoc [ ts_field t; "equity", `Float (Decimal.to_float eq) ])
-        r.equity_curve);
-    "fills",
-      `List (List.map (fun (f : Engine.Backtest.fill) ->
-        `Assoc [
-          ts_field f.ts;
-          "side", `String (Side.to_string f.side);
-          "quantity", `Float (Decimal.to_float f.quantity);
-          "price", `Float (Decimal.to_float f.price);
-          "fee", `Float (Decimal.to_float f.fee);
-          "reason", `String f.reason;
-        ]) r.fills);
-  ]
+  project (module Backtest_result_view_model) r
 
 let indicators_catalog () : Yojson.Safe.t =
   `List (List.map (fun s ->
@@ -86,36 +69,10 @@ let indicators_catalog () : Yojson.Safe.t =
     ]) Indicators.Registry.specs)
 
 let order_kind_json (k : Order.kind) : Yojson.Safe.t =
-  match k with
-  | Market -> `Assoc [ "type", `String "MARKET" ]
-  | Limit p -> `Assoc [
-      "type",  `String "LIMIT";
-      "price", `Float (Decimal.to_float p);
-    ]
-  | Stop p -> `Assoc [
-      "type",  `String "STOP";
-      "price", `Float (Decimal.to_float p);
-    ]
-  | Stop_limit { stop; limit } -> `Assoc [
-      "type",        `String "STOP_LIMIT";
-      "stop_price",  `Float (Decimal.to_float stop);
-      "limit_price", `Float (Decimal.to_float limit);
-    ]
+  project (module Order_kind_view_model) k
 
 let order_json (o : Order.t) : Yojson.Safe.t =
-  `Assoc [
-    "client_order_id", `String o.client_order_id;
-    "id",              `String o.id;
-    "instrument",      `String (Instrument.to_qualified o.instrument);
-    "side",            `String (Side.to_string o.side);
-    "quantity",        `Float (Decimal.to_float o.quantity);
-    "filled",          `Float (Decimal.to_float o.filled);
-    "remaining",       `Float (Decimal.to_float o.remaining);
-    "status",          `String (Order.status_to_string o.status);
-    "tif",             `String (Order.tif_to_string o.tif);
-    "kind",            order_kind_json o.kind;
-    ts_field o.created_ts;
-  ]
+  project (module Order_view_model) o
 
 let orders_json (os : Order.t list) : Yojson.Safe.t =
   `Assoc [ "orders", `List (List.map order_json os) ]

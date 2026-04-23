@@ -49,17 +49,6 @@ let pp ppf t =
      | Some i -> " [" ^ Isin.to_string i ^ "]"
      | None -> "")
 
-let yojson_of_t t : Yojson.Safe.t =
-  let opt key f = function
-    | None -> []
-    | Some v -> [ key, f v ]
-  in
-  `Assoc (
-    [ "ticker", Ticker.yojson_of_t t.ticker;
-      "mic",    Mic.yojson_of_t t.venue ]
-    @ opt "isin"  Isin.yojson_of_t  t.isin
-    @ opt "board" Board.yojson_of_t t.board)
-
 let to_qualified t =
   let base = Ticker.to_string t.ticker ^ "@" ^ Mic.to_string t.venue in
   match t.board with
@@ -109,21 +98,3 @@ let of_qualified raw =
       ?board:(Option.map Board.of_string board)
       ()
 
-let t_of_yojson = function
-  | `Assoc fields ->
-    let find k = try Some (List.assoc k fields) with Not_found -> None in
-    let req k = match find k with
-      | Some v -> v
-      | None -> invalid_arg ("Instrument.t_of_yojson: missing " ^ k)
-    in
-    let opt k f = match find k with
-      | None | Some `Null -> None
-      | Some v -> Some (f v)
-    in
-    make
-      ~ticker:(Ticker.t_of_yojson (req "ticker"))
-      ~venue:(Mic.t_of_yojson (req "mic"))
-      ?isin:(opt "isin" Isin.t_of_yojson)
-      ?board:(opt "board" Board.t_of_yojson)
-      ()
-  | j -> invalid_arg ("Instrument.t_of_yojson: " ^ Yojson.Safe.to_string j)

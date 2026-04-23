@@ -8,5 +8,5 @@
  (package trading)
  (libraries core broker indicators strategies engine live_engine
             logistic_regression triple_barrier
-            http_transport finam bcs token_store synthetic paper server log logs
+            http_transport finam bcs acl_common infra_common token_store synthetic paper server log logs
             eio_main mirage-crypto-rng.unix unix))

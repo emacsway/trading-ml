@@ -96,7 +96,7 @@ let run_backtest client body_str =
 let seed_chunk seed =
   let j : Yojson.Safe.t = `Assoc [
     "kind", `String "seed";
-    "candles", `List (List.map Candle_json.yojson_of_t seed);
+    "candles", `List (List.map Api.candle_json seed);
   ] in
   "data: " ^ Yojson.Safe.to_string j ^ "\n\n"
 

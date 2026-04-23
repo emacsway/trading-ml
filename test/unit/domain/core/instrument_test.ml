@@ -49,22 +49,6 @@ let test_not_equal_one_isin_one_not () =
   Alcotest.(check bool) "ISIN vs no-ISIN = not equal" false
     (Instrument.equal a b)
 
-let test_json_round_trip () =
-  let original = mk ~isin:sber_isin ~board:"TQBR" "SBER" "MISX" in
-  let json = Instrument.yojson_of_t original in
-  let decoded = Instrument.t_of_yojson json in
-  Alcotest.(check bool) "JSON round-trip preserves identity" true
-    (Instrument.equal original decoded);
-  Alcotest.(check (option string)) "board preserved"
-    (Some "TQBR") (Option.map Board.to_string (Instrument.board decoded))
-
-let test_json_minimal () =
-  let original = mk "SBER" "MISX" in
-  let json = Instrument.yojson_of_t original in
-  let decoded = Instrument.t_of_yojson json in
-  Alcotest.(check bool) "minimal round-trip" true
-    (Instrument.equal original decoded)
-
 let test_qualified_minimal () =
   let i = mk "SBER" "MISX" in
   Alcotest.(check string) "ticker@mic"
@@ -105,8 +89,6 @@ let tests = [
   "equal by ticker when no ISIN",     `Quick, test_equal_by_ticker_when_no_isin;
   "different venue is not equal",     `Quick, test_not_equal_diff_venue;
   "ISIN vs no-ISIN is not equal",     `Quick, test_not_equal_one_isin_one_not;
-  "JSON round-trip enriched",         `Quick, test_json_round_trip;
-  "JSON round-trip minimal",          `Quick, test_json_minimal;
   "to_qualified minimal",             `Quick, test_qualified_minimal;
   "to_qualified with board",          `Quick, test_qualified_with_board;
   "of_qualified minimal",             `Quick, test_of_qualified_minimal;
