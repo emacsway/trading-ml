@@ -218,26 +218,36 @@ accuracy number when interpreting.
 
 ## If the result is positive
 
-Good news: strategy-side coherence is already wired. `Gbt_strategy`
-implements brackets in its own FSM and honours them identically
-in backtest, paper, and live paths. When you deploy a TB-trained
-model in production:
+Good news: strategy-side coherence is already wired via the
+`Bracket` decorator. Wrap `Gbt_strategy` in `Bracket` and you
+get identical bracket behaviour in backtest, paper, and live
+paths.
+
+The registry exposes the combined product as `Bracket_GBT`;
+that's what you pick in production:
 
 1. Make sure `tp_mult` / `sl_mult` / `max_hold_bars` on the
-   strategy match the ones used at labelling time. The registry
-   defaults already align (1.5 / 1.0 / 20), but if you trained
-   with non-default values, pass them explicitly:
+   decorator match the ones used at labelling time. The
+   registry defaults already align (1.5 / 1.0 / 20), but if
+   you trained with non-default values, pass them explicitly:
    ```bash
-   dune exec -- trading serve --broker bcs --strategy GBT \
+   dune exec -- trading serve --broker bcs --strategy Bracket_GBT \
      --param model_path=/path/to/model.txt \
      --param tp_mult=2.0 --param sl_mult=1.0 --param max_hold_bars=30
    ```
-2. Verify the sidecar `.meta.json` if you're deploying weeks
+2. Pick plain `GBT` (no bracket wrapping) when you deliberately
+   want to backtest the model's raw predictions — e.g. to
+   compare with the threshold-label baseline on an
+   accuracy-only basis, without bracket-introduced exit
+   dynamics. It's a training-diagnostic tool, not a production
+   shape.
+3. Verify the sidecar `.meta.json` if you're deploying weeks
    later — training-time CV accuracy there should match what
    `evaluate.py` reports on recent data; serious drift is the
    signal to retrain.
 
 See the `Strategy-side coherence` section in
 [`architecture/ml/triple_barrier.md`](../../architecture/ml/triple_barrier.md)
-for the design rationale and why the brackets live in the
-strategy (not the engine, not the broker).
+for the design rationale and why the brackets live in a
+dedicated decorator (not inside `Gbt_strategy`, not in the
+engine, not in the broker).

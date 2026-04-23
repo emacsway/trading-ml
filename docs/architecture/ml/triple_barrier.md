@@ -186,42 +186,58 @@ header, same column order, labels in `[0, 1, 2]`. The Python
 training pipeline (`tools/gbt/train.py`) doesn't know or care
 which mode produced the data — it sees the same schema.
 
-Strategy-side coherence **is** wired. `Gbt_strategy` implements
-bracket exits inside its own FSM using the same ATR multipliers
-the labeler used (`tp_mult` / `sl_mult` / `max_hold_bars` are
-params on the strategy, defaulting to the canonical
-`1.5 / 1.0 / 20`). The flow:
+Strategy-side coherence **is** wired, but not *inside*
+`Gbt_strategy`. Brackets are an orthogonal risk-management
+overlay that applies to any entry source, so they live in their
+own module — `Strategies.Bracket` — a decorator that wraps any
+`Strategy.t` and takes over exit decisions once a position is
+open. `Gbt_strategy` itself remains pure entry logic: model
+class → `Enter_long` / `Enter_short`, no TP/SL state, no ATR
+tracking.
 
-1. On entry (model class=2 confident, position Flat): compute
-   `tp = close + tp_mult × ATR(14)` and
-   `sl = close - sl_mult × ATR`, freeze them in the strategy's
-   `bracket` state, emit `Signal.Enter_long` with both
-   `take_profit` and `stop_loss` populated.
-2. On every subsequent bar while in position: check the bar's
-   `high` / `low` against the frozen barriers. Tie-break: SL
-   wins — same convention as the labeler.
-3. If neither barrier triggers within `max_hold_bars`, emit
-   `Exit_long` with reason `"timeout"`.
-4. While in position, model predictions are ignored — the
-   bracket is the authoritative decider. Matches the training
-   contract: the model learned "which barrier wins within the
-   window", not "is class X still argmax on bar 2".
+The flow under `Bracket(inner = Gbt_strategy)`:
 
-Because bracket logic lives entirely inside the strategy
-module, it runs identically in `Backtest.run`, in the
-`Live_engine` with `Paper_broker`, and in live execution
-through any real broker (BCS, Finam, future additions). No
-changes to `Live_engine`, `Paper`, or broker ACLs are required
-— the strategy emits `Exit_long` / `Exit_short` as needed, and
-downstream just executes them as regular market orders. No
-native broker bracket support is assumed or required.
+1. On every bar: ATR(14) is updated; the inner strategy is
+   stepped so its indicators advance regardless of position.
+2. While `Flat`: the inner's signal is propagated. An
+   `Enter_long` from the inner, paired with a ready ATR value,
+   is enriched with `tp = close + tp_mult × ATR` and
+   `sl = close − sl_mult × ATR` in the emitted signal, and the
+   decorator transitions to `Long`. Entries during ATR warmup
+   are swallowed (Hold) rather than fired naked.
+3. While in position: the decorator checks the bar's
+   `high` / `low` against frozen barriers. SL before TP (tie
+   → SL wins, matching the labeler). After `max_hold_bars`
+   without a barrier hit, `Exit_*` fires with reason
+   `"timeout"`. The inner's signals are ignored throughout —
+   the model learned "which barrier wins within the window",
+   not "re-enter on bar 2".
+4. After exit, state returns to `Flat` and step 2 applies
+   again.
+
+Because the decorator composes via `Strategies.Strategy.t`
+(same type as any leaf strategy), it runs identically in
+`Backtest.run`, in the `Live_engine` with `Paper_broker`, and
+in live execution through any real broker (BCS, Finam, future
+additions). No changes to `Live_engine`, `Paper`, or broker
+ACLs are required — the decorator emits `Exit_long` /
+`Exit_short` as needed, and downstream just executes them as
+regular market orders. No native broker bracket support is
+assumed or required.
+
+The registry exposes the paired product as `Bracket_GBT` —
+callers who want brackets pick it; callers who want bare GBT
+predictions (e.g. for training-diagnostic backtests without
+risk rules) pick `GBT`. Bracket is not GBT-specific; the same
+decorator can wrap any `Strategy.t`, which is the point of
+keeping it separate.
 
 If a future broker offers native bracket orders (BCS and Finam
 currently don't), those would slot in as a **safety net**: the
-strategy's engine-side brackets remain the primary control, and
-a server-side TP/SL order is attached in parallel to protect
-against engine crashes or WS disconnects. Orthogonal, additive
-— doesn't change the primary architecture.
+decorator's engine-side brackets remain the primary control,
+and a server-side TP/SL order is attached in parallel to
+protect against engine crashes or WS disconnects. Orthogonal,
+additive — doesn't change the primary architecture.
 
 ## Testing
 

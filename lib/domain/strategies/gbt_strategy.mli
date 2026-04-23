@@ -1,25 +1,6 @@
-(** GBT-driven strategy with bracket exits.
-
-    Thin wrapper around a pre-trained LightGBM model (loaded via
-    {!Gbt.Gbt_model}) that turns per-bar feature vectors into
-    {!Signal.t} decisions, with TP/SL/timeout brackets on open
-    positions.
-
-    Bracket lifecycle: on entry (Enter_long / Enter_short), the
-    strategy freezes [entry_price], [take_profit = close +
-    tp_mult×ATR] and [stop_loss = close - sl_mult×ATR] in its
-    state. On every subsequent bar, the bar's [high]/[low] is
-    checked against those barriers. First triggered barrier wins
-    (tie-break: SL — matches {!Triple_barrier.label}'s pessimistic
-    convention). If neither fires within [max_hold_bars], a
-    timeout exit closes the position. While in position, model
-    predictions are *not* consulted — the bracket is the
-    authoritative decider.
-
-    This coherence between training (triple-barrier labels) and
-    trading (triple-barrier execution) is the whole point:
-    accuracy on the model's classes maps directly to realised
-    PnL instead of being a proxy for it.
+(** GBT-driven strategy. Thin wrapper around a pre-trained
+    LightGBM model (loaded via {!Gbt.Gbt_model}) that turns
+    per-bar feature vectors into {!Signal.t} decisions.
 
     Expected model shape:
     - objective: {!Gbt.Gbt_model.Multiclass}[ 3]
@@ -64,16 +45,6 @@ type params = {
   mfi_period : int;
   bb_period : int;
   bb_k : float;
-  (** Bracket params — must match the [--tp-mult] / [--sl-mult] /
-      [--timeout] used when training with triple-barrier labels.
-      Once in a position, the strategy exits on whichever barrier
-      triggers first (TP, SL, or timeout) and ignores subsequent
-      model signals until flat. This matches the training contract:
-      the model learnt "which barrier wins within the window",
-      not "is class X still the argmax right now". *)
-  tp_mult : float;
-  sl_mult : float;
-  max_hold_bars : int;
 }
 
 type state

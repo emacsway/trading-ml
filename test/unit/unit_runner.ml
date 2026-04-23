@@ -48,6 +48,7 @@ let () =
     "strat registry",   Registry_test.tests;
     "composite strat",  Composite_test.tests;
     "gbt strategy",     Gbt_strategy_test.tests;
+    "bracket strat",    Bracket_test.tests;
     (* ML *)
     "logistic",        Logistic_test.tests;
     "features",        Features_test.tests;

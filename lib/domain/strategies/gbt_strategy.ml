@@ -8,34 +8,9 @@ type params = {
   mfi_period : int;
   bb_period : int;
   bb_k : float;
-  (* Bracket parameters. Match the [--tp-mult] / [--sl-mult] /
-     [--timeout] used when training with triple-barrier labels —
-     otherwise the live bracket mechanics won't line up with what
-     the model learned to predict. Defaults match de Prado's
-     canonical (1.5 / 1.0 / 20). *)
-  tp_mult : float;
-  sl_mult : float;
-  max_hold_bars : int;
 }
 
-(** In-flight bracket state carried while we hold a position.
-    Captured at entry; [entry_price] / [take_profit] / [stop_loss]
-    are frozen for the lifetime of the position. [bars_held]
-    counts bars since entry so the timeout leg can fire.
-
-    [entry_price] is stored but not read by the runtime — kept
-    for debugging, log lines, and future P&L computations. *)
-type bracket = {
-  entry_price : float [@warning "-69"];
-  take_profit : float;
-  stop_loss : float;
-  bars_held : int;
-}
-
-type position =
-  | Flat
-  | Long of bracket
-  | Short of bracket
+type position = Flat | Long | Short
 
 type state = {
   params : params;
@@ -48,7 +23,6 @@ type state = {
   volume_ma : Indicators.Indicator.t;
   ad : Indicators.Indicator.t;
   chaikin : Indicators.Indicator.t;
-  atr : Indicators.Indicator.t;
   (* Past closes for the 5-bar lag return feature. Capacity is
      exactly [lag_return_bars]; when full, [oldest] is [close[t-5]]
      and we compute [log(close[t] / close[t-5])] before pushing
@@ -64,14 +38,13 @@ type state = {
     parametric on the strategy side — a training pipeline that
     wants non-default MACD settings would need a matching model
     retraining, so keeping them hard-coded is the honest stance.
-    Same reasoning for the Chaikin Oscillator's (3, 10), the A/D
-    slope window, and ATR(14) used for bracket sizing. *)
+    Same reasoning for the Chaikin Oscillator's (3, 10) and the
+    A/D slope window. *)
 let macd_fast, macd_slow, macd_signal = 12, 26, 9
 let volume_ma_period = 20
 let lag_return_bars = 5
 let chaikin_fast, chaikin_slow = 3, 10
 let ad_slope_bars = 10
-let atr_period = 14
 
 let name = "GBT"
 
@@ -83,9 +56,6 @@ let default_params = {
   mfi_period = 14;
   bb_period = 20;
   bb_k = 2.0;
-  tp_mult = 1.5;
-  sl_mult = 1.0;
-  max_hold_bars = 20;
 }
 
 (** The strategy's canonical feature ordering. Training pipelines
@@ -97,16 +67,7 @@ let default_params = {
     - [bb_pct_b]     %B position within Bollinger bands
     - [macd_hist]    MACD histogram (fast EMA − slow EMA − signal EMA)
     - [volume_ratio] [volume / VolumeMA(20)], proxy for "unusual bar"
-    - [lag_return_5] log return over the past 5 bars
-    - [chaikin_osc]  Chaikin Oscillator (3, 10): MACD-style momentum
-                     of the A/D line; centered near zero by
-                     construction
-    - [ad_slope_10]  normalized 10-bar rate of change of the A/D
-                     line: [(ad[t] - ad[t-10]) / (|ad[t-10]| + 1)].
-                     Raw A/D drifts unbounded with time — a model
-                     trained on one period would see unfamiliar
-                     levels later. The ratio keeps the feature
-                     stationary. *)
+    - [lag_return_5] log return over the past 5 bars *)
 let feature_names = [|
   "rsi"; "mfi"; "bb_pct_b";
   "macd_hist"; "volume_ratio"; "lag_return_5";
@@ -149,10 +110,6 @@ let init p =
   if p.bb_period <= 1 then invalid_arg "Gbt_strategy: bb_period > 1";
   if p.enter_threshold < 0.34 || p.enter_threshold > 1.0 then
     invalid_arg "Gbt_strategy: enter_threshold in (0.34, 1.0]";
-  if p.tp_mult <= 0.0 then invalid_arg "Gbt_strategy: tp_mult > 0";
-  if p.sl_mult <= 0.0 then invalid_arg "Gbt_strategy: sl_mult > 0";
-  if p.max_hold_bars <= 0 then
-    invalid_arg "Gbt_strategy: max_hold_bars > 0";
   let model, model_mtime = load_model p.model_path in
   {
     params = p;
@@ -167,7 +124,6 @@ let init p =
     ad = Indicators.Ad.make ();
     chaikin = Indicators.Chaikin_oscillator.make
       ~fast:chaikin_fast ~slow:chaikin_slow ();
-    atr = Indicators.Atr.make ~period:atr_period;
     close_history =
       Indicators.Ring.create ~capacity:lag_return_bars 0.0;
     ad_history =
@@ -214,51 +170,8 @@ let macd_hist_of ind =
   | Some (_, [_macd; _signal; hist]) -> Some hist
   | _ -> None
 
-(** Exit reason for a bracket — TP hit, SL hit, or time-out. *)
-type exit_reason = TP | SL | Timeout
-
-let reason_str = function
-  | TP -> "TP hit"
-  | SL -> "SL hit"
-  | Timeout -> "timeout"
-
-(** Given the current bar's high/low and a Long bracket, decide
-    whether either barrier triggered. Tie-break when the bar
-    straddles both at once: [SL] wins — same convention used in
-    {!Triple_barrier.label} to keep train and trade consistent
-    about pessimistic straddles. *)
-let check_long_bracket (c : Candle.t) (b : bracket) : exit_reason option =
-  let h = Decimal.to_float c.Candle.high in
-  let l = Decimal.to_float c.Candle.low in
-  let tp_hit = h >= b.take_profit in
-  let sl_hit = l <= b.stop_loss in
-  if tp_hit && sl_hit then Some SL
-  else if tp_hit then Some TP
-  else if sl_hit then Some SL
-  else None
-
-(** Short bracket is mirrored: TP is BELOW entry (we profit when
-    price falls), SL is ABOVE entry. *)
-let check_short_bracket (c : Candle.t) (b : bracket) : exit_reason option =
-  let h = Decimal.to_float c.Candle.high in
-  let l = Decimal.to_float c.Candle.low in
-  let tp_hit = l <= b.take_profit in
-  let sl_hit = h >= b.stop_loss in
-  if tp_hit && sl_hit then Some SL
-  else if tp_hit then Some TP
-  else if sl_hit then Some SL
-  else None
-
-let exit_signal ~ts ~instrument ~action ~reason =
-  { Signal.ts; instrument; action;
-    strength = 1.0;
-    stop_loss = None; take_profit = None;
-    reason }
-
-(** Update every indicator on the bar; returns the fresh handles
-    plus any ring-derived feature scalars that need "read oldest
-    before push" discipline. *)
-let update_indicators (st : state) (c : Candle.t) =
+let on_candle st instrument (c : Candle.t) =
+  let st = maybe_reload st in
   let rsi = Indicators.Indicator.update st.rsi c in
   let mfi = Indicators.Indicator.update st.mfi c in
   let bb  = Indicators.Indicator.update st.bb  c in
@@ -266,8 +179,8 @@ let update_indicators (st : state) (c : Candle.t) =
   let volume_ma = Indicators.Indicator.update st.volume_ma c in
   let ad = Indicators.Indicator.update st.ad c in
   let chaikin = Indicators.Indicator.update st.chaikin c in
-  let atr = Indicators.Indicator.update st.atr c in
   let close = Decimal.to_float c.Candle.close in
+  let volume = Decimal.to_float c.Candle.volume in
   (* Lag return: compare current close against the oldest in the
      history ring BEFORE pushing — once we push, oldest becomes
      [close[t-4]] for next bar, which is wrong. *)
@@ -295,32 +208,21 @@ let update_indicators (st : state) (c : Candle.t) =
       in
       slope, Indicators.Ring.push st.ad_history ad_now
   in
-  let st = { st with rsi; mfi; bb; macd; volume_ma; ad; chaikin; atr;
+  let st = { st with rsi; mfi; bb; macd; volume_ma; ad; chaikin;
              close_history; ad_history } in
-  st, lag_return_opt, ad_slope_opt
-
-(** From-Flat entry decision: extract features, run the model,
-    and emit an entry signal if the winning class crosses the
-    threshold AND the strategy has ATR available to set the
-    bracket. Without ATR (warm-up) no entry fires — [Signal.Hold]
-    is the safe answer. *)
-let flat_entry st instrument (c : Candle.t)
-    ~lag_return_opt ~ad_slope_opt : state * Signal.t =
-  let close = Decimal.to_float c.Candle.close in
-  let volume = Decimal.to_float c.Candle.volume in
   let volume_ratio_opt =
-    match scalar_1 st.volume_ma with
+    match scalar_1 volume_ma with
     | Some vma when vma > 0.0 -> Some (volume /. vma)
     | _ -> None
   in
   match
-    scalar_1 st.rsi, scalar_1 st.mfi, bb_pct_b st.bb close,
-    macd_hist_of st.macd, volume_ratio_opt, lag_return_opt,
-    scalar_1 st.chaikin, ad_slope_opt, scalar_1 st.atr
+    scalar_1 rsi, scalar_1 mfi, bb_pct_b bb close,
+    macd_hist_of macd, volume_ratio_opt, lag_return_opt,
+    scalar_1 chaikin, ad_slope_opt
   with
   | Some rsi_v, Some mfi_v, Some pctb,
     Some mh, Some vr, Some lr,
-    Some co, Some ads, Some atr_v ->
+    Some co, Some ads ->
     (* Scale RSI/MFI to [0..1] so all features share roughly the
        same range — GBT is tree-based and scale-insensitive, but
        symmetry helps humans reading feature importances. *)
@@ -345,74 +247,25 @@ let flat_entry st instrument (c : Candle.t)
     let conf = probs.(argmax) in
     let strength = Float.min 1.0 (Float.max 0.0 conf) in
     let confident = conf >= st.params.enter_threshold in
-    (match argmax, confident with
-     | 2, true ->
-       let tp = close +. st.params.tp_mult *. atr_v in
-       let sl = close -. st.params.sl_mult *. atr_v in
-       let bracket = {
-         entry_price = close; take_profit = tp; stop_loss = sl;
-         bars_held = 0;
-       } in
-       let sig_ = {
-         Signal.ts = c.Candle.ts; instrument;
-         action = Enter_long; strength;
-         stop_loss = Some (Decimal.of_float sl);
-         take_profit = Some (Decimal.of_float tp);
-         reason = "GBT class=up";
-       } in
-       { st with position = Long bracket }, sig_
-     | 0, true when st.params.allow_short ->
-       let tp = close -. st.params.tp_mult *. atr_v in
-       let sl = close +. st.params.sl_mult *. atr_v in
-       let bracket = {
-         entry_price = close; take_profit = tp; stop_loss = sl;
-         bars_held = 0;
-       } in
-       let sig_ = {
-         Signal.ts = c.Candle.ts; instrument;
-         action = Enter_short; strength;
-         stop_loss = Some (Decimal.of_float sl);
-         take_profit = Some (Decimal.of_float tp);
-         reason = "GBT class=down";
-       } in
-       { st with position = Short bracket }, sig_
-     | _ ->
-       st, Signal.hold ~ts:c.Candle.ts ~instrument)
+    let action, position, reason =
+      match argmax, confident, st.position with
+      | 2, true, Flat ->
+        Signal.Enter_long, Long, "GBT class=up"
+      | 2, true, Short ->
+        Signal.Enter_long, Long, "GBT class=up (flip)"
+      | 0, true, Flat when st.params.allow_short ->
+        Signal.Enter_short, Short, "GBT class=down"
+      | 0, true, Long when st.params.allow_short ->
+        Signal.Enter_short, Short, "GBT class=down (flip)"
+      | 0, true, Long ->
+        Signal.Exit_long, Flat, "GBT class=down"
+      | _ -> Signal.Hold, st.position, ""
+    in
+    let sig_ = {
+      Signal.ts = c.Candle.ts; instrument; action;
+      strength; stop_loss = None; take_profit = None; reason;
+    } in
+    { st with position }, sig_
   | _ ->
     (* Warm-up: at least one indicator still accumulating. *)
     st, Signal.hold ~ts:c.Candle.ts ~instrument
-
-let on_candle st instrument (c : Candle.t) =
-  let st = maybe_reload st in
-  let st, lag_return_opt, ad_slope_opt = update_indicators st c in
-  match st.position with
-  | Long b ->
-    let b = { b with bars_held = b.bars_held + 1 } in
-    (match check_long_bracket c b with
-     | Some reason ->
-       let sig_ = exit_signal ~ts:c.Candle.ts ~instrument
-         ~action:Signal.Exit_long ~reason:(reason_str reason) in
-       { st with position = Flat }, sig_
-     | None when b.bars_held >= st.params.max_hold_bars ->
-       let sig_ = exit_signal ~ts:c.Candle.ts ~instrument
-         ~action:Signal.Exit_long ~reason:(reason_str Timeout) in
-       { st with position = Flat }, sig_
-     | None ->
-       { st with position = Long b },
-       Signal.hold ~ts:c.Candle.ts ~instrument)
-  | Short b ->
-    let b = { b with bars_held = b.bars_held + 1 } in
-    (match check_short_bracket c b with
-     | Some reason ->
-       let sig_ = exit_signal ~ts:c.Candle.ts ~instrument
-         ~action:Signal.Exit_short ~reason:(reason_str reason) in
-       { st with position = Flat }, sig_
-     | None when b.bars_held >= st.params.max_hold_bars ->
-       let sig_ = exit_signal ~ts:c.Candle.ts ~instrument
-         ~action:Signal.Exit_short ~reason:(reason_str Timeout) in
-       { st with position = Flat }, sig_
-     | None ->
-       { st with position = Short b },
-       Signal.hold ~ts:c.Candle.ts ~instrument)
-  | Flat ->
-    flat_entry st instrument c ~lag_return_opt ~ad_slope_opt

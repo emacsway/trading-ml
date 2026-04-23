@@ -13,6 +13,8 @@ let test_all_strategies_listed () =
       "Chaikin_Momentum"; "AD_MA_Crossover";
       (* ML-driven *)
       "GBT";
+      (* Decorator-wrapped ML *)
+      "Bracket_GBT";
     ]
 
 let test_gbt_spec_exposes_string_param () =
@@ -34,6 +36,17 @@ let test_gbt_build_fails_without_model_path () =
      rejects that loudly rather than trying to load a bogus file. *)
   match Strategies.Registry.find "GBT" with
   | None -> Alcotest.fail "GBT missing"
+  | Some spec ->
+    Alcotest.check_raises "empty model_path → Invalid_argument"
+      (Invalid_argument "Gbt_strategy: model_path must be set")
+      (fun () -> ignore (spec.build []))
+
+let test_bracket_gbt_build_fails_without_model_path () =
+  (* Same contract as bare GBT: the decorator wraps GBT but
+     doesn't shield it, so [model_path = ""] still raises at
+     build time. *)
+  match Strategies.Registry.find "Bracket_GBT" with
+  | None -> Alcotest.fail "Bracket_GBT missing"
   | Some spec ->
     Alcotest.check_raises "empty model_path → Invalid_argument"
       (Invalid_argument "Gbt_strategy: model_path must be set")
@@ -65,4 +78,6 @@ let tests = [
   "build with empty params",      `Quick, test_build_respects_default_params;
   "GBT spec has String param",    `Quick, test_gbt_spec_exposes_string_param;
   "GBT rejects empty model_path", `Quick, test_gbt_build_fails_without_model_path;
+  "Bracket_GBT rejects empty model_path", `Quick,
+    test_bracket_gbt_build_fails_without_model_path;
 ]

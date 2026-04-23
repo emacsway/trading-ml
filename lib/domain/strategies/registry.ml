@@ -132,14 +132,7 @@ let specs : spec list = [
     (* [model_path] must be supplied by the caller — default "" fails
        fast at [init] with a clear error rather than trying to load a
        nonexistent file. Callers routing through the UI should prompt
-       for the path; CLI users pass it via [--param model_path=…].
-
-       Bracket params ([tp_mult], [sl_mult], [max_hold_bars]) default
-       to the same canonical de-Prado triple-barrier configuration
-       used by [export_training_data]'s triple-barrier mode. A
-       trained model is tied to the exact bracket it was labelled
-       with — mismatch silently decouples train-time accuracy from
-       trade-time PnL. *)
+       for the path; CLI users pass it via [--param model_path=…]. *)
     params = [
       "model_path",      String "";
       "enter_threshold", Float 0.55;
@@ -148,9 +141,6 @@ let specs : spec list = [
       "mfi_period",      Int 14;
       "bb_period",       Int 20;
       "bb_k",            Float 2.0;
-      "tp_mult",         Float 1.5;
-      "sl_mult",         Float 1.0;
-      "max_hold_bars",   Int 20;
     ];
     build = fun p ->
       let params = Gbt_strategy.{
@@ -161,9 +151,6 @@ let specs : spec list = [
         mfi_period      = get_int p "mfi_period" 14;
         bb_period       = get_int p "bb_period" 20;
         bb_k            = get_float p "bb_k" 2.0;
-        tp_mult         = get_float p "tp_mult" 1.5;
-        sl_mult         = get_float p "sl_mult" 1.0;
-        max_hold_bars   = get_int p "max_hold_bars" 20;
       } in
       Strategy.make (module Gbt_strategy) params };
 ]
@@ -235,6 +222,39 @@ let composite_specs : spec list = [
       ] in
       Strategy.make (module Composite)
         Composite.{ policy = Adaptive { window }; children } };
+
+  { name = "Bracket_GBT";
+    (* GBT entries wrapped in the {!Bracket} decorator — the
+       preferred pairing for models trained with triple-barrier
+       labels. The bracket parameters ([tp_mult] / [sl_mult] /
+       [max_hold_bars]) must match the ones used at labelling
+       time; mismatch silently decouples training-time accuracy
+       from trade-time PnL. Defaults align with the canonical
+       1.5 / 1.0 / 20 used by [export_training_data]'s
+       [triple-barrier] mode. *)
+    params = [
+      "model_path",      String "";
+      "enter_threshold", Float 0.55;
+      "allow_short",     Bool false;
+      "tp_mult",         Float 1.5;
+      "sl_mult",         Float 1.0;
+      "max_hold_bars",   Int 20;
+      "atr_period",      Int 14;
+    ];
+    build = fun p ->
+      let inner = build_child Gbt_strategy.name [
+        "model_path",      String (get_string p "model_path" "");
+        "enter_threshold", Float (get_float p "enter_threshold" 0.55);
+        "allow_short",     Bool (get_bool p "allow_short" false);
+      ] in
+      let params = Bracket.{
+        tp_mult       = get_float p "tp_mult" 1.5;
+        sl_mult       = get_float p "sl_mult" 1.0;
+        max_hold_bars = get_int p "max_hold_bars" 20;
+        atr_period    = get_int p "atr_period" 14;
+        inner;
+      } in
+      Strategy.make (module Bracket) params };
 ]
 
 let all_specs = specs @ composite_specs
