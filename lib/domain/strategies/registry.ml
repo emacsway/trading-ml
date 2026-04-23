@@ -132,7 +132,14 @@ let specs : spec list = [
     (* [model_path] must be supplied by the caller — default "" fails
        fast at [init] with a clear error rather than trying to load a
        nonexistent file. Callers routing through the UI should prompt
-       for the path; CLI users pass it via [--param model_path=…]. *)
+       for the path; CLI users pass it via [--param model_path=…].
+
+       Bracket params ([tp_mult], [sl_mult], [max_hold_bars]) default
+       to the same canonical de-Prado triple-barrier configuration
+       used by [export_training_data]'s triple-barrier mode. A
+       trained model is tied to the exact bracket it was labelled
+       with — mismatch silently decouples train-time accuracy from
+       trade-time PnL. *)
     params = [
       "model_path",      String "";
       "enter_threshold", Float 0.55;
@@ -141,6 +148,9 @@ let specs : spec list = [
       "mfi_period",      Int 14;
       "bb_period",       Int 20;
       "bb_k",            Float 2.0;
+      "tp_mult",         Float 1.5;
+      "sl_mult",         Float 1.0;
+      "max_hold_bars",   Int 20;
     ];
     build = fun p ->
       let params = Gbt_strategy.{
@@ -151,6 +161,9 @@ let specs : spec list = [
         mfi_period      = get_int p "mfi_period" 14;
         bb_period       = get_int p "bb_period" 20;
         bb_k            = get_float p "bb_k" 2.0;
+        tp_mult         = get_float p "tp_mult" 1.5;
+        sl_mult         = get_float p "sl_mult" 1.0;
+        max_hold_bars   = get_int p "max_hold_bars" 20;
       } in
       Strategy.make (module Gbt_strategy) params };
 ]

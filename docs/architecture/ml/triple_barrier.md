@@ -186,28 +186,42 @@ header, same column order, labels in `[0, 1, 2]`. The Python
 training pipeline (`tools/gbt/train.py`) doesn't know or care
 which mode produced the data — it sees the same schema.
 
-Strategy-side (`Gbt_strategy`) awareness is **not** currently
-wired: a GBT model trained on TB labels is deployed by the
-strategy as-is, emitting `Signal.Enter_long` without TP/SL
-fields populated. The live engine will execute it as a market
-order. This introduces a coherent-labelling mismatch: the model
-learned "which direction would win with a 1.5×ATR TP", but the
-actual trade runs without brackets.
+Strategy-side coherence **is** wired. `Gbt_strategy` implements
+bracket exits inside its own FSM using the same ATR multipliers
+the labeler used (`tp_mult` / `sl_mult` / `max_hold_bars` are
+params on the strategy, defaulting to the canonical
+`1.5 / 1.0 / 20`). The flow:
 
-Full coherence requires:
+1. On entry (model class=2 confident, position Flat): compute
+   `tp = close + tp_mult × ATR(14)` and
+   `sl = close - sl_mult × ATR`, freeze them in the strategy's
+   `bracket` state, emit `Signal.Enter_long` with both
+   `take_profit` and `stop_loss` populated.
+2. On every subsequent bar while in position: check the bar's
+   `high` / `low` against the frozen barriers. Tie-break: SL
+   wins — same convention as the labeler.
+3. If neither barrier triggers within `max_hold_bars`, emit
+   `Exit_long` with reason `"timeout"`.
+4. While in position, model predictions are ignored — the
+   bracket is the authoritative decider. Matches the training
+   contract: the model learned "which barrier wins within the
+   window", not "is class X still argmax on bar 2".
 
-- `Gbt_strategy.on_candle` populates `Signal.stop_loss` and
-  `Signal.take_profit` at the same ATR multipliers used for
-  training.
-- `Live_engine` maps those Signal fields onto bracket-like
-  execution (engine-side simulation, since neither BCS nor Finam
-  has native bracket orders on their REST API).
+Because bracket logic lives entirely inside the strategy
+module, it runs identically in `Backtest.run`, in the
+`Live_engine` with `Paper_broker`, and in live execution
+through any real broker (BCS, Finam, future additions). No
+changes to `Live_engine`, `Paper`, or broker ACLs are required
+— the strategy emits `Exit_long` / `Exit_short` as needed, and
+downstream just executes them as regular market orders. No
+native broker bracket support is assumed or required.
 
-That's substantial work across three layers (strategy, engine,
-broker). See the tracking TODOs in the docs tree. For now the
-vanilla TB labeler stands alone as a research/experimentation
-tool — compare its CV-lift against threshold labels on the same
-data and decide whether the strategy-side work is warranted.
+If a future broker offers native bracket orders (BCS and Finam
+currently don't), those would slot in as a **safety net**: the
+strategy's engine-side brackets remain the primary control, and
+a server-side TP/SL order is attached in parallel to protect
+against engine crashes or WS disconnects. Orthogonal, additive
+— doesn't change the primary architecture.
 
 ## Testing
 

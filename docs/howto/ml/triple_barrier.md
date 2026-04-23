@@ -218,20 +218,26 @@ accuracy number when interpreting.
 
 ## If the result is positive
 
-If TB shows clear lift and you want to commit, the remaining
-work is:
+Good news: strategy-side coherence is already wired. `Gbt_strategy`
+implements brackets in its own FSM and honours them identically
+in backtest, paper, and live paths. When you deploy a TB-trained
+model in production:
 
-1. Update `Gbt_strategy` to populate `Signal.stop_loss` and
-   `Signal.take_profit` using the same ATR multipliers the model
-   was trained on. Make those multipliers parameters of the
-   strategy, persisted alongside the model file (sidecar JSON).
-2. Update `Live_engine.submit_order` to turn `Signal`s with TP/SL
-   into either native broker bracket orders (if any supports
-   them) or engine-side simulated brackets (bookkeeping pending
-   exits per order, checking on every bar).
-3. Update Paper broker to honour the same bracket simulation for
-   differential backtest/live parity.
+1. Make sure `tp_mult` / `sl_mult` / `max_hold_bars` on the
+   strategy match the ones used at labelling time. The registry
+   defaults already align (1.5 / 1.0 / 20), but if you trained
+   with non-default values, pass them explicitly:
+   ```bash
+   dune exec -- trading serve --broker bcs --strategy GBT \
+     --param model_path=/path/to/model.txt \
+     --param tp_mult=2.0 --param sl_mult=1.0 --param max_hold_bars=30
+   ```
+2. Verify the sidecar `.meta.json` if you're deploying weeks
+   later — training-time CV accuracy there should match what
+   `evaluate.py` reports on recent data; serious drift is the
+   signal to retrain.
 
-Estimated scope: 1-2 days of focused work across strategy,
-engine, paper. Covered in the `Strategy-side coherence` section
-of [`architecture/ml/triple_barrier.md`](../../architecture/ml/triple_barrier.md).
+See the `Strategy-side coherence` section in
+[`architecture/ml/triple_barrier.md`](../../architecture/ml/triple_barrier.md)
+for the design rationale and why the brackets live in the
+strategy (not the engine, not the broker).
