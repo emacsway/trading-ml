@@ -19,10 +19,10 @@ version=v3
 num_class=3
 num_tree_per_iteration=3
 label_index=0
-max_feature_idx=2
+max_feature_idx=7
 objective=multiclass num_class:3
-feature_names=rsi mfi bb_pct_b
-feature_infos=[0:1] [0:1] [0:1]
+feature_names=rsi mfi bb_pct_b macd_hist volume_ratio lag_return_5 chaikin_osc ad_slope_10
+feature_infos=[0:1] [0:1] [0:1] [-inf:inf] [0:inf] [-inf:inf] [-inf:inf] [-inf:inf]
 tree_sizes=100 100 100
 
 Tree=0
@@ -229,7 +229,8 @@ end of trees
     Alcotest.check_raises "mismatch → Invalid_argument"
       (Invalid_argument
         "Gbt_strategy: model feature_names mismatch — \
-         strategy expects [rsi, mfi, bb_pct_b], model has [a, b, c]")
+         strategy expects [rsi, mfi, bb_pct_b, macd_hist, volume_ratio, \
+         lag_return_5, chaikin_osc, ad_slope_10], model has [a, b, c]")
       (fun () -> ignore (build path)))
 
 let test_rejects_non_multiclass_objective () =
@@ -290,10 +291,10 @@ version=v3
 num_class=3
 num_tree_per_iteration=3
 label_index=0
-max_feature_idx=2
+max_feature_idx=7
 objective=multiclass num_class:3
-feature_names=rsi mfi bb_pct_b
-feature_infos=[0:1] [0:1] [0:1]
+feature_names=rsi mfi bb_pct_b macd_hist volume_ratio lag_return_5 chaikin_osc ad_slope_10
+feature_infos=[0:1] [0:1] [0:1] [-inf:inf] [0:inf] [-inf:inf] [-inf:inf] [-inf:inf]
 tree_sizes=50 50 50
 
 %s%s%send of trees

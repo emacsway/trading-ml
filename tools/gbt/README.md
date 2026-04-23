@@ -103,7 +103,11 @@ spot-checking.
 Both scripts hard-code the expected CSV schema:
 
 ```python
-EXPECTED_FEATURES = ["rsi", "mfi", "bb_pct_b"]
+EXPECTED_FEATURES = [
+    "rsi", "mfi", "bb_pct_b",
+    "macd_hist", "volume_ratio", "lag_return_5",
+    "chaikin_osc", "ad_slope_10",
+]
 LABEL_COL = "label"
 NUM_CLASSES = 3
 ```
@@ -120,6 +124,38 @@ OCaml side. If you add a feature:
 The OCaml side validates the model's `feature_names` header
 against the strategy's array at `init` time and refuses
 mismatches — that's the drift safety net.
+
+A leading `ts` column is accepted in the CSV (produced by
+`export_training_data.exe`) and silently ignored by both
+scripts — it's debugging metadata, not a model input.
+
+## Sidecar metadata
+
+`train.py` writes `<model>.meta.json` next to every saved model
+— a frozen snapshot of how and when it was trained:
+
+```json
+{
+  "model_file": "sber_h1_v1.txt",
+  "trained_at": "2026-04-23T03:14:52+00:00",
+  "data":    { "csv_path": "...", "rows": 8616, "label_dist": {...} },
+  "cv":      { "mean_accuracy": 0.4118, "lift_pp": 7.85, ... },
+  "final":   { "num_trees": 150, "model_bytes": 45312, ... },
+  "params":  { "learning_rate": 0.03, ... },
+  "features": ["rsi", "mfi", ...],
+  "feature_importance_pct": { "rsi": 0.382, ... },
+  "runtime": { "python": "3.11.x", "lightgbm": "4.6.0", ... }
+}
+```
+
+`evaluate.py` reads it (if present) and prints the training-time
+CV baseline alongside today's accuracy, so drift surfaces as a
+single delta line.
+
+Treat the meta file as the model's twin — copy, deploy, and
+delete them together. A `.txt` without its `.meta.json` means
+either legacy or corrupted; retrain rather than try to
+reconstruct the missing context.
 
 ## Exit codes
 

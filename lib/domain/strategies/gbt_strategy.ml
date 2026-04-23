@@ -19,8 +19,32 @@ type state = {
   rsi : Indicators.Indicator.t;
   mfi : Indicators.Indicator.t;
   bb : Indicators.Indicator.t;
+  macd : Indicators.Indicator.t;
+  volume_ma : Indicators.Indicator.t;
+  ad : Indicators.Indicator.t;
+  chaikin : Indicators.Indicator.t;
+  (* Past closes for the 5-bar lag return feature. Capacity is
+     exactly [lag_return_bars]; when full, [oldest] is [close[t-5]]
+     and we compute [log(close[t] / close[t-5])] before pushing
+     the new close. *)
+  close_history : float Indicators.Ring.t;
+  (* Past A/D values for the 10-bar A/D slope feature. Same
+     "read oldest, then push" discipline as [close_history]. *)
+  ad_history : float Indicators.Ring.t;
   position : position;
 }
+
+(** Standard MACD triple; these are industry defaults and aren't
+    parametric on the strategy side — a training pipeline that
+    wants non-default MACD settings would need a matching model
+    retraining, so keeping them hard-coded is the honest stance.
+    Same reasoning for the Chaikin Oscillator's (3, 10) and the
+    A/D slope window. *)
+let macd_fast, macd_slow, macd_signal = 12, 26, 9
+let volume_ma_period = 20
+let lag_return_bars = 5
+let chaikin_fast, chaikin_slow = 3, 10
+let ad_slope_bars = 10
 
 let name = "GBT"
 
@@ -36,8 +60,19 @@ let default_params = {
 
 (** The strategy's canonical feature ordering. Training pipelines
     must emit columns in exactly this order; the model file's
-    [feature_names] array is cross-checked against this at [init]. *)
-let feature_names = [| "rsi"; "mfi"; "bb_pct_b" |]
+    [feature_names] array is cross-checked against this at [init].
+
+    - [rsi]          oversold/overbought momentum, scaled to [0..1]
+    - [mfi]          volume-weighted MFI, scaled to [0..1]
+    - [bb_pct_b]     %B position within Bollinger bands
+    - [macd_hist]    MACD histogram (fast EMA − slow EMA − signal EMA)
+    - [volume_ratio] [volume / VolumeMA(20)], proxy for "unusual bar"
+    - [lag_return_5] log return over the past 5 bars *)
+let feature_names = [|
+  "rsi"; "mfi"; "bb_pct_b";
+  "macd_hist"; "volume_ratio"; "lag_return_5";
+  "chaikin_osc"; "ad_slope_10";
+|]
 
 let validate_model_shape (m : Gbt.Gbt_model.t) : unit =
   (match m.objective with
@@ -83,6 +118,16 @@ let init p =
     rsi = Indicators.Rsi.make ~period:p.rsi_period;
     mfi = Indicators.Mfi.make ~period:p.mfi_period;
     bb = Indicators.Bollinger.make ~period:p.bb_period ~k:p.bb_k ();
+    macd = Indicators.Macd.make
+      ~fast:macd_fast ~slow:macd_slow ~signal:macd_signal ();
+    volume_ma = Indicators.Volume_ma.make ~period:volume_ma_period;
+    ad = Indicators.Ad.make ();
+    chaikin = Indicators.Chaikin_oscillator.make
+      ~fast:chaikin_fast ~slow:chaikin_slow ();
+    close_history =
+      Indicators.Ring.create ~capacity:lag_return_bars 0.0;
+    ad_history =
+      Indicators.Ring.create ~capacity:ad_slope_bars 0.0;
     position = Flat;
   }
 
@@ -119,19 +164,78 @@ let bb_pct_b ind close =
     else Some ((close -. lower) /. range)
   | _ -> None
 
+(** MACD histogram — third output of {!Indicators.Macd}. *)
+let macd_hist_of ind =
+  match Indicators.Indicator.value ind with
+  | Some (_, [_macd; _signal; hist]) -> Some hist
+  | _ -> None
+
 let on_candle st instrument (c : Candle.t) =
   let st = maybe_reload st in
   let rsi = Indicators.Indicator.update st.rsi c in
   let mfi = Indicators.Indicator.update st.mfi c in
   let bb  = Indicators.Indicator.update st.bb  c in
-  let st = { st with rsi; mfi; bb } in
+  let macd = Indicators.Indicator.update st.macd c in
+  let volume_ma = Indicators.Indicator.update st.volume_ma c in
+  let ad = Indicators.Indicator.update st.ad c in
+  let chaikin = Indicators.Indicator.update st.chaikin c in
   let close = Decimal.to_float c.Candle.close in
-  match scalar_1 rsi, scalar_1 mfi, bb_pct_b bb close with
-  | Some rsi_v, Some mfi_v, Some pctb ->
+  let volume = Decimal.to_float c.Candle.volume in
+  (* Lag return: compare current close against the oldest in the
+     history ring BEFORE pushing — once we push, oldest becomes
+     [close[t-4]] for next bar, which is wrong. *)
+  let lag_return_opt =
+    if Indicators.Ring.is_full st.close_history then
+      let old_close = Indicators.Ring.oldest st.close_history in
+      if old_close > 0.0 then Some (log (close /. old_close))
+      else None
+    else None
+  in
+  let close_history = Indicators.Ring.push st.close_history close in
+  (* A/D 10-bar slope, normalized: the A/D line is cumulative so
+     its raw value drifts unbounded with time; feeding [ad[t] -
+     ad[t-10]] relative to [|ad[t-10]| + 1] keeps the feature on a
+     stationary scale regardless of the series' absolute level. *)
+  let ad_slope_opt, ad_history =
+    match scalar_1 ad with
+    | None -> None, st.ad_history
+    | Some ad_now ->
+      let slope =
+        if Indicators.Ring.is_full st.ad_history then
+          let old_ad = Indicators.Ring.oldest st.ad_history in
+          Some ((ad_now -. old_ad) /. (Float.abs old_ad +. 1.0))
+        else None
+      in
+      slope, Indicators.Ring.push st.ad_history ad_now
+  in
+  let st = { st with rsi; mfi; bb; macd; volume_ma; ad; chaikin;
+             close_history; ad_history } in
+  let volume_ratio_opt =
+    match scalar_1 volume_ma with
+    | Some vma when vma > 0.0 -> Some (volume /. vma)
+    | _ -> None
+  in
+  match
+    scalar_1 rsi, scalar_1 mfi, bb_pct_b bb close,
+    macd_hist_of macd, volume_ratio_opt, lag_return_opt,
+    scalar_1 chaikin, ad_slope_opt
+  with
+  | Some rsi_v, Some mfi_v, Some pctb,
+    Some mh, Some vr, Some lr,
+    Some co, Some ads ->
     (* Scale RSI/MFI to [0..1] so all features share roughly the
        same range — GBT is tree-based and scale-insensitive, but
        symmetry helps humans reading feature importances. *)
-    let features = [| rsi_v /. 100.0; mfi_v /. 100.0; pctb |] in
+    let features = [|
+      rsi_v /. 100.0;
+      mfi_v /. 100.0;
+      pctb;
+      mh;
+      vr;
+      lr;
+      co;
+      ads;
+    |] in
     let probs = Gbt.Gbt_model.predict_class_probs st.model ~features in
     let argmax =
       let best = ref 0 in

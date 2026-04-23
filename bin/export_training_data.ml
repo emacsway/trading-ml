@@ -77,25 +77,102 @@ let bb_pct_b ind close =
     if r = 0.0 then None else Some ((close -. lower) /. r)
   | _ -> None
 
-(** Apply [Gbt_strategy]'s feature roster to every bar in [arr].
-    Returns a per-bar [(rsi, mfi, pctb) option]; [None] marks the
-    warm-up region where at least one indicator hasn't produced a
-    value yet. *)
-let compute_features (arr : Candle.t array) : (float * float * float) option array =
+let macd_hist_of ind =
+  match Indicators.Indicator.value ind with
+  | Some (_, [_macd; _signal; hist]) -> Some hist
+  | _ -> None
+
+(** Single-bar feature vector — same shape and order as
+    [Strategies.Gbt_strategy.feature_names]. If any piece is still
+    warming up (indicator returns [None] or the close-history ring
+    is short of [lag_return_bars]) the whole row is [None]. *)
+type feature_row = {
+  rsi : float;
+  mfi : float;
+  bb_pct_b : float;
+  macd_hist : float;
+  volume_ratio : float;
+  lag_return_5 : float;
+  chaikin_osc : float;
+  ad_slope_10 : float;
+}
+
+let lag_return_bars = 5
+let ad_slope_bars = 10
+
+(** Apply the GBT strategy's feature roster to every bar in [arr].
+    Strict mirror of [Strategies.Gbt_strategy.on_candle]'s feature
+    assembly — any drift between the two silently garbages the
+    trained model. If you change one, change both. *)
+let compute_features (arr : Candle.t array) : feature_row option array =
   let n = Array.length arr in
   let out = Array.make n None in
   let rsi_ = ref (Indicators.Rsi.make ~period:14) in
   let mfi_ = ref (Indicators.Mfi.make ~period:14) in
   let bb_  = ref (Indicators.Bollinger.make ~period:20 ~k:2.0 ()) in
+  let macd_ = ref (Indicators.Macd.make ~fast:12 ~slow:26 ~signal:9 ()) in
+  let vma_ = ref (Indicators.Volume_ma.make ~period:20) in
+  let ad_ = ref (Indicators.Ad.make ()) in
+  let chaikin_ = ref (Indicators.Chaikin_oscillator.make ~fast:3 ~slow:10 ()) in
+  let close_ring_ =
+    ref (Indicators.Ring.create ~capacity:lag_return_bars 0.0) in
+  let ad_ring_ =
+    ref (Indicators.Ring.create ~capacity:ad_slope_bars 0.0) in
   for i = 0 to n - 1 do
     let c = arr.(i) in
     rsi_ := Indicators.Indicator.update !rsi_ c;
     mfi_ := Indicators.Indicator.update !mfi_ c;
     bb_  := Indicators.Indicator.update !bb_ c;
+    macd_ := Indicators.Indicator.update !macd_ c;
+    vma_ := Indicators.Indicator.update !vma_ c;
+    ad_  := Indicators.Indicator.update !ad_ c;
+    chaikin_ := Indicators.Indicator.update !chaikin_ c;
     let close = Decimal.to_float c.Candle.close in
-    match scalar_1 !rsi_, scalar_1 !mfi_, bb_pct_b !bb_ close with
-    | Some r, Some m, Some b ->
-      out.(i) <- Some (r /. 100.0, m /. 100.0, b)
+    let volume = Decimal.to_float c.Candle.volume in
+    (* Read lag-return BEFORE pushing the current close — same
+       ordering as [Gbt_strategy.on_candle]. *)
+    let lag_opt =
+      if Indicators.Ring.is_full !close_ring_ then
+        let old = Indicators.Ring.oldest !close_ring_ in
+        if old > 0.0 then Some (log (close /. old)) else None
+      else None
+    in
+    close_ring_ := Indicators.Ring.push !close_ring_ close;
+    let ad_slope_opt =
+      match scalar_1 !ad_ with
+      | None -> None
+      | Some ad_now ->
+        let slope =
+          if Indicators.Ring.is_full !ad_ring_ then
+            let old = Indicators.Ring.oldest !ad_ring_ in
+            Some ((ad_now -. old) /. (Float.abs old +. 1.0))
+          else None
+        in
+        ad_ring_ := Indicators.Ring.push !ad_ring_ ad_now;
+        slope
+    in
+    let volume_ratio_opt =
+      match scalar_1 !vma_ with
+      | Some vma when vma > 0.0 -> Some (volume /. vma)
+      | _ -> None
+    in
+    match
+      scalar_1 !rsi_, scalar_1 !mfi_, bb_pct_b !bb_ close,
+      macd_hist_of !macd_, volume_ratio_opt, lag_opt,
+      scalar_1 !chaikin_, ad_slope_opt
+    with
+    | Some r, Some m, Some b, Some mh, Some vr, Some lr,
+      Some co, Some ads ->
+      out.(i) <- Some {
+        rsi = r /. 100.0;
+        mfi = m /. 100.0;
+        bb_pct_b = b;
+        macd_hist = mh;
+        volume_ratio = vr;
+        lag_return_5 = lr;
+        chaikin_osc = co;
+        ad_slope_10 = ads;
+      }
     | _ -> ()
   done;
   out
@@ -104,16 +181,18 @@ let write_csv
     ~path
     ~horizon ~threshold
     (arr : Candle.t array)
-    (feats : (float * float * float) option array) =
+    (feats : feature_row option array) =
   let n = Array.length arr in
   let oc = Out_channel.open_text path in
-  Out_channel.output_string oc "rsi,mfi,bb_pct_b,label\n";
+  Out_channel.output_string oc
+    "ts,rsi,mfi,bb_pct_b,macd_hist,volume_ratio,lag_return_5,\
+     chaikin_osc,ad_slope_10,label\n";
   let written = ref 0 in
   let skipped_warmup = ref 0 in
   for i = 0 to n - 1 - horizon do
     match feats.(i) with
     | None -> incr skipped_warmup
-    | Some (r, m, b) ->
+    | Some f ->
       let close_now = Decimal.to_float arr.(i).Candle.close in
       let close_future = Decimal.to_float arr.(i + horizon).Candle.close in
       let ret = (close_future -. close_now) /. close_now in
@@ -123,7 +202,12 @@ let write_csv
         else 1
       in
       Out_channel.output_string oc
-        (Printf.sprintf "%.6f,%.6f,%.6f,%d\n" r m b label);
+        (Printf.sprintf "%Ld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n"
+           arr.(i).Candle.ts
+           f.rsi f.mfi f.bb_pct_b
+           f.macd_hist f.volume_ratio f.lag_return_5
+           f.chaikin_osc f.ad_slope_10
+           label);
       incr written
   done;
   Out_channel.close oc;

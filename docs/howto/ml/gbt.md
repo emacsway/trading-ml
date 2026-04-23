@@ -70,11 +70,16 @@ Wrote 8616 rows to /tmp/sber_h1.csv (skipped 19 warmup, 5 tail bars w/o future)
 The CSV has a header row:
 
 ```
-rsi,mfi,bb_pct_b,label
-0.485213,0.472901,0.312041,1
-0.512044,0.506311,0.401202,2
+ts,rsi,mfi,bb_pct_b,macd_hist,volume_ratio,lag_return_5,chaikin_osc,ad_slope_10,label
+1704067200,0.485,0.472,0.312,0.124,1.05,0.002,-3412.1,0.015,1
+1704070800,0.512,0.506,0.401,0.156,0.98,0.004,-2201.4,0.022,2
 ...
 ```
+
+The leading `ts` column is the bar's unix-seconds timestamp — not
+fed to the model during training, but handy for debugging
+(joining predictions back to prices, slicing by calendar regime,
+etc.). The training script drops it automatically.
 
 ## Step 2 — Train in Python
 
@@ -97,7 +102,7 @@ period):
 
 ```
 Input:    /tmp/sber_h1.csv  (8616 rows)
-Features: ['rsi', 'mfi', 'bb_pct_b']
+Features: ['rsi', 'mfi', 'bb_pct_b', 'macd_hist', 'volume_ratio', 'lag_return_5', 'chaikin_osc', 'ad_slope_10']
 Labels:   0=2890 (33.5%), 1=2802 (32.5%), 2=2924 (33.9%)
 
 === Walk-forward CV (5 splits) ===
@@ -114,10 +119,23 @@ Final model: rows [0:8616] (8616 rows) × 50 rounds
 Saved → /.../sber_h1_v1.txt  (45,312 bytes, 150 trees)
 
 === Feature importance (gain) ===
-  rsi          gain=   1204.3  (42.8%)
-  bb_pct_b     gain=    987.6  (35.1%)
-  mfi          gain=    621.8  (22.1%)
+  rsi            gain=   1204.3  (38.2%)
+  bb_pct_b       gain=    987.6  (31.3%)
+  macd_hist      gain=    412.1  (13.1%)
+  mfi            gain=    305.7  ( 9.7%)
+  volume_ratio   gain=    156.3  ( 5.0%)
+  lag_return_5   gain=     84.9  ( 2.7%)
+Meta  → /.../sber_h1_v1.meta.json
 ```
+
+The sidecar `sber_h1_v1.meta.json` written next to the model
+captures training-time context for audits: data provenance
+(input CSV path, row count, label distribution), CV numbers
+(per-fold accuracy, mean/std, baseline lift, best-iter median),
+final model stats (trees, bytes), full LightGBM params, feature
+importance, and Python/lightgbm versions. The file is read by
+`evaluate.py` later to print the original CV baseline alongside
+today's accuracy — so drift shows up as a single delta line.
 
 **Reading the numbers**: a three-class task with roughly balanced
 labels has random-baseline accuracy 1/3 ≈ 0.333. Anything

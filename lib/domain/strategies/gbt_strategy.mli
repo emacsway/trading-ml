@@ -10,16 +10,27 @@
       fails at [init] — silently garbaging predictions is worse
       than a startup crash.
 
-    Features computed per bar:
-    - [rsi]       — {!Indicators.Rsi} scaled to [0..1]
-    - [mfi]       — {!Indicators.Mfi} scaled to [0..1]
-    - [bb_pct_b]  — Bollinger %B: [(close - lower) / (upper - lower)]
+    Features computed per bar (see {!feature_names} for the canonical
+    order — any training pipeline must emit columns identically):
+    - [rsi]          oversold/overbought momentum, scaled to [0..1]
+    - [mfi]          volume-weighted MFI, scaled to [0..1]
+    - [bb_pct_b]     Bollinger %B: [(close - lower) / (upper - lower)]
+    - [macd_hist]    MACD(12,26,9) histogram — fast_ema - slow_ema - signal
+    - [volume_ratio] [volume / VolumeMA(20)]; proxy for "bar is unusually active"
+    - [lag_return_5] [log(close[t] / close[t-5])] — 5-bar log return
+    - [chaikin_osc]  Chaikin Oscillator (3, 10): MACD-style momentum of
+                     the A/D line; centered near zero by construction
+    - [ad_slope_10]  normalized 10-bar rate of change of the
+                     cumulative A/D line: [(ad[t] - ad[t-10]) /
+                     (|ad[t-10]| + 1)]. Raw A/D drifts unbounded with
+                     time and would make the model non-stationary;
+                     this ratio keeps the feature on a fixed scale.
 
-    These cover oversold/overbought momentum (RSI), volume-weighted
-    counterpart (MFI) and volatility-relative position (%B). Rich
-    enough for a first working baseline; extend the feature roster
-    together with a retrained model when the next iteration
-    demands more. *)
+    All indicator periods (MACD / VolumeMA / Chaikin / lag windows)
+    are standard and hard-coded on the strategy side. Non-default
+    settings would require a matching retraining, so keeping them
+    non-parametric avoids the silent-drift footgun of mismatched
+    training vs inference. *)
 
 open Core
 

@@ -166,15 +166,44 @@ between simplicity and trading relevance.
 
 Features are whatever the wrapping strategy pushes in, typically:
 
-- Price-derived: lagged returns `r_{t-1}, r_{t-5}, r_{t-20}`,
-  realized volatility.
-- Indicator-derived: `RSI`, `MACD`, `Bollinger %B`, `MFI`, `OBV`
-  slope — all already in [`lib/domain/indicators/`](../../../lib/domain/indicators/).
-- Volume-derived: `volume / VolumeMA`.
+The default roster (what `Gbt_strategy.feature_names` declares
+and `export_training_data.exe` writes):
+
+- `rsi`          — RSI(14), scaled to [0..1]
+- `mfi`          — MFI(14), scaled to [0..1]
+- `bb_pct_b`     — Bollinger %B: `(close - lower) / (upper - lower)`
+- `macd_hist`    — MACD(12,26,9) histogram
+- `volume_ratio` — `volume / VolumeMA(20)`
+- `lag_return_5` — `log(close[t] / close[t-5])`
+- `chaikin_osc`  — Chaikin Oscillator (3, 10): MACD-style momentum
+                   of the A/D line; centered near zero by
+                   construction.
+- `ad_slope_10`  — 10-bar normalized rate of change of the A/D
+                   line: `(ad[t] - ad[t-10]) / (|ad[t-10]| + 1)`.
+                   Using raw A/D would be a footgun — it's
+                   cumulative and drifts unbounded with time, so a
+                   model trained on 2024 data would see 2025-level
+                   A/D values far outside any learned split point.
+                   The ratio keeps the feature on a stationary scale.
+
+Adding a feature means touching all three places in lockstep:
+the strategy's `feature_names` array and `on_candle` assembly,
+`export_training_data.ml`'s `compute_features`, and Python's
+`EXPECTED_FEATURES`. The `Gbt_model.t` header carries
+`feature_names`, and `Gbt_strategy.init` refuses to load a model
+whose declared order doesn't match the strategy's — that's the
+drift safety net against a stale script emitting columns in a
+different order.
+
+Candidates for future expansion that fit the same shape without
+fundamental restructuring:
+
+- Additional lag returns (`r_{t-1}`, `r_{t-20}`), realized
+  volatility over a window.
+- Per-indicator slope features (e.g. `RSI[t] - RSI[t-5]`).
 - Microstructure (WS-only): bid-ask spread, order-book
   imbalance.
-- Time: hour-of-day, day-of-week (as cyclic sin/cos features or
-  integer categoricals mapped to numeric).
+- Time: hour-of-day / day-of-week as cyclic sin/cos pairs.
 
 `Gbt_strategy`'s job is to compute these from the bar stream in a
 deterministic order that matches the training pipeline's column

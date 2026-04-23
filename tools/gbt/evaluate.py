@@ -12,6 +12,7 @@ Does not modify the model.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -20,7 +21,11 @@ import numpy as np
 import pandas as pd
 
 
-EXPECTED_FEATURES = ["rsi", "mfi", "bb_pct_b"]
+EXPECTED_FEATURES = [
+    "rsi", "mfi", "bb_pct_b",
+    "macd_hist", "volume_ratio", "lag_return_5",
+    "chaikin_osc", "ad_slope_10",
+]
 LABEL_COL = "label"
 NUM_CLASSES = 3
 
@@ -44,6 +49,18 @@ def main() -> int:
           f"features={model.num_feature()}  "
           f"feature_name={model.feature_name()}")
 
+    # Sidecar produced by train.py — if present, show the training-
+    # time CV lift so we can compare against today's accuracy below
+    # and spot drift at a glance.
+    meta_path = args.model.with_suffix(".meta.json")
+    training_mean_acc = None
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        training_mean_acc = meta.get("cv", {}).get("mean_accuracy")
+        print(f"  trained_at={meta.get('trained_at')}  "
+              f"data_rows={meta.get('data', {}).get('rows')}  "
+              f"cv_mean_acc={training_mean_acc}")
+
     if model.feature_name() != EXPECTED_FEATURES:
         print(f"\nWARNING: model features {model.feature_name()} "
               f"!= strategy expectation {EXPECTED_FEATURES}",
@@ -66,6 +83,11 @@ def main() -> int:
     print(f"Accuracy: {acc:.4f}")
     print(f"Baseline: {baseline:.4f}  (random {NUM_CLASSES}-class)")
     print(f"Lift:     {(acc - baseline) * 100:+.2f} pp")
+    if training_mean_acc is not None:
+        drift_pp = (acc - training_mean_acc) * 100
+        print(f"Training CV baseline: {training_mean_acc:.4f}")
+        print(f"Drift vs training:    {drift_pp:+.2f} pp "
+              f"({'concerning' if drift_pp < -2.0 else 'ok'})")
 
     # Confusion matrix: rows = actual label, cols = predicted.
     cm = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=int)

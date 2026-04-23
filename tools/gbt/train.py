@@ -16,7 +16,9 @@ in production.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import platform
 import sys
 from pathlib import Path
 
@@ -29,7 +31,11 @@ from sklearn.model_selection import TimeSeriesSplit
 # Must stay in lockstep with Strategies.Gbt_strategy.feature_names
 # on the OCaml side. If you add a feature, update BOTH and the
 # export_training_data tool's column writer.
-EXPECTED_FEATURES = ["rsi", "mfi", "bb_pct_b"]
+EXPECTED_FEATURES = [
+    "rsi", "mfi", "bb_pct_b",
+    "macd_hist", "volume_ratio", "lag_return_5",
+    "chaikin_osc", "ad_slope_10",
+]
 LABEL_COL = "label"
 NUM_CLASSES = 3
 
@@ -216,9 +222,59 @@ def main() -> int:
     print("\n=== Feature importance (gain) ===")
     imps = model.feature_importance(importance_type="gain")
     total = float(sum(imps)) or 1.0
+    importance_pct = {}
     for name, imp in sorted(zip(EXPECTED_FEATURES, imps),
                             key=lambda kv: -kv[1]):
-        print(f"  {name:<12} gain={imp:>10.1f}  ({imp/total:.1%})")
+        pct = float(imp) / total
+        importance_pct[name] = pct
+        print(f"  {name:<14} gain={imp:>10.1f}  ({pct:.1%})")
+
+    # Sidecar metadata: audit trail next to the model file. Kept in
+    # sync by always writing both together so a stray [.txt] file
+    # without its [.meta.json] means "legacy or corrupted" — fresh
+    # retraining always produces the pair atomically.
+    meta = {
+        "model_file":  args.output.name,
+        "trained_at":  dt.datetime.now(dt.timezone.utc).isoformat(
+                           timespec="seconds"),
+        "data": {
+            "csv_path":    str(args.input),
+            "rows":        len(df),
+            "label_dist":  {
+                str(k): int(v) for k, v in pd.Series(y).value_counts().items()
+            },
+        },
+        "cv": {
+            "n_splits":               args.n_splits,
+            "fold_accuracy":          [round(a, 6) for a in accs],
+            "mean_accuracy":          round(mean_acc, 6),
+            "std_accuracy":           round(float(np.std(accs)), 6),
+            "baseline_accuracy":      round(baseline, 6),
+            "lift_pp":                round((mean_acc - baseline) * 100, 4),
+            "best_iterations":        best_iters,
+            "median_best_iteration":  int(np.median(best_iters)),
+        },
+        "final": {
+            "num_boost_round":  final_rounds,
+            "final_fraction":   args.final_fraction,
+            "num_trees":        model.num_trees(),
+            "model_bytes":      size,
+        },
+        "params":   {k: params[k] for k in sorted(params)},
+        "features": EXPECTED_FEATURES,
+        "feature_importance_pct": {
+            k: round(v, 6) for k, v in importance_pct.items()
+        },
+        "runtime": {
+            "python":   platform.python_version(),
+            "lightgbm": lgb.__version__,
+            "numpy":    np.__version__,
+            "pandas":   pd.__version__,
+        },
+    }
+    meta_path = args.output.with_suffix(".meta.json")
+    meta_path.write_text(json.dumps(meta, indent=2, sort_keys=False))
+    print(f"Meta  → {meta_path}")
 
     return 0
 
