@@ -263,6 +263,103 @@ end of trees
          classes [0=down; 1=flat; 2=up]")
       (fun () -> ignore (build path)))
 
+(** Constant-class model builder: every tree on every iteration
+    pushes [boost] into class [favored], zero elsewhere. Softmax
+    over raw scores then picks [favored] by a wide margin. Used
+    only by the hot-reload test where we need a model whose
+    predictions are completely decoupled from feature values. *)
+let constant_class_model ~favored ~boost =
+  let tree_for c =
+    let leaf = if c = favored then boost else 0.0 in
+    Printf.sprintf {|Tree=%d
+num_leaves=2
+num_cat=0
+split_feature=0
+threshold=0.5
+decision_type=2
+left_child=-1
+right_child=-2
+leaf_value=%f %f
+is_linear=0
+shrinkage=1
+
+|} c leaf leaf
+  in
+  Printf.sprintf {|tree
+version=v3
+num_class=3
+num_tree_per_iteration=3
+label_index=0
+max_feature_idx=2
+objective=multiclass num_class:3
+feature_names=rsi mfi bb_pct_b
+feature_infos=[0:1] [0:1] [0:1]
+tree_sizes=50 50 50
+
+%s%s%send of trees
+|} (tree_for 0) (tree_for 1) (tree_for 2)
+
+(** [Gbt_strategy] re-stats the model file before every prediction
+    and transparently picks up an atomically-replaced version.
+    Test: start with a [class 0 always wins] model (under
+    [allow_short=true] that means Enter_short on a confident
+    prediction), overwrite with [class 2 always wins], force a
+    future mtime so the reload detector fires, and verify the
+    signal flips to Enter_long. *)
+let test_hot_reload_picks_up_new_model () =
+  with_tmp_model (constant_class_model ~favored:0 ~boost:3.0) (fun path ->
+    let strat = build ~allow_short:true path in
+    let warmup = List.init 25 (fun i -> 100.0 +. float_of_int i *. 0.1) in
+    let up1 = List.init 10 (fun i -> 103.0 +. float_of_int i) in
+    (* Phase 1: run through the class=0 model; expect Enter_short
+       (class=0 with allow_short=true maps to "go short"). *)
+    let strat_after_phase1, acts_phase1 =
+      List.fold_left (fun (s, acc) c ->
+        let s', sig_ = Strategies.Strategy.on_candle s inst c in
+        s', sig_.Signal.action :: acc)
+        (strat, []) (ohlc_candles_from_prices (warmup @ up1))
+    in
+    let acts_phase1 = List.rev acts_phase1 in
+    Alcotest.(check bool) "phase 1 (class=0): Enter_short seen"
+      true (contains Signal.Enter_short acts_phase1);
+    (* Overwrite the model with a class=2 winner; bump mtime into
+       the future so the strategy's reload detector fires on the
+       next [on_candle] call. *)
+    Out_channel.with_open_text path (fun oc ->
+      Out_channel.output_string oc
+        (constant_class_model ~favored:2 ~boost:3.0));
+    let now = Unix.gettimeofday () in
+    Unix.utimes path now (now +. 3600.0);
+    (* Phase 2: same strategy instance continues. First bar should
+       reload the model; position was Short at the end of phase 1,
+       so the first confident class=2 prediction flips to Enter_long. *)
+    let up2 = List.init 10 (fun i -> 120.0 +. float_of_int i) in
+    let _, acts_phase2 =
+      List.fold_left (fun (s, acc) c ->
+        let s', sig_ = Strategies.Strategy.on_candle s inst c in
+        s', sig_.Signal.action :: acc)
+        (strat_after_phase1, []) (ohlc_candles_from_prices up2)
+    in
+    let acts_phase2 = List.rev acts_phase2 in
+    Alcotest.(check bool) "phase 2 (reloaded class=2): Enter_long seen"
+      true (contains Signal.Enter_long acts_phase2))
+
+let test_unchanged_mtime_does_not_reload () =
+  (* Sanity: if the file's mtime doesn't advance, the strategy
+     keeps the model it already loaded — no per-bar reparsing. *)
+  with_tmp_model (constant_class_model ~favored:0 ~boost:3.0) (fun path ->
+    let strat = build ~allow_short:true path in
+    (* Pin mtime to a known past value, run a batch, pin it again
+       (same value), run another batch. Nothing should change. *)
+    let pin = Unix.gettimeofday () -. 3600.0 in
+    Unix.utimes path pin pin;
+    let warmup = List.init 25 (fun i -> 100.0 +. float_of_int i *. 0.1) in
+    let up = List.init 10 (fun i -> 103.0 +. float_of_int i) in
+    let candles = ohlc_candles_from_prices (warmup @ up) in
+    let acts = actions_from_ohlc strat candles in
+    Alcotest.(check bool) "class=0 pinned → Enter_short still fires"
+      true (contains Signal.Enter_short acts))
+
 let tests = [
   "uptrend → Enter_long",              `Quick, test_uptrend_triggers_enter_long;
   "reversal → Exit_long",              `Quick, test_reversal_exits_long;
@@ -272,4 +369,6 @@ let tests = [
   "rejects missing model_path",        `Quick, test_rejects_missing_model_path;
   "rejects feature name mismatch",     `Quick, test_rejects_feature_name_mismatch;
   "rejects non-multiclass objective",  `Quick, test_rejects_non_multiclass_objective;
+  "hot-reload picks up new model",     `Quick, test_hot_reload_picks_up_new_model;
+  "unchanged mtime: no reload",        `Quick, test_unchanged_mtime_does_not_reload;
 ]

@@ -60,7 +60,12 @@ let usage () =
       show registered indicators and strategies
 
   backtest <strategy> [--n N] [--symbol SBER@MISX]
-      run a backtest on synthetic data and print summary
+                      [--param KEY=VALUE ...]
+      run a backtest on synthetic data and print summary.
+      --param can be repeated; keys and types come from the
+      strategy's registry entry (see `trading list`). Example:
+        trading backtest GBT --param model_path=/tmp/sber.txt \
+                             --param enter_threshold=0.6
 
 Offline data / model tooling ships as separate binaries to keep
 this runtime CLI focused on live operations:
@@ -84,6 +89,54 @@ let cmd_list () =
   List.iter (fun s -> Printf.printf "  - %s\n" s.Strategies.Registry.name)
     Strategies.Registry.specs
 
+(** Collect every value that follows a given flag; useful for repeated
+    CLI args like [--param KEY=VALUE --param OTHER=VAL]. *)
+let arg_values name args =
+  let rec go acc = function
+    | k :: v :: rest when k = name -> go (v :: acc) rest
+    | _ :: rest -> go acc rest
+    | [] -> List.rev acc
+  in go [] args
+
+(** Parse one [KEY=VALUE] string against the spec's declared
+    parameter types. Returns [(key, coerced_param)] or raises
+    [Invalid_argument] with a pointed message.
+
+    We look up the key's declared type in [spec.params] (the entry
+    default tells us whether it's Int / Float / Bool / String), then
+    coerce the value accordingly. Unknown keys are rejected rather
+    than silently dropped — a typo in a CLI invocation that looks
+    like it worked but had no effect is a worse failure mode than
+    an error. *)
+let parse_strategy_param
+    (spec : Strategies.Registry.spec) (kv : string)
+    : string * Strategies.Registry.param =
+  match String.index_opt kv '=' with
+  | None ->
+    invalid_arg
+      (Printf.sprintf "--param expects KEY=VALUE, got %S" kv)
+  | Some i ->
+    let k = String.sub kv 0 i in
+    let v = String.sub kv (i + 1) (String.length kv - i - 1) in
+    match List.assoc_opt k spec.params with
+    | None ->
+      invalid_arg (Printf.sprintf
+        "unknown --param key %S for strategy %S (expected one of: %s)"
+        k spec.name
+        (String.concat ", " (List.map fst spec.params)))
+    | Some (Strategies.Registry.Int _) ->
+      k, Strategies.Registry.Int (int_of_string v)
+    | Some (Strategies.Registry.Float _) ->
+      k, Strategies.Registry.Float (float_of_string v)
+    | Some (Strategies.Registry.Bool _) ->
+      k, Strategies.Registry.Bool (bool_of_string v)
+    | Some (Strategies.Registry.String _) ->
+      k, Strategies.Registry.String v
+
+let strategy_params_from_args spec args
+    : (string * Strategies.Registry.param) list =
+  arg_values "--param" args |> List.map (parse_strategy_param spec)
+
 let cmd_backtest args =
   let strat_name = match args with
     | n :: _ -> n | [] -> usage () in
@@ -104,7 +157,8 @@ let cmd_backtest args =
     Printf.eprintf "unknown strategy %s\n" strat_name;
     exit 1
   | Some spec ->
-    let strat = spec.build [] in
+    let params = strategy_params_from_args spec args in
+    let strat = spec.build params in
     let syn = Synthetic.Synthetic_broker.make () in
     let candles = Synthetic.Synthetic_broker.bars syn
       ~n ~instrument ~timeframe:Timeframe.H1 in
@@ -299,7 +353,7 @@ let cmd_serve args =
         Printf.eprintf "unknown --strategy: %s (use `trading list`)\n" name;
         exit 2
       | Some spec ->
-        let strat = spec.build [] in
+        let strat = spec.build (strategy_params_from_args spec args) in
         let equity = Decimal.of_int 1_000_000 in
         let cfg : Live_engine.config = {
           broker = client;

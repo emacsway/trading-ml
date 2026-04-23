@@ -271,9 +271,13 @@ python "$REPO/tools/gbt/train.py" \
 ln -sf "$MODEL_DIR/sber_h1_$TODAY.txt" "$MODEL_DIR/sber_h1_current.txt"
 ```
 
-`Gbt_strategy` loads the model once at `init` — to pick up a new
-one, restart the running engine (or extend the strategy with an
-mtime check on every N bars; not implemented yet).
+`Gbt_strategy` watches the model file by mtime and transparently
+reloads on change. The atomic rename pattern above (`ln -sf`
+through a dated tmp target) causes a single mtime bump that the
+strategy picks up before its next prediction — no engine restart
+needed. A parse failure on the new file raises loudly rather
+than falling back to the old model silently; supervision
+decides whether to halt or roll back.
 
 ## Troubleshooting
 

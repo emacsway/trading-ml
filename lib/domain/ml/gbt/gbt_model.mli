@@ -42,6 +42,12 @@ val of_text : string -> t
 val of_file : string -> t
 (** Convenience wrapper around {!of_text} that reads [path]. *)
 
+val file_mtime : string -> float option
+(** Last-modified timestamp of [path], or [None] if the file can't
+    be stat'd (missing, permission denied, FS error). Used by
+    callers that watch the model file and reload on atomic rename
+    (e.g. the retraining cron's [mv tmp file] handover). *)
+
 val predict : t -> features:float array -> float
 (** Single-sample prediction. Return value depends on objective:
     - [Regression] → raw value

@@ -264,3 +264,7 @@ let of_file (path : string) : t =
     In_channel.with_open_text path (fun ic -> In_channel.input_all ic)
   in
   of_text content
+
+let file_mtime (path : string) : float option =
+  try Some (Unix.stat path).st_mtime
+  with _ -> None

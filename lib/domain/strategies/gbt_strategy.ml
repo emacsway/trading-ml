@@ -15,6 +15,7 @@ type position = Flat | Long | Short
 type state = {
   params : params;
   model : Gbt.Gbt_model.t;
+  model_mtime : float;
   rsi : Indicators.Indicator.t;
   mfi : Indicators.Indicator.t;
   bb : Indicators.Indicator.t;
@@ -54,6 +55,18 @@ let validate_model_shape (m : Gbt.Gbt_model.t) : unit =
       (String.concat ", " (Array.to_list feature_names))
       (String.concat ", " (Array.to_list m.feature_names)))
 
+(** Load-and-validate helper — parses the text dump, asserts the
+    [Multiclass 3] + [feature_names] contract, and returns the
+    model plus its file mtime. Used by both [init] and the hot-
+    reload path, so validation errors are surfaced uniformly. *)
+let load_model (path : string) : Gbt.Gbt_model.t * float =
+  let m = Gbt.Gbt_model.of_file path in
+  validate_model_shape m;
+  let mtime =
+    Option.value (Gbt.Gbt_model.file_mtime path) ~default:0.0
+  in
+  m, mtime
+
 let init p =
   if p.model_path = "" then
     invalid_arg "Gbt_strategy: model_path must be set";
@@ -62,16 +75,33 @@ let init p =
   if p.bb_period <= 1 then invalid_arg "Gbt_strategy: bb_period > 1";
   if p.enter_threshold < 0.34 || p.enter_threshold > 1.0 then
     invalid_arg "Gbt_strategy: enter_threshold in (0.34, 1.0]";
-  let model = Gbt.Gbt_model.of_file p.model_path in
-  validate_model_shape model;
+  let model, model_mtime = load_model p.model_path in
   {
     params = p;
     model;
+    model_mtime;
     rsi = Indicators.Rsi.make ~period:p.rsi_period;
     mfi = Indicators.Mfi.make ~period:p.mfi_period;
     bb = Indicators.Bollinger.make ~period:p.bb_period ~k:p.bb_k ();
     position = Flat;
   }
+
+(** Hot-reload hook. Between bars the training cron may have
+    atomically rename'd a fresh model into place — poll [mtime]
+    before each prediction and swap in the new model if it's
+    newer than what we have in memory. A parse failure on the new
+    file (half-written, format drift, feature-name mismatch)
+    raises; there's no "silent fallback to old model" because
+    that would mask the drift indefinitely — fail visibly and let
+    supervision decide whether to halt or restart. Transient stat
+    failures (file briefly missing mid-rename) are a non-event
+    and leave [st] unchanged. *)
+let maybe_reload (st : state) : state =
+  match Gbt.Gbt_model.file_mtime st.params.model_path with
+  | Some mtime when mtime > st.model_mtime ->
+    let model, model_mtime = load_model st.params.model_path in
+    { st with model; model_mtime }
+  | _ -> st
 
 (** Extract a scalar indicator output or [None] during warm-up. *)
 let scalar_1 ind =
@@ -90,6 +120,7 @@ let bb_pct_b ind close =
   | _ -> None
 
 let on_candle st instrument (c : Candle.t) =
+  let st = maybe_reload st in
   let rsi = Indicators.Indicator.update st.rsi c in
   let mfi = Indicators.Indicator.update st.mfi c in
   let bb  = Indicators.Indicator.update st.bb  c in
