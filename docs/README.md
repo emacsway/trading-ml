@@ -118,6 +118,10 @@ order for a tour; read individually for a specific concern.
 9. [Logistic regression](architecture/ml/logistic_regression.md) —
    lightweight classifier as a gating function for the
    `Composite.Learned` policy; SGD + L2 in ~70 lines.
+10. [Triple-barrier labelling](architecture/ml/triple_barrier.md) —
+    path-sensitive, volatility-adaptive label derivation for
+    supervised training; the intended alternative to "sign of
+    forward return" when the strategy will trade TP/SL brackets.
 
 ## How-to guides
 
@@ -130,6 +134,10 @@ concrete commands, expected output, troubleshooting.
 - [Train and deploy a logistic gate](howto/ml/logistic_regression.md) —
   in-process OCaml training for the `Composite.Learned` policy;
   no Python, weights are a 10-scalar array.
+- [Triple-barrier vs threshold labels: A/B comparison](howto/ml/triple_barrier.md)
+  — practical workflow for deciding whether path-sensitive
+  labelling actually helps your model, with tuning guidance and
+  pitfalls.
 
 ## Decision records (ADR)
 
