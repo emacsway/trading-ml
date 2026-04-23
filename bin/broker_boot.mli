@@ -5,6 +5,8 @@
     handle for server-side wiring). Both [main.ml] and
     [export_training_data.ml] consume this. *)
 
+open Core
+
 val arg_value : string -> string list -> string option
 (** [arg_value "--foo" argv] — value following [--foo] in the
     argument list, or [None] if the flag is absent. *)
@@ -42,3 +44,15 @@ val open_bcs :
     (--secret seed → persistent file → BCS_SECRET env). *)
 
 val open_synthetic : unit -> opened
+
+val paginate_bars :
+  fetch:(from_ts:int64 -> to_ts:int64 -> Candle.t list) ->
+  from_ts:int64 ->
+  to_ts:int64 ->
+  Candle.t list
+(** Fetch historical bars across a wide date range by chunking.
+    Brokers cap per-call bar count (BCS hard-limits at 1440, Finam
+    has a similar but less-documented ceiling); we walk [to_ts]
+    backwards in chunks until [from_ts] is covered or the broker
+    stops making progress. The returned list is chronological with
+    duplicates on chunk boundaries removed. *)

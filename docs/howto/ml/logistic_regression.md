@@ -45,80 +45,74 @@ in your data is the empirical question the trainer answers.
 
 ## Prerequisites
 
-None outside the OCaml build. No Python, no venv, no separate
-CLI tool. Just `dune build`.
+None outside the OCaml build. No Python, no venv. The training
+is a dedicated binary built together with the rest of the
+project — `dune build` produces `_build/default/bin/train_logistic.exe`.
 
-## Minimal working example
+Broker credentials are resolved the same way as for other
+binaries (see `trading --help` for full list): `--secret` /
+`--account` / `--client-id` flags or the matching
+`<BROKER>_SECRET` / `<BROKER>_ACCOUNT_ID` / `BCS_CLIENT_ID`
+env vars.
 
-Put this in a scratch file (say `bin/train_logistic.ml`):
-
-```ocaml
-open Core
-
-let () =
-  Eio_main.run @@ fun env ->
-  Mirage_crypto_rng_unix.use_default ();
-
-  (* 1. Pull historical bars from whichever broker you have creds for. *)
-  let instrument = Instrument.of_qualified "SBER@MISX" in
-  let rest =
-    let cfg = Finam.Config.make
-      ~account_id:(Sys.getenv "FINAM_ACCOUNT_ID")
-      ~secret:(Sys.getenv "FINAM_SECRET") () in
-    Finam.Rest.make ~transport:(Http_transport.make_eio ~env) ~cfg
-  in
-  let candles = Finam.Rest.bars rest ~n:5000 ~instrument ~timeframe:H1 in
-  Printf.printf "Loaded %d candles\n%!" (List.length candles);
-
-  (* 2. Construct the child strategies whose signals the classifier
-        will learn to gate. Order matters — the feature vector
-        encodes them by position. *)
-  let children = [
-    Strategies.Strategy.default (module Strategies.Sma_crossover);
-    Strategies.Strategy.default (module Strategies.Rsi_mean_reversion);
-    Strategies.Strategy.default (module Strategies.Macd_momentum);
-    Strategies.Strategy.default (module Strategies.Bollinger_breakout);
-  ] in
-
-  (* 3. Fit. 70/30 walk-forward split happens inside [Trainer.train];
-        see architecture doc for label derivation. *)
-  let result = Logistic_regression.Trainer.train
-    ~children ~candles
-    ~lookahead:5
-    ~epochs:10
-    ~lr:0.01
-    ~l2:1e-4
-    ~context_window:20
-    ()
-  in
-  Printf.printf "Training: n_train=%d n_val=%d train_loss=%.4f val_loss=%.4f\n%!"
-    result.n_train result.n_val
-    result.train_loss result.val_loss;
-
-  (* 4. Print the weights so you can hard-code them into a config
-        or paste into a test fixture. *)
-  Printf.printf "Weights = [| %s |]\n%!"
-    (Array.to_list result.weights
-     |> List.map (Printf.sprintf "%.6f")
-     |> String.concat "; ")
-```
-
-Register the binary in `bin/dune` under the existing
-`executables` stanza by adding `train_logistic` to `names`, then
-build and run:
+## Train: one command
 
 ```bash
-dune build
-dune exec -- bin/train_logistic.exe
+dune exec -- bin/train_logistic.exe -- \
+  --broker finam \
+  --symbol SBER@MISX \
+  --timeframe H1 \
+  --from 2024-01-01 \
+  --to 2026-04-20 \
+  --children SMA_Crossover,RSI_MeanReversion,MACD_Momentum,Bollinger_Breakout \
+  --lookahead 5 \
+  --epochs 10 \
+  --output ~/.local/state/trading/models/sber_h1_logistic.json
 ```
+
+The tool paginates historical bars across the date window (same
+walker as `export_training_data.exe`), runs the comma-separated
+list of child strategies through them, fits a logistic
+classifier in-process, and writes the weights as JSON.
 
 Typical output (numbers vary with data):
 
 ```
-Loaded 5000 candles
-Training: n_train=1342 n_val=575 train_loss=0.6782 val_loss=0.6891
-Weights = [| 0.023451; -0.158234; 0.087621; 0.212345; -0.034567; ... |]
+Fetched 5043 bars from finam (SBER@MISX)
+Children (4): SMA_Crossover, RSI_MeanReversion, MACD_Momentum, Bollinger_Breakout
+Trained: n_train=1342 n_val=575 train_loss=0.6782 val_loss=0.6891
+Wrote /home/user/.local/state/trading/models/sber_h1_logistic.json (11 weights)
 ```
+
+### Options
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--broker` | required | `finam` or `bcs` |
+| `--symbol` | required | Qualified `TICKER@MIC[/BOARD]` |
+| `--output` | required | JSON file to write |
+| `--children` | required | Comma-separated registry names |
+| `--timeframe` | `H1` | `M1 \| M5 \| M15 \| M30 \| H1 \| H4 \| D1` |
+| `--from` / `--to` | last 365 days | ISO date or full RFC 3339 |
+| `--lookahead` | 5 | Bars to label forward for `P(profitable)` |
+| `--epochs` | 10 | SGD passes over the training split |
+| `--lr` | 0.01 | Learning rate |
+| `--l2` | 1e-4 | L2 weight-decay coefficient |
+| `--context-window` | 20 | Recent bars for volatility / volume_ratio features |
+
+### Child-order invariant
+
+The feature vector is positional: the weight at index `2·i`
+pairs with the `i`-th child's signal. **Retraining with a
+different child list produces a new weights file that's
+incompatible with the old live config** — every weights file is
+tied to the exact children passed at training time.
+
+Document the children list alongside the weights file (e.g. in a
+sibling `sber_h1_logistic.children` text file, or as a comment
+in deployment YAML); the binary itself doesn't round-trip that
+metadata into the JSON — weight files are just `{ weights, lr,
+l2 }`.
 
 ## Interpreting the result
 
@@ -146,17 +140,14 @@ Weights = [| 0.023451; -0.158234; 0.087621; 0.212345; -0.034567; ... |]
 
 ## Deploying the trained gate
 
-Copy the printed weights into code or a config structure, then
-construct `Composite.Learned` with a closure that marries
-`Features.extract` + `Logistic.predict`:
+Load the trained model at startup via `Logistic.of_file`, wrap
+`Features.extract` + `Logistic.predict` into a closure matching
+`Composite.predictor`, and hand the whole thing to a
+`Composite.Learned` strategy:
 
 ```ocaml
-let trained_weights = [|
-  0.023451; -0.158234; 0.087621; 0.212345; -0.034567;
-  (* ...paste from the trainer output, length = 2·n_children + 3... *)
-|]
-
-let logistic = Logistic_regression.Logistic.of_weights trained_weights
+let logistic = Logistic_regression.Logistic.of_file
+  "/home/user/.local/state/trading/models/sber_h1_logistic.json" in
 
 let predict ~signals ~candle ~recent_closes ~recent_volumes =
   let features = Logistic_regression.Features.extract
@@ -187,54 +178,60 @@ downstream cares that it's ML-backed.
 
 ## Persistence
 
-Weights are a plain `float array`. For anything persistent you'd
-serialise them alongside the strategy config:
+`Logistic.to_file` / `Logistic.of_file` read and write a small
+JSON envelope carrying weights plus learning hyperparameters:
 
-```ocaml
-(* to JSON *)
-let weights_to_json weights : Yojson.Safe.t =
-  `List (Array.to_list weights |> List.map (fun f -> `Float f))
-
-(* from JSON *)
-let weights_of_json = function
-  | `List xs -> xs |> List.map (function
-      | `Float f -> f
-      | `Int n -> float_of_int n
-      | _ -> invalid_arg "weights_of_json: expected number") |> Array.of_list
-  | _ -> invalid_arg "weights_of_json: expected list"
+```json
+{
+  "weights": [ 0.023451, -0.158234, 0.087621, ... ],
+  "lr":      0.01,
+  "l2":      0.0001
+}
 ```
 
+Writes go through a tmp-file + atomic rename (same pattern as
+`Token_store.file.save`), so a running process reading the file
+never sees a half-written state. Unknown fields are ignored, and
+missing `lr`/`l2` fall back to the `Logistic.make` defaults — so
+hand-written fixtures can get away with `{ "weights": [...] }`.
+
 No hot-reload machinery like GBT's `mtime`-watch — the weights
-are compiled into the binary (or read once at startup). If you
-retrain and want the new weights in production, restart the
-process. For a 10-scalar vector, that's a reasonable trade-off;
-if weights live in a config file and change often, add your own
-reload hook.
+are read once at startup. If you retrain and want the new
+weights in production, restart the process. For a 10-scalar
+vector, that's a reasonable trade-off; if weights live in a
+config file and change often, add your own reload hook.
 
-## Known gap: offline training data
+## Retraining
 
-Right now there's no CLI tool that dumps candles to disk for
-offline logistic training, the way
-[`bin/export_training_data.exe`](../../../bin/export_training_data.ml)
-does for GBT. The trainer takes an in-memory `Candle.t list`, so
-the natural place to run it is a long-lived OCaml script (as in
-the example above) that fetches bars and immediately trains.
+Since the whole pipeline is one binary invocation, the retrain
+loop is a small shell script — no intermediate files to stage,
+no Python environment to activate:
 
-Two plausible workflows depending on iteration speed:
+```bash
+#!/bin/bash
+set -euo pipefail
 
-1. **Embedded**: the `train_logistic.ml` binary is your
-   "notebook" — edit child list / hyperparameters, run, paste
-   weights into production code, commit.
+TODAY=$(date -u +%Y-%m-%d)
+FROM=$(date -u -d '2 years ago' +%Y-%m-%d)
+MODEL_DIR="$HOME/.local/state/trading/models"
+mkdir -p "$MODEL_DIR"
 
-2. **Long-running research process**: inside a REPL
-   (`dune utop`), construct children, load candles, call
-   `Trainer.train` with various configs. No disk involvement;
-   iterate by re-running in the same utop session.
+dune exec -- bin/train_logistic.exe -- \
+  --broker finam \
+  --symbol SBER@MISX \
+  --from "$FROM" --to "$TODAY" \
+  --children SMA_Crossover,RSI_MeanReversion,MACD_Momentum,Bollinger_Breakout \
+  --output "$MODEL_DIR/sber_h1_logistic_$TODAY.json"
 
-If you want a nautilus-style offline artifact (`weights.json` on
-disk), add a wrapper that reads a CSV of candles + writes a JSON
-file — ~30 lines of OCaml, hasn't been necessary yet because the
-training time is seconds.
+ln -sf "$MODEL_DIR/sber_h1_logistic_$TODAY.json" \
+       "$MODEL_DIR/sber_h1_logistic_current.json"
+```
+
+The engine reads the target once at startup via
+`Logistic.of_file`, so picking up a fresh model still needs a
+process restart. For logistic's ~10-scalar vectors that's
+noise; if it ever matters, the same `mtime`-watch pattern as
+`Gbt_strategy` could be added.
 
 ## Troubleshooting
 

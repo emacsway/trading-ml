@@ -74,3 +74,45 @@ let export_weights t : float array =
 let of_weights ?(lr = 0.01) ?(l2 = 1e-4) weights = {
   weights = Array.copy weights; lr; l2;
 }
+
+let to_json (t : t) : Yojson.Safe.t =
+  `Assoc [
+    "weights", `List (Array.to_list t.weights
+                      |> List.map (fun f -> `Float f));
+    "lr",      `Float t.lr;
+    "l2",      `Float t.l2;
+  ]
+
+let float_of_json = function
+  | `Float f -> f
+  | `Int n -> float_of_int n
+  | j -> invalid_arg (
+    "Logistic.float_of_json: expected number, got "
+    ^ Yojson.Safe.to_string j)
+
+let of_json (j : Yojson.Safe.t) : t =
+  let open Yojson.Safe.Util in
+  let weights = match member "weights" j with
+    | `List xs -> List.map float_of_json xs |> Array.of_list
+    | _ -> invalid_arg "Logistic.of_json: missing or non-array [weights]"
+  in
+  let read_float_or default k =
+    match member k j with
+    | `Null -> default
+    | other -> float_of_json other
+  in
+  let lr = read_float_or 0.01 "lr" in
+  let l2 = read_float_or 1e-4 "l2" in
+  { weights; lr; l2 }
+
+let to_file ~path t =
+  let tmp = path ^ ".tmp" in
+  Out_channel.with_open_text tmp (fun oc ->
+    Out_channel.output_string oc
+      (Yojson.Safe.pretty_to_string (to_json t)));
+  Sys.rename tmp path
+
+let of_file path =
+  let content =
+    In_channel.with_open_text path In_channel.input_all in
+  of_json (Yojson.Safe.from_string content)
