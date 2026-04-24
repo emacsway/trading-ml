@@ -62,6 +62,46 @@ val empty : cash:Core.Decimal.t -> t
     ensures p.positions = []
     ensures p.reservations = [] *)
 
+(** {1 Domain events}
+
+    Facts emitted by the aggregate in response to successful
+    state transitions. Integration-level workflows subscribe to
+    these to trigger next steps (e.g. sending an order to the
+    broker after [Amount_reserved]). *)
+
+type amount_reserved = {
+  reservation_id : int;
+  side : Core.Side.t;
+  instrument : Core.Instrument.t;
+  quantity : Core.Decimal.t;
+  price : Core.Decimal.t;
+  reserved_cash : Core.Decimal.t;
+}
+
+(** Reasons why the aggregate refuses to reserve — business-rule
+    failures, not programming errors. Surfaces at the boundary
+    of the first-stage handler so callers can react (reject the
+    command, log, surface to user). *)
+type reservation_error =
+  | Insufficient_cash of { required : Core.Decimal.t; available : Core.Decimal.t }
+  | Insufficient_qty of { required : Core.Decimal.t; available : Core.Decimal.t }
+
+val try_reserve :
+  t ->
+  id:int ->
+  side:Core.Side.t ->
+  instrument:Core.Instrument.t ->
+  quantity:Core.Decimal.t ->
+  price:Core.Decimal.t ->
+  slippage_buffer:float ->
+  fee_rate:float ->
+  (t * amount_reserved, reservation_error) result
+(** Checked reservation: verifies invariant (sufficient
+    [available_cash] for Buy, [available_qty] for Sell), then
+    delegates to {!reserve}. Returns new state together with the
+    [Amount_reserved] event that reflects the transition, or a
+    typed [reservation_error] if the invariant is violated. *)
+
 val position : t -> Core.Instrument.t -> position option
 
 val fill :

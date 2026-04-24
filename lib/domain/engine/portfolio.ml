@@ -191,3 +191,46 @@ let equity p mark =
        in
        Decimal.add acc (Decimal.mul pos.quantity px))
     p.cash p.positions
+
+type amount_reserved = {
+  reservation_id : int;
+  side : Side.t;
+  instrument : Instrument.t;
+  quantity : Decimal.t;
+  price : Decimal.t;
+  reserved_cash : Decimal.t;
+}
+
+type reservation_error =
+  | Insufficient_cash of { required : Decimal.t; available : Decimal.t }
+  | Insufficient_qty of { required : Decimal.t; available : Decimal.t }
+
+let try_reserve p ~id ~side ~instrument ~quantity ~price
+    ~slippage_buffer ~fee_rate =
+  let per_unit_cash = per_unit_cash_of ~side ~price
+    ~slippage_buffer ~fee_rate in
+  let required = match side with
+    | Side.Buy -> Decimal.mul quantity per_unit_cash
+    | Sell -> quantity
+  in
+  let available = match side with
+    | Buy -> available_cash p
+    | Sell -> available_qty p instrument
+  in
+  if Decimal.compare required available > 0 then
+    let err = match side with
+      | Buy -> Insufficient_cash { required; available }
+      | Sell -> Insufficient_qty { required; available }
+    in
+    Error err
+  else
+    let p' = reserve p ~id ~side ~instrument ~quantity ~price
+      ~slippage_buffer ~fee_rate in
+    let event = {
+      reservation_id = id;
+      side; instrument; quantity; price;
+      reserved_cash = (match side with
+        | Buy -> required
+        | Sell -> Decimal.zero);
+    } in
+    Ok (p', event)

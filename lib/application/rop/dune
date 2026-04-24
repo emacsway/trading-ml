@@ -1,0 +1,3 @@
+(library
+ (name rop)
+ (public_name trading.rop))
