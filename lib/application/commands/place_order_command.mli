@@ -14,7 +14,7 @@ type t = {
   tif : string;
   client_order_id : string;
 } [@@deriving yojson]
-(** Input DTO — straight from HTTP body, primitive-typed,
+(** Command payload — straight from HTTP body, primitive-typed,
     unvalidated. [kind] reuses the view model so the JSON shape
     of the [kind] subtree matches the outbound form. *)
 
