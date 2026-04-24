@@ -1,3 +1,16 @@
 (library
  (name core)
  (public_name trading.core))
+
+; Gospel type-checks only .mli files carrying (*@ ... *) annotations.
+; Non-annotated files are skipped to sidestep a gospel 0.3.1 crash on
+; Format.formatter (absent from gospel's stdlib).
+(rule
+ (alias gospel)
+ (deps (glob_files *.mli))
+ (action
+  (bash "set -eu
+for f in %{deps}; do
+  grep -q '(\\*@' \"$f\" || continue
+  gospel check -L . \"$f\"
+done")))

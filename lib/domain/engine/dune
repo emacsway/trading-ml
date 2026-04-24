@@ -2,3 +2,16 @@
  (name engine)
  (public_name trading.engine)
  (libraries core indicators strategies stream))
+
+(rule
+ (alias gospel)
+ (deps
+  (glob_files *.mli)
+  gospel_stubs/core.mli)
+ (action
+  (bash "set -eu
+for f in %{deps}; do
+  case \"$f\" in gospel_stubs/*) continue ;; esac
+  grep -q '(\\*@' \"$f\" || continue
+  gospel check -L gospel_stubs -L . \"$f\"
+done")))

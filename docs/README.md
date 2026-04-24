@@ -138,6 +138,9 @@ concrete commands, expected output, troubleshooting.
   — practical workflow for deciding whether path-sensitive
   labelling actually helps your model, with tuning guidance and
   pitfalls.
+- [Work with Gospel specifications](howto/formal-verification.md) —
+  running `dune build @gospel`, adding new contracts, working around
+  Gospel 0.3.1 limitations; Phase 0 wiring and roadmap to Ortac/Why3.
 
 ## Decision records (ADR)
 

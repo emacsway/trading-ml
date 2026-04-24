@@ -50,24 +50,26 @@ Bollinger breakout**.
     dune build
     dune runtest                                 # 57 tests
 
-Verify Gospel specifications on the critical `.mli` files:
+Verify Gospel specifications on all annotated `.mli` files:
 
-    gospel check lib/core/decimal.mli
-    gospel check lib/core/candle.mli
+    dune build @gospel
+
+The alias picks up every `.mli` containing a `(*@ ... *)` annotation under
+`lib/domain/` and runs `gospel check` on it. Cross-library references like
+`Core.Instrument.t` resolve through a synthesized wrapper `.mli` generated
+by `tools/gospel_wrap.sh` (Gospel 0.3.1 doesn't understand dune's implicit
+library wrapping on its own).
 
 Specifications carried today:
 
-| File                       | Spec kind                                                    |
-| -------------------------- | ------------------------------------------------------------ |
-| `lib/core/decimal.mli`     | `div` raises `Division_by_zero`                              |
-| `lib/core/candle.mli`      | `make` invariants: `low ≤ open,close ≤ high`, `volume ≥ 0`   |
-| `lib/engine/portfolio.mli` | `fill` preconditions (quantity > 0, fee ≥ 0) — documented    |
+| File                              | Spec kind                                                    |
+| --------------------------------- | ------------------------------------------------------------ |
+| `lib/domain/core/decimal.mli`     | `div` raises `Division_by_zero`                              |
+| `lib/domain/core/candle.mli`      | `make` invariants: `low ≤ open,close ≤ high`, `volume ≥ 0`   |
+| `lib/domain/engine/portfolio.mli` | `empty` postconditions; `fill` raises `Invalid_argument`     |
 
-The portfolio `.mli` uses cross-library types (`Core.Instrument.t`); Gospel's
-load-path resolution for dune-wrapped libraries is limited, so those
-specs are documentation-grade rather than machine-checked. JSON encodings
-live in `*_json.ml` companion files to keep the verified `.mli` free of
-Yojson dependencies.
+JSON encodings live in `*_json.ml` companion files to keep the verified
+`.mli` free of Yojson dependencies.
 
 ## Run the OCaml backend
 
