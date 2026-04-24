@@ -18,40 +18,48 @@ let project (type d)
     (x : d) : Yojson.Safe.t =
   V.yojson_of_t (V.of_domain x)
 
-(** Same helper for integration events (structurally identical
-    contract, different semantic). *)
-let project_event (type d)
-    (module E : Integration_events.Integration_event.S with type domain = d)
-    (x : d) : Yojson.Safe.t =
-  E.yojson_of_t (E.of_domain x)
+(** Stable response shape for the PlaceOrder HTTP endpoint. The
+    workflow's internal event list stays internal — we pick out
+    the terminal business outcome and project only what the UI
+    needs. Adding / renaming a domain event doesn't break the
+    wire contract; only adding a new terminal outcome does.
 
-(** Prepend a [kind] discriminator to a JSON object so consumers
-    can branch on event type without variant-parsing. *)
-let with_kind kind = function
-  | `Assoc fields -> `Assoc (("kind", `String kind) :: fields)
-  | other -> other
-
-let place_order_event_json
-    (ev : Workflows.Place_order_workflow.event) : Yojson.Safe.t =
-  let open Integration_events in
-  match ev with
-  | Amount_reserved e ->
-    project_event (module Amount_reserved_integration_event) e
-    |> with_kind "amount_reserved"
-  | Order_forwarded e ->
-    project_event (module Order_forwarded_integration_event) e
-    |> with_kind "order_forwarded"
-  | Forward_rejected e ->
-    project_event (module Forward_rejected_integration_event) e
-    |> with_kind "forward_rejected"
-  | Reservation_released e ->
-    project_event (module Reservation_released_integration_event) e
-    |> with_kind "reservation_released"
-
-let place_order_events_json events =
-  `Assoc [
-    "events", `List (List.map place_order_event_json events);
-  ]
+    [reason] is passed through for now as user-facing feedback.
+    When broker error strings start carrying information that
+    shouldn't leak (internal ids, backend topology, etc.), map
+    them to safe categories here rather than forward verbatim. *)
+let place_order_response_json
+    (events : Workflows.Place_order_workflow.event list) : Yojson.Safe.t =
+  let forwarded = List.find_map (function
+    | Workflows.Place_order_workflow.Order_forwarded e -> Some e
+    | _ -> None) events
+  in
+  let rejected = List.find_map (function
+    | Workflows.Place_order_workflow.Forward_rejected e -> Some e
+    | _ -> None) events
+  in
+  match forwarded, rejected with
+  | Some ev, _ ->
+    `Assoc [
+      "status", `String "placed";
+      "order", project (module Order_view_model) ev.broker_order;
+    ]
+  | None, Some (Order_rejected_by_broker { client_order_id; reason; _ }) ->
+    `Assoc [
+      "status", `String "rejected";
+      "client_order_id", `String client_order_id;
+      "reason", `String reason;
+    ]
+  | None, Some (Broker_unreachable { client_order_id; reason; _ }) ->
+    `Assoc [
+      "status", `String "temporary_error";
+      "client_order_id", `String client_order_id;
+      "reason", `String reason;
+    ]
+  | None, None ->
+    (* Successful workflow always produces either Order_forwarded
+       or Forward_rejected; this branch is unreachable. *)
+    `Assoc [ "status", `String "unknown" ]
 
 let place_order_error_json
     (err : Workflows.Place_order_workflow.error) : Yojson.Safe.t =
@@ -60,7 +68,7 @@ let place_order_error_json
     let msgs = List.map
       Commands.Place_order_command.validation_error_to_string errs in
     `Assoc [
-      "kind", `String "validation_errors";
+      "kind", `String "invalid_request";
       "messages", `List (List.map (fun s -> `String s) msgs);
     ]
   | Reservation_rejected e ->
