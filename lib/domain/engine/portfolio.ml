@@ -234,3 +234,25 @@ let try_reserve p ~id ~side ~instrument ~quantity ~price
         | Sell -> Decimal.zero);
     } in
     Ok (p', event)
+
+type reservation_released = {
+  reservation_id : int;
+  side : Side.t;
+  instrument : Instrument.t;
+}
+
+type release_error =
+  | Reservation_not_found of int
+
+let try_release p ~id =
+  let matched, rest = find_reservation p.reservations id in
+  match matched with
+  | [] -> Error (Reservation_not_found id)
+  | r :: _ ->
+    let p' = { p with reservations = rest } in
+    let event = {
+      reservation_id = id;
+      side = r.side;
+      instrument = r.instrument;
+    } in
+    Ok (p', event)

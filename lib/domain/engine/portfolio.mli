@@ -102,6 +102,25 @@ val try_reserve :
     [Amount_reserved] event that reflects the transition, or a
     typed [reservation_error] if the invariant is violated. *)
 
+type reservation_released = {
+  reservation_id : int;
+  side : Core.Side.t;
+  instrument : Core.Instrument.t;
+}
+(** Event: an earmark was removed without maturing into a fill
+    (e.g. broker rejected the order, operator cancelled before
+    submission). Released cash/qty becomes available again. *)
+
+type release_error =
+  | Reservation_not_found of int
+
+val try_release :
+  t -> id:int -> (t * reservation_released, release_error) result
+(** Releases a reservation by id, returning new state and the
+    event. Returns [Reservation_not_found] if no reservation
+    with that id exists — callers that want idempotent behaviour
+    can treat this as a no-op. *)
+
 val position : t -> Core.Instrument.t -> position option
 
 val fill :

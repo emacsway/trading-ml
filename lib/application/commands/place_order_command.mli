@@ -71,24 +71,3 @@ val reserve :
   (Engine.Portfolio.t * Engine.Portfolio.amount_reserved,
    Engine.Portfolio.reservation_error) Rop.t
 
-(** {1 Step 2: send order to broker} *)
-
-type place_order_port =
-  instrument:Instrument.t ->
-  side:Side.t ->
-  quantity:Decimal.t ->
-  kind:Order.kind ->
-  tif:Order.time_in_force ->
-  client_order_id:string ->
-  Order.t
-(** Outbound dependency: the broker action, partially applied
-    with its [client] handle. The adapter (HTTP layer) injects
-    this when invoking {!execute}. *)
-
-val execute :
-  place_order:place_order_port ->
-  unvalidated ->
-  Queries.Order_view_model.t
-(** Invoke the injected outbound port and project the returned
-    {!Core.Order.t} into its view model. Does not touch the
-    portfolio — that's step 1's job. *)

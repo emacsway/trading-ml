@@ -66,14 +66,6 @@ let reserve
     ~quantity:u.quantity ~price:market_price
     ~slippage_buffer ~fee_rate)
 
-type place_order_port =
-  instrument:Instrument.t ->
-  side:Side.t ->
-  quantity:Decimal.t ->
-  kind:Order.kind ->
-  tif:Order.time_in_force ->
-  client_order_id:string ->
-  Order.t
 
 let parse_symbol raw : (Instrument.t, validation_error) Rop.t =
   try Rop.succeed (Instrument.of_qualified raw)
@@ -141,16 +133,3 @@ let to_unvalidated (t : t) : (unvalidated, validation_error) Rop.t =
   and+ tif = parse_tif t.tif
   and+ client_order_id = parse_client_order_id t.client_order_id in
   { instrument; side; quantity; kind; tif; client_order_id }
-
-let execute
-    ~(place_order : place_order_port)
-    (u : unvalidated) : Queries.Order_view_model.t =
-  let order = place_order
-    ~instrument:u.instrument
-    ~side:u.side
-    ~quantity:u.quantity
-    ~kind:u.kind
-    ~tif:u.tif
-    ~client_order_id:u.client_order_id
-  in
-  Queries.Order_view_model.of_domain order
