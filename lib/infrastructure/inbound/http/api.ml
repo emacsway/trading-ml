@@ -18,6 +18,58 @@ let project (type d)
     (x : d) : Yojson.Safe.t =
   V.yojson_of_t (V.of_domain x)
 
+(** Same helper for integration events (structurally identical
+    contract, different semantic). *)
+let project_event (type d)
+    (module E : Integration_events.Integration_event.S with type domain = d)
+    (x : d) : Yojson.Safe.t =
+  E.yojson_of_t (E.of_domain x)
+
+(** Prepend a [kind] discriminator to a JSON object so consumers
+    can branch on event type without variant-parsing. *)
+let with_kind kind = function
+  | `Assoc fields -> `Assoc (("kind", `String kind) :: fields)
+  | other -> other
+
+let place_order_event_json
+    (ev : Workflows.Place_order_workflow.event) : Yojson.Safe.t =
+  let open Integration_events in
+  match ev with
+  | Amount_reserved e ->
+    project_event (module Amount_reserved_integration_event) e
+    |> with_kind "amount_reserved"
+  | Order_forwarded e ->
+    project_event (module Order_forwarded_integration_event) e
+    |> with_kind "order_forwarded"
+  | Forward_rejected e ->
+    project_event (module Forward_rejected_integration_event) e
+    |> with_kind "forward_rejected"
+  | Reservation_released e ->
+    project_event (module Reservation_released_integration_event) e
+    |> with_kind "reservation_released"
+
+let place_order_events_json events =
+  `Assoc [
+    "events", `List (List.map place_order_event_json events);
+  ]
+
+let place_order_error_json
+    (err : Workflows.Place_order_workflow.error) : Yojson.Safe.t =
+  match err with
+  | Validation_errors errs ->
+    let msgs = List.map
+      Commands.Place_order_command.validation_error_to_string errs in
+    `Assoc [
+      "kind", `String "validation_errors";
+      "messages", `List (List.map (fun s -> `String s) msgs);
+    ]
+  | Reservation_rejected e ->
+    `Assoc [
+      "kind", `String "reservation_rejected";
+      "messages", `List [
+        `String (Commands.Place_order_command.reservation_error_to_string e)];
+    ]
+
 let candle_json (c : Candle.t) : Yojson.Safe.t =
   project (module Candle_view_model) c
 
