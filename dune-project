@@ -2,6 +2,11 @@
 (name trading)
 (generate_opam_files true)
 
+; Restrict @fmt to OCaml — leave dune files alone, since their
+; auto-format mangles multi-line bash blocks in our @gospel/@why3
+; rules into unreadable `\n`-escaped one-liners.
+(formatting (enabled_for ocaml))
+
 (package
  (name trading)
  (synopsis "Functional algorithmic trading system with Finam Trade connector")
