@@ -31,6 +31,12 @@ break-cases = fit-or-vertical
 break-fun-decl = fit-or-vertical
 break-fun-sig = fit-or-vertical
 
+# Records / lists / arrays / tuples: same fit-or-vertical rule as
+# the function-shape options above. Already the default in ocamlformat
+# 0.29's default profile, but pinned explicitly so a future profile
+# change can't quietly switch us to `wrap`.
+break-collection-expressions = fit-or-vertical
+
 # Keep author-placed blank lines between top-level items — they
 # typically signal a logical grouping (e.g. "constructors" / "accessors"
 # blocks) we don't want collapsed.
