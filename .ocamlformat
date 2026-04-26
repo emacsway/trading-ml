@@ -24,6 +24,13 @@ wrap-comments = false
 # Sum-type / record cases break vertically when they don't fit.
 break-cases = fit-or-vertical
 
+# Function declarations: either all args on one line (short fns) or
+# each arg on its own line (long fns). No "fill the line then wrap"
+# middle ground — that produces hard-to-read 2-args-per-line clumps
+# for typical 5-7 arg domain functions.
+break-fun-decl = fit-or-vertical
+break-fun-sig = fit-or-vertical
+
 # Keep author-placed blank lines between top-level items — they
 # typically signal a logical grouping (e.g. "constructors" / "accessors"
 # blocks) we don't want collapsed.
