@@ -1,9 +1,14 @@
-(** Per-(instrument, timeframe) live candle subscription registry.
-    Stage 1 of real-time support: server polls the data source at a
-    cadence keyed to the timeframe, compares the tail of the candle
-    stream against a cache, and fans out update events to all SSE
-    subscribers of the same key. One upstream poll per key — opening
-    N UI tabs on the same chart never multiplies the load on Finam. *)
+(** Multi-channel SSE registry. One subscriber = one SSE connection,
+    multiplexes any number of channels:
+
+    - per-key bar feeds (each [(instrument, timeframe)] is independent);
+    - global order broadcast.
+
+    A subscriber connects without specifying a chart, then declares
+    interest in zero or more bar feeds. The server polls each
+    declared upstream once regardless of how many subscribers are
+    listening — opening N tabs on the same chart never multiplies
+    Finam load. *)
 
 open Core
 
@@ -32,8 +37,6 @@ let encode_event : event -> string = function
       in
       "event: bar\ndata: " ^ Yojson.Safe.to_string j ^ "\n\n"
 
-type subscriber = { id : int; queue : string Eio.Stream.t }
-
 type key = Instrument.t * Timeframe.t
 
 module Key = struct
@@ -44,9 +47,11 @@ module Key = struct
 end
 
 module KMap = Map.Make (Key)
+module KSet = Set.Make (Key)
 
-type subscription_state = {
-  mutable subscribers : subscriber list;
+type subscriber = { id : int; queue : string Eio.Stream.t; mutable bar_keys : KSet.t }
+
+type feed = {
   mutable last_candles : Candle.t list;
   mutable cancel : unit -> unit;
       (** True while stale bars are being dropped — log once on
@@ -67,18 +72,19 @@ type t = {
   fetch : fetch;
   on_first : lifecycle_hook;
   on_last : lifecycle_hook;
-  mutable subscriptions : subscription_state KMap.t;
+  mutable feeds : feed KMap.t;
+  mutable subscribers : subscriber list;
   mutex : Eio.Mutex.t;
   mutable next_id : int;
   sw : Eio.Switch.t;
 }
 
-(** [on_first_subscriber] fires when the first SSE subscriber subscribes
-    to a [(instrument, timeframe)] key — the natural moment to forward
-    the subscription to an upstream WS. [on_last_unsubscriber] fires
-    when the last subscriber of a key disconnects, so the upstream
-    subscription can be released. Both default to no-ops, keeping
-    [Stream] free of any broker knowledge. *)
+(** [on_first_subscriber] fires the first time any subscriber declares
+    interest in a [(instrument, timeframe)] key — the natural moment
+    to forward the subscription to an upstream WS. [on_last_unsubscriber]
+    fires when the last interested subscriber drops the key, so the
+    upstream subscription can be released. Both default to no-ops,
+    keeping [Stream] free of any broker knowledge. *)
 let create
     ?(on_first_subscriber : lifecycle_hook = fun ~instrument:_ ~timeframe:_ -> ())
     ?(on_last_unsubscriber : lifecycle_hook = fun ~instrument:_ ~timeframe:_ -> ())
@@ -92,7 +98,8 @@ let create
     fetch;
     on_first = on_first_subscriber;
     on_last = on_last_unsubscriber;
-    subscriptions = KMap.empty;
+    feeds = KMap.empty;
+    subscribers = [];
     mutex = Eio.Mutex.create ();
     next_id = 0;
   }
@@ -129,16 +136,20 @@ let poll_interval_seconds (tf : Timeframe.t) : float =
   let s = float_of_int (Timeframe.to_seconds tf) in
   Float.max 2.0 (Float.min 30.0 (s /. 12.0))
 
-let start_poll t (key : key) (sub : subscription_state) =
+(** Snapshot subscribers interested in [key]. Caller must hold [t.mutex]. *)
+let subscribers_of_key t key =
+  List.filter (fun s -> KSet.mem key s.bar_keys) t.subscribers
+
+let start_poll t (key : key) (feed : feed) =
   let instrument, timeframe = key in
   let interval = poll_interval_seconds timeframe in
   let running = ref true in
-  sub.cancel <- (fun () -> running := false);
+  feed.cancel <- (fun () -> running := false);
   let clock = Eio.Stdenv.clock t.env in
   Eio.Fiber.fork_daemon ~sw:t.sw (fun () ->
       (try
          let initial = t.fetch ~instrument ~n:500 ~timeframe in
-         Eio.Mutex.use_rw ~protect:true t.mutex (fun () -> sub.last_candles <- initial)
+         Eio.Mutex.use_rw ~protect:true t.mutex (fun () -> feed.last_candles <- initial)
        with e ->
          Log.warn "stream seed %s/%s failed: %s"
            (Instrument.to_qualified instrument)
@@ -147,7 +158,7 @@ let start_poll t (key : key) (sub : subscription_state) =
       while !running do
         Eio.Time.sleep clock interval;
         let ws_fresh =
-          match sub.last_upstream_push with
+          match feed.last_upstream_push with
           | None -> false
           | Some ts ->
               (* Skip this poll tick when WS delivered something recently.
@@ -159,7 +170,7 @@ let start_poll t (key : key) (sub : subscription_state) =
         if !running && not ws_fresh then
           try
             let fresh = t.fetch ~instrument ~n:500 ~timeframe in
-            let events, subscribers =
+            let events, subs =
               Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
                   (* Merge fresh (REST snapshot) with any live WS updates
                   that landed after the last poll. REST can lag WS by
@@ -172,25 +183,25 @@ let start_poll t (key : key) (sub : subscription_state) =
                   Strategy: keep every cached bar strictly newer than
                   fresh's tail, append it after the REST history. *)
                   let merged =
-                    match (last fresh, last sub.last_candles) with
-                    | None, _ -> sub.last_candles (* poll empty → keep cache *)
+                    match (last fresh, last feed.last_candles) with
+                    | None, _ -> feed.last_candles (* poll empty → keep cache *)
                     | Some _, None -> fresh
                     | Some fl, Some _ ->
                         let ws_tail =
                           List.filter
                             (fun (c : Candle.t) -> Int64.compare c.ts fl.ts > 0)
-                            sub.last_candles
+                            feed.last_candles
                         in
                         fresh @ ws_tail
                   in
-                  let evs = diff_and_emit ~cached:sub.last_candles ~fresh:merged in
-                  sub.last_candles <- merged;
-                  (evs, sub.subscribers))
+                  let evs = diff_and_emit ~cached:feed.last_candles ~fresh:merged in
+                  feed.last_candles <- merged;
+                  (evs, subscribers_of_key t key))
             in
             List.iter
               (fun ev ->
                 let chunk = encode_event ev in
-                List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers)
+                List.iter (fun s -> Eio.Stream.add s.queue chunk) subs)
               events
           with e ->
             Log.warn "stream poll %s/%s failed: %s"
@@ -200,69 +211,106 @@ let start_poll t (key : key) (sub : subscription_state) =
       done;
       `Stop_daemon)
 
-let subscribe t ~instrument ~timeframe : subscriber * Candle.t list =
+let connect t : subscriber =
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      let id = t.next_id in
+      t.next_id <- t.next_id + 1;
+      let s = { id; queue = Eio.Stream.create 64; bar_keys = KSet.empty } in
+      t.subscribers <- s :: t.subscribers;
+      s)
+
+(** True iff some other subscriber holds [key]. Caller holds [t.mutex]. *)
+let key_has_other_owner t (subscriber : subscriber) key =
+  List.exists (fun s -> s.id <> subscriber.id && KSet.mem key s.bar_keys) t.subscribers
+
+let subscribe_bar t (subscriber : subscriber) ~instrument ~timeframe : Candle.t list =
   let key = (instrument, timeframe) in
-  let subscriber, seed, first =
+  let seed, first =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        let id = t.next_id in
-        t.next_id <- t.next_id + 1;
-        let subscriber = { id; queue = Eio.Stream.create 64 } in
-        match KMap.find_opt key t.subscriptions with
-        | Some s ->
-            s.subscribers <- subscriber :: s.subscribers;
-            (subscriber, s.last_candles, false)
-        | None ->
-            let s =
-              {
-                subscribers = [ subscriber ];
-                last_candles = [];
-                cancel = (fun () -> ());
-                stale_warned = false;
-                last_upstream_push = None;
-              }
-            in
-            t.subscriptions <- KMap.add key s t.subscriptions;
-            start_poll t key s;
-            (subscriber, [], true))
+        if KSet.mem key subscriber.bar_keys then
+          let existing =
+            match KMap.find_opt key t.feeds with
+            | Some f -> f.last_candles
+            | None -> []
+          in
+          (existing, false)
+        else begin
+          subscriber.bar_keys <- KSet.add key subscriber.bar_keys;
+          match KMap.find_opt key t.feeds with
+          | Some f -> (f.last_candles, false)
+          | None ->
+              let f =
+                {
+                  last_candles = [];
+                  cancel = (fun () -> ());
+                  stale_warned = false;
+                  last_upstream_push = None;
+                }
+              in
+              t.feeds <- KMap.add key f t.feeds;
+              start_poll t key f;
+              ([], true)
+        end)
   in
   (if first then
      try t.on_first ~instrument ~timeframe
      with e -> Log.warn "stream on_first_subscriber failed: %s" (Printexc.to_string e));
-  (subscriber, seed)
+  seed
 
-let unsubscribe t ~instrument ~timeframe (subscriber : subscriber) =
+(** Drop [key] from [subscriber]'s [bar_keys]; if no other subscriber
+    holds it, cancel and remove the feed. Returns [true] iff the
+    feed was the last and was removed. Caller holds [t.mutex] and
+    must ensure [KSet.mem key subscriber.bar_keys]. *)
+let drop_bar_key_locked t (subscriber : subscriber) key =
+  subscriber.bar_keys <- KSet.remove key subscriber.bar_keys;
+  if not (key_has_other_owner t subscriber key) then
+    match KMap.find_opt key t.feeds with
+    | Some f ->
+        f.cancel ();
+        t.feeds <- KMap.remove key t.feeds;
+        true
+    | None -> false
+  else false
+
+let unsubscribe_bar t (subscriber : subscriber) ~instrument ~timeframe =
   let key = (instrument, timeframe) in
-  let last =
+  let was_last =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        match KMap.find_opt key t.subscriptions with
-        | None -> false
-        | Some s ->
-            s.subscribers <- List.filter (fun c -> c.id <> subscriber.id) s.subscribers;
-            if s.subscribers = [] then begin
-              s.cancel ();
-              t.subscriptions <- KMap.remove key t.subscriptions;
-              true
-            end
-            else false)
+        if KSet.mem key subscriber.bar_keys then drop_bar_key_locked t subscriber key
+        else false)
   in
-  if last then
+  if was_last then
     try t.on_last ~instrument ~timeframe
     with e -> Log.warn "stream on_last_unsubscriber failed: %s" (Printexc.to_string e)
+
+let disconnect t (subscriber : subscriber) =
+  let lasts =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        let keys = KSet.elements subscriber.bar_keys in
+        let lasts = List.filter (fun k -> drop_bar_key_locked t subscriber k) keys in
+        t.subscribers <- List.filter (fun s -> s.id <> subscriber.id) t.subscribers;
+        lasts)
+  in
+  List.iter
+    (fun (instrument, timeframe) ->
+      try t.on_last ~instrument ~timeframe
+      with e -> Log.warn "stream on_last_unsubscriber failed: %s" (Printexc.to_string e))
+    lasts
 
 (** Injection point for alternative upstream sources (WebSocket bridge).
     Updates the cached candle for [(instrument, timeframe)] so the
     polling fiber doesn't re-emit a duplicate, then fans the event out
-    to all registered SSE subscribers of that key. No-op if the key has
-    no subscribers yet. *)
+    to all subscribers that hold this key. No-op if no subscriber
+    holds the key (and so the feed doesn't exist). *)
 let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
   let key = (instrument, timeframe) in
   let now = Eio.Time.now (Eio.Stdenv.clock t.env) in
   let chunk_opt =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        match KMap.find_opt key t.subscriptions with
+        match KMap.find_opt key t.feeds with
         | None -> None
-        | Some s -> (
-            s.last_upstream_push <- Some now;
+        | Some f -> (
+            f.last_upstream_push <- Some now;
             (* Monotonicity guard. Upstream brokers occasionally ship a
            stale snapshot right after subscribe (BCS sends the last
            closed candle from the previous session when there's no
@@ -271,7 +319,7 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
            break the UI. Drop anything strictly older than the tail
            we already have. Same-ts bars are kept as intra-bar
            updates. *)
-            match last s.last_candles with
+            match last f.last_candles with
             | None ->
                 (* Cache not seeded yet — the polling fiber's initial fetch
              is still in flight. We can't compare against a tail we
@@ -283,8 +331,8 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
              before forwarding anything. *)
                 None
             | Some cl when Int64.compare candle.Candle.ts cl.Candle.ts < 0 ->
-                if not s.stale_warned then begin
-                  s.stale_warned <- true;
+                if not f.stale_warned then begin
+                  f.stale_warned <- true;
                   Log.warn
                     "stream: dropping stale upstream bars for %s/%s (upstream ts=%Ld < \
                      cached tail=%Ld)"
@@ -294,7 +342,7 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
                 end;
                 None
             | last_opt ->
-                s.stale_warned <- false;
+                f.stale_warned <- false;
                 let event =
                   match last_opt with
                   | Some cl when Int64.equal cl.Candle.ts candle.ts -> Bar_updated candle
@@ -303,28 +351,26 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
                 let cached =
                   match last_opt with
                   | Some cl when Int64.equal cl.Candle.ts candle.ts -> (
-                      match List.rev s.last_candles with
+                      match List.rev f.last_candles with
                       | _ :: rest -> List.rev (candle :: rest)
                       | [] -> [ candle ])
-                  | _ -> s.last_candles @ [ candle ]
+                  | _ -> f.last_candles @ [ candle ]
                 in
-                s.last_candles <- cached;
-                Some (encode_event event, s.subscribers)))
+                f.last_candles <- cached;
+                Some (encode_event event, subscribers_of_key t key)))
   in
   match chunk_opt with
   | None -> ()
-  | Some (chunk, subscribers) ->
-      List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers
+  | Some (chunk, subs) -> List.iter (fun s -> Eio.Stream.add s.queue chunk) subs
 
 (** Broadcast publish for the [order] SSE channel.
 
     Wraps the caller-supplied JSON in [event: order\n data: ...\n\n]
-    framing and pushes the chunk to every currently-connected
-    subscriber's queue, regardless of which (instrument, timeframe)
-    they subscribed to for bars. The publisher (in
-    [domain_event_handlers]) is responsible for shaping the JSON
-    — typically [{"kind": "placed" | "rejected" | ..., ...}] —
-    and for projecting domain events into integration-event DTOs
+    framing and pushes the chunk to every connected subscriber's
+    queue, regardless of which bar feeds they declared interest in.
+    The publisher (in [domain_event_handlers]) is responsible for
+    shaping the JSON — typically [{"kind": "placed" | "rejected" | ..., ...}]
+    — and for projecting domain events into integration-event DTOs
     before calling here.
 
     Order events share a single ordering domain on the subscriber
@@ -333,8 +379,5 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
     [addEventListener("order", ...)]. *)
 let publish_order t (data : Yojson.Safe.t) : unit =
   let chunk = "event: order\ndata: " ^ Yojson.Safe.to_string data ^ "\n\n" in
-  let subscribers =
-    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        KMap.fold (fun _ s acc -> s.subscribers @ acc) t.subscriptions [])
-  in
-  List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers
+  let subscribers = Eio.Mutex.use_rw ~protect:true t.mutex (fun () -> t.subscribers) in
+  List.iter (fun s -> Eio.Stream.add s.queue chunk) subscribers

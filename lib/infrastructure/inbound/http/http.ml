@@ -2,7 +2,7 @@
       GET  /api/indicators
       GET  /api/strategies
       GET  /api/candles?symbol=...&n=N&timeframe=...
-      GET  /api/stream?symbol=...&timeframe=...        (Server-Sent Events)
+      GET  /api/stream[?bars=SYMBOL:TF,SYMBOL:TF,...]  (Server-Sent Events)
       POST /api/backtest                JSON body
 
     CORS is opened for localhost Angular dev server. *)
@@ -100,26 +100,60 @@ let run_backtest broker body_str =
       let r = Engine.Backtest.run ~config:cfg ~strategy:strat ~instrument ~candles in
       Api.backtest_result_json r
 
-(** Initial payload describing the current cached candles, sent to the
-    client right after the HTTP headers so the UI can render without a
-    separate /api/candles roundtrip. *)
-let seed_chunk seed =
+(** Per-bar-feed seed payload. Rides the [bar] SSE channel with
+    [kind: "seed"], symbol+timeframe metadata identifies which feed,
+    so the browser dispatches inside its single
+    [addEventListener("bar", ...)] handler. *)
+let seed_chunk ~instrument ~timeframe seed =
   let j : Yojson.Safe.t =
     `Assoc
-      [ ("kind", `String "seed"); ("candles", `List (List.map Api.candle_json seed)) ]
+      [
+        ("kind", `String "seed");
+        ("symbol", `String (Instrument.to_qualified instrument));
+        ("timeframe", `String (Timeframe.to_string timeframe));
+        ("candles", `List (List.map Api.candle_json seed));
+      ]
   in
-  "data: " ^ Yojson.Safe.to_string j ^ "\n\n"
+  "event: bar\ndata: " ^ Yojson.Safe.to_string j ^ "\n\n"
+
+(** Parse [?bars=SYMBOL@MIC[/BOARD]:TF,SYMBOL@MIC:TF,...] into a list
+    of bar feed keys. Empty / malformed entries silently skipped. *)
+let parse_bars_param s =
+  if s = "" then []
+  else
+    String.split_on_char ',' s
+    |> List.filter_map (fun raw ->
+        let raw = String.trim raw in
+        if raw = "" then None
+        else
+          match String.rindex_opt raw ':' with
+          | None -> None
+          | Some i -> (
+              let sym = String.sub raw 0 i in
+              let tf = String.sub raw (i + 1) (String.length raw - i - 1) in
+              try Some (Instrument.of_qualified sym, Timeframe.of_string tf)
+              with _ -> None))
 
 (** SSE handler returned in [`Expert] mode. Writes pre-formatted chunks
     directly to the buffered output with an explicit flush after each
     one — cohttp-eio's default [Response] path batches the body into a
     single response, which would never push live events. *)
-let sse_expert (registry : Stream.t) ~instrument ~timeframe =
-  let client, seed = Stream.subscribe registry ~instrument ~timeframe in
-  Log.info "SSE open  %s/%s seed=%d bars"
-    (Instrument.to_qualified instrument)
-    (Timeframe.to_string timeframe)
-    (List.length seed);
+let sse_expert (registry : Stream.t) ~bar_keys =
+  let subscriber = Stream.connect registry in
+  let seeds =
+    List.map
+      (fun (instrument, timeframe) ->
+        let candles = Stream.subscribe_bar registry subscriber ~instrument ~timeframe in
+        (instrument, timeframe, candles))
+      bar_keys
+  in
+  Log.info "SSE open id=%d bars=[%s]" subscriber.id
+    (String.concat ","
+       (List.map
+          (fun (i, tf, cs) ->
+            Printf.sprintf "%s:%s(%d)" (Instrument.to_qualified i)
+              (Timeframe.to_string tf) (List.length cs))
+          seeds));
   let headers =
     Cohttp.Header.of_list
       [
@@ -146,9 +180,12 @@ let sse_expert (registry : Stream.t) ~instrument ~timeframe =
         Eio.Buf_write.flush oc
       in
       (try
-         push_chunk (seed_chunk seed);
+         List.iter
+           (fun (instrument, timeframe, candles) ->
+             push_chunk (seed_chunk ~instrument ~timeframe candles))
+           seeds;
          while true do
-           let chunk = Eio.Stream.take client.queue in
+           let chunk = Eio.Stream.take subscriber.queue in
            push_chunk chunk
          done
        with _ -> ());
@@ -156,10 +193,8 @@ let sse_expert (registry : Stream.t) ~instrument ~timeframe =
          Eio.Buf_write.string oc "0\r\n\r\n";
          Eio.Buf_write.flush oc
        with _ -> ());
-      Stream.unsubscribe registry ~instrument ~timeframe client;
-      Log.info "SSE close %s/%s"
-        (Instrument.to_qualified instrument)
-        (Timeframe.to_string timeframe) )
+      Stream.disconnect registry subscriber;
+      Log.info "SSE close id=%d" subscriber.id )
 
 (** Pure routing: given method+path, return (status, action). Kept
     separate from request logging so [handler] can log uniformly. *)
@@ -195,9 +230,8 @@ let route broker registry request body : int * Cohttp_eio.Server.response_action
           (json_response
              (Api.candles_json (fetch_candles broker ~instrument ~n ~timeframe)))
     | `GET, "/api/stream" ->
-        let instrument = Instrument.of_qualified (get_query uri "symbol") in
-        let timeframe = parse_timeframe (get_query uri "timeframe") in
-        (200, `Expert (sse_expert registry ~instrument ~timeframe))
+        let bar_keys = parse_bars_param (get_query uri "bars") in
+        (200, `Expert (sse_expert registry ~bar_keys))
     | `POST, "/api/backtest" ->
         let body = Eio.Flow.read_all body in
         ok (json_response (run_backtest broker body))
