@@ -1,0 +1,22 @@
+(test
+ (name broker_unit_runner)
+ (libraries
+  core
+  broker
+  http_transport
+  websocket
+  finam
+  bcs
+  paper
+  token_store
+  acl_common
+  eio
+  eio_main
+  str
+  unix
+  alcotest
+  qcheck-core))
+
+; Same flatten-everything convention as test/unit/. Filenames
+; carry [finam_] / [bcs_] prefix so flat namespace doesn't collide.
+(include_subdirs unqualified)

@@ -1,0 +1,15 @@
+(library
+ (name broker_commands)
+ (public_name trading.broker.commands)
+ (libraries
+  yojson
+  ppx_yojson_conv_lib
+  core
+  queries
+  broker
+  broker_integration_events
+  bus)
+ (preprocess
+  (pps ppx_yojson_conv))
+ (flags
+  (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
