@@ -20,20 +20,31 @@ type event =
     SSE protocol's native channel mechanism. On the browser side
     [es.addEventListener("bar", ...)] catches only these messages
     and inside the handler the [kind] field discriminates
-    [updated] (intra-bar mutation) from [closed] (new bar).
+    [updated] (intra-bar mutation) from [closed] (new bar);
+    [symbol] + [timeframe] tell the consumer which feed a single
+    multi-feed connection received the event for.
 
-    Both variants share an ordering domain (same instrument,
-    same timeframe), so they ride one channel and a single
-    sequential consumer on the subscriber preserves their order. *)
-let encode_event : event -> string = function
+    Bar events for one feed share an ordering domain, so they
+    ride one channel and a single sequential consumer on the
+    subscriber preserves their order. *)
+let encode_event ~instrument ~timeframe : event -> string =
+  let key_fields =
+    [
+      ("symbol", `String (Instrument.to_qualified instrument));
+      ("timeframe", `String (Timeframe.to_string timeframe));
+    ]
+  in
+  function
   | Bar_updated c ->
       let j : Yojson.Safe.t =
-        `Assoc [ ("kind", `String "updated"); ("candle", Api.candle_json c) ]
+        `Assoc
+          ((("kind", `String "updated") :: key_fields) @ [ ("candle", Api.candle_json c) ])
       in
       "event: bar\ndata: " ^ Yojson.Safe.to_string j ^ "\n\n"
   | Bar_closed c ->
       let j : Yojson.Safe.t =
-        `Assoc [ ("kind", `String "closed"); ("candle", Api.candle_json c) ]
+        `Assoc
+          ((("kind", `String "closed") :: key_fields) @ [ ("candle", Api.candle_json c) ])
       in
       "event: bar\ndata: " ^ Yojson.Safe.to_string j ^ "\n\n"
 
@@ -200,7 +211,7 @@ let start_poll t (key : key) (feed : feed) =
             in
             List.iter
               (fun ev ->
-                let chunk = encode_event ev in
+                let chunk = encode_event ~instrument ~timeframe ev in
                 List.iter (fun s -> Eio.Stream.add s.queue chunk) subs)
               events
           with e ->
@@ -357,7 +368,8 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
                   | _ -> f.last_candles @ [ candle ]
                 in
                 f.last_candles <- cached;
-                Some (encode_event event, subscribers_of_key t key)))
+                Some (encode_event ~instrument ~timeframe event, subscribers_of_key t key)
+            ))
   in
   match chunk_opt with
   | None -> ()
