@@ -19,7 +19,7 @@ type event =
 
     Both variants share an ordering domain (same instrument,
     same timeframe), so they ride one channel and a single
-    sequential consumer on the client preserves their order. *)
+    sequential consumer on the subscriber preserves their order. *)
 let encode_event : event -> string = function
   | Bar_updated c ->
       let j : Yojson.Safe.t =
@@ -32,7 +32,7 @@ let encode_event : event -> string = function
       in
       "event: bar\ndata: " ^ Yojson.Safe.to_string j ^ "\n\n"
 
-type client = { id : int; queue : string Eio.Stream.t }
+type subscriber = { id : int; queue : string Eio.Stream.t }
 
 type key = Instrument.t * Timeframe.t
 
@@ -45,8 +45,8 @@ end
 
 module KMap = Map.Make (Key)
 
-type sub_state = {
-  mutable clients : client list;
+type subscription_state = {
+  mutable subscribers : subscriber list;
   mutable last_candles : Candle.t list;
   mutable cancel : unit -> unit;
       (** True while stale bars are being dropped — log once on
@@ -67,16 +67,16 @@ type t = {
   fetch : fetch;
   on_first : lifecycle_hook;
   on_last : lifecycle_hook;
-  mutable subs : sub_state KMap.t;
+  mutable subscriptions : subscription_state KMap.t;
   mutex : Eio.Mutex.t;
   mutable next_id : int;
   sw : Eio.Switch.t;
 }
 
-(** [on_first_subscriber] fires when the first SSE client subscribes
+(** [on_first_subscriber] fires when the first SSE subscriber subscribes
     to a [(instrument, timeframe)] key — the natural moment to forward
     the subscription to an upstream WS. [on_last_unsubscriber] fires
-    when the last client of a key disconnects, so the upstream
+    when the last subscriber of a key disconnects, so the upstream
     subscription can be released. Both default to no-ops, keeping
     [Stream] free of any broker knowledge. *)
 let create
@@ -92,7 +92,7 @@ let create
     fetch;
     on_first = on_first_subscriber;
     on_last = on_last_unsubscriber;
-    subs = KMap.empty;
+    subscriptions = KMap.empty;
     mutex = Eio.Mutex.create ();
     next_id = 0;
   }
@@ -129,7 +129,7 @@ let poll_interval_seconds (tf : Timeframe.t) : float =
   let s = float_of_int (Timeframe.to_seconds tf) in
   Float.max 2.0 (Float.min 30.0 (s /. 12.0))
 
-let start_poll t (key : key) (sub : sub_state) =
+let start_poll t (key : key) (sub : subscription_state) =
   let instrument, timeframe = key in
   let interval = poll_interval_seconds timeframe in
   let running = ref true in
@@ -159,7 +159,7 @@ let start_poll t (key : key) (sub : sub_state) =
         if !running && not ws_fresh then
           try
             let fresh = t.fetch ~instrument ~n:500 ~timeframe in
-            let events, clients =
+            let events, subscribers =
               Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
                   (* Merge fresh (REST snapshot) with any live WS updates
                   that landed after the last poll. REST can lag WS by
@@ -185,12 +185,12 @@ let start_poll t (key : key) (sub : sub_state) =
                   in
                   let evs = diff_and_emit ~cached:sub.last_candles ~fresh:merged in
                   sub.last_candles <- merged;
-                  (evs, sub.clients))
+                  (evs, sub.subscribers))
             in
             List.iter
               (fun ev ->
                 let chunk = encode_event ev in
-                List.iter (fun c -> Eio.Stream.add c.queue chunk) clients)
+                List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers)
               events
           with e ->
             Log.warn "stream poll %s/%s failed: %s"
@@ -200,47 +200,47 @@ let start_poll t (key : key) (sub : sub_state) =
       done;
       `Stop_daemon)
 
-let subscribe t ~instrument ~timeframe : client * Candle.t list =
+let subscribe t ~instrument ~timeframe : subscriber * Candle.t list =
   let key = (instrument, timeframe) in
-  let client, seed, first =
+  let subscriber, seed, first =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
         let id = t.next_id in
         t.next_id <- t.next_id + 1;
-        let client = { id; queue = Eio.Stream.create 64 } in
-        match KMap.find_opt key t.subs with
+        let subscriber = { id; queue = Eio.Stream.create 64 } in
+        match KMap.find_opt key t.subscriptions with
         | Some s ->
-            s.clients <- client :: s.clients;
-            (client, s.last_candles, false)
+            s.subscribers <- subscriber :: s.subscribers;
+            (subscriber, s.last_candles, false)
         | None ->
             let s =
               {
-                clients = [ client ];
+                subscribers = [ subscriber ];
                 last_candles = [];
                 cancel = (fun () -> ());
                 stale_warned = false;
                 last_upstream_push = None;
               }
             in
-            t.subs <- KMap.add key s t.subs;
+            t.subscriptions <- KMap.add key s t.subscriptions;
             start_poll t key s;
-            (client, [], true))
+            (subscriber, [], true))
   in
   (if first then
      try t.on_first ~instrument ~timeframe
      with e -> Log.warn "stream on_first_subscriber failed: %s" (Printexc.to_string e));
-  (client, seed)
+  (subscriber, seed)
 
-let unsubscribe t ~instrument ~timeframe (client : client) =
+let unsubscribe t ~instrument ~timeframe (subscriber : subscriber) =
   let key = (instrument, timeframe) in
   let last =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        match KMap.find_opt key t.subs with
+        match KMap.find_opt key t.subscriptions with
         | None -> false
         | Some s ->
-            s.clients <- List.filter (fun c -> c.id <> client.id) s.clients;
-            if s.clients = [] then begin
+            s.subscribers <- List.filter (fun c -> c.id <> subscriber.id) s.subscribers;
+            if s.subscribers = [] then begin
               s.cancel ();
-              t.subs <- KMap.remove key t.subs;
+              t.subscriptions <- KMap.remove key t.subscriptions;
               true
             end
             else false)
@@ -252,14 +252,14 @@ let unsubscribe t ~instrument ~timeframe (client : client) =
 (** Injection point for alternative upstream sources (WebSocket bridge).
     Updates the cached candle for [(instrument, timeframe)] so the
     polling fiber doesn't re-emit a duplicate, then fans the event out
-    to all registered SSE clients of that key. No-op if the key has
+    to all registered SSE subscribers of that key. No-op if the key has
     no subscribers yet. *)
 let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
   let key = (instrument, timeframe) in
   let now = Eio.Time.now (Eio.Stdenv.clock t.env) in
   let chunk_opt =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        match KMap.find_opt key t.subs with
+        match KMap.find_opt key t.subscriptions with
         | None -> None
         | Some s -> (
             s.last_upstream_push <- Some now;
@@ -278,7 +278,7 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
              don't have, and brokers (notably BCS) often push a
              snapshot the instant a subscription is acked; that
              snapshot can legitimately be much older than what
-             [/api/candles] already delivered to the client. Drop
+             [/api/candles] already delivered to the subscriber. Drop
              the WS event and wait for polling to seed the cache
              before forwarding anything. *)
                 None
@@ -309,8 +309,32 @@ let push_from_upstream t ~instrument ~timeframe (candle : Candle.t) =
                   | _ -> s.last_candles @ [ candle ]
                 in
                 s.last_candles <- cached;
-                Some (encode_event event, s.clients)))
+                Some (encode_event event, s.subscribers)))
   in
   match chunk_opt with
   | None -> ()
-  | Some (chunk, clients) -> List.iter (fun c -> Eio.Stream.add c.queue chunk) clients
+  | Some (chunk, subscribers) ->
+      List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers
+
+(** Broadcast publish for the [order] SSE channel.
+
+    Wraps the caller-supplied JSON in [event: order\n data: ...\n\n]
+    framing and pushes the chunk to every currently-connected
+    subscriber's queue, regardless of which (instrument, timeframe)
+    they subscribed to for bars. The publisher (in
+    [domain_event_handlers]) is responsible for shaping the JSON
+    — typically [{"kind": "placed" | "rejected" | ..., ...}] —
+    and for projecting domain events into integration-event DTOs
+    before calling here.
+
+    Order events share a single ordering domain on the subscriber
+    side (see [docs/architecture/functional-hexagonal.md]); each
+    subscriber processes them via a sequential queue under one
+    [addEventListener("order", ...)]. *)
+let publish_order t (data : Yojson.Safe.t) : unit =
+  let chunk = "event: order\ndata: " ^ Yojson.Safe.to_string data ^ "\n\n" in
+  let subscribers =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        KMap.fold (fun _ s acc -> s.subscribers @ acc) t.subscriptions [])
+  in
+  List.iter (fun c -> Eio.Stream.add c.queue chunk) subscribers
