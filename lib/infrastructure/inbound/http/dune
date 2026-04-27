@@ -3,4 +3,5 @@
  (public_name trading.server)
  (libraries core broker indicators strategies engine log
             queries commands domain_event_handlers workflows
+            integration_events
             cohttp-eio eio eio.unix yojson uri))
