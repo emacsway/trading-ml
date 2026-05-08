@@ -48,7 +48,7 @@ sits one level above and is concerned only with the graph.
         │                         ▼                   ▼
         │       ┌──────────────────┐         ┌────────────────────┐
         │       │  Account         │         │  Broker            │
-        │       │  (cash, holdings,│         │  (venue gateway:   │
+        │       │  (cash, holdings,│         │  (brokerage:       │
         │       │   reservations,  │         │   Finam / BCS /    │
         │       │   margin)        │◀── fill │   Synthetic /      │
         │       └────────┬─────────┘  events │   Paper)           │
@@ -81,7 +81,8 @@ of the BCs:
 
 Account and Broker are not in LEAN's framework because LEAN models
 the trading host as a single in-process algorithm; the equivalent
-roles are split across `IBrokerage` (venue gateway) and the
+roles are split across `IBrokerage` (the brokerage abstraction
+that routes orders to the venue and surfaces fills) and the
 algorithm's portfolio bookkeeping. In our system Account owns the
 ledger as a separate BC because its invariants (`cash ≥ 0`,
 reservations ≤ buying power, margin model) are accounting
@@ -209,10 +210,14 @@ place for manual order placement smoke-tests).
 yet emitted; subscribers (`pre_trade_risk`, EMS kill-switch) are
 wired and inert until that gap closes.
 
-### `broker` — venue gateway
+### `broker` — brokerage abstraction
 
 The single port `Broker.S` (covered in ADR 0001 §«The core
-abstraction») abstracts the venue. Adapters: Finam REST + WS, BCS
+abstraction») abstracts the brokerage — the firm or service that
+routes our orders to a venue and surfaces market data and fills
+back. The `venues : t -> Mic.t list` method on the port reflects
+the asymmetry: a brokerage covers one or more venues; the BC is
+*not* a venue itself. Adapters: Finam REST + WS, BCS
 REST + WS, Synthetic (deterministic random walk for demos and
 backtest), Paper (in-memory order simulator wrapping any of the
 three). The WS bridges fan inbound bars into
