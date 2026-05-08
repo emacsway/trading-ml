@@ -171,7 +171,6 @@ let build ~bus : t =
      a scheduler appear, these closures move into [Http.make_handler]
      and into bridge subscribers without changes here. *)
   let _ = dispatch_reconcile in
-  let _ = dispatch_define_alpha_view in
   (* Eager inbound subscriptions on cross-BC outbound URIs. Today's
      publishers don't fully exist yet; the subscriptions sit inert
      until traffic arrives. Each consumer deserializes wire JSON
@@ -211,6 +210,18 @@ let build ~bus : t =
       (Portfolio_management_inbound_integration_events
        .Bar_updated_integration_event_handler
        .handle ~dispatch_apply_bar)
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://strategy.signal-detected"
+         ~group:"portfolio-management-alpha"
+         ~t_of_yojson:
+           Portfolio_management_inbound_integration_events
+           .Signal_detected_integration_event
+           .t_of_yojson)
+      (Portfolio_management_inbound_integration_events
+       .Signal_detected_integration_event_handler
+       .handle ~dispatch_define_alpha_view)
   in
   let http_handler = Portfolio_management_inbound_http.Http.make_handler () in
   { http_handler }
