@@ -12,6 +12,11 @@
     [@@deriving yojson] auto-generates the on-wire format. *)
 
 type t = {
+  correlation_id : string;
+      (** Saga-instance identifier echoed verbatim from
+        {!Reserve_command.t}.correlation_id. Allows the
+        {!Place_order_pm} Process Manager in [execution_management]
+        to route this ack back to the originating instance. *)
   reservation_id : int;
   side : string;
   instrument : Queries.Instrument_view_model.t;
@@ -23,4 +28,4 @@ type t = {
 
 type domain = Account.Portfolio.Events.Amount_reserved.t
 
-val of_domain : domain -> t
+val of_domain : correlation_id:string -> domain -> t

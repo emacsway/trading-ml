@@ -12,10 +12,13 @@ module Amount_reserved = Account_integration_events.Amount_reserved_integration_
 
 val handle :
   publish_amount_reserved:(Amount_reserved.t -> unit) ->
+  correlation_id:string ->
   Account.Portfolio.Events.Amount_reserved.t ->
   unit
 (** Convert a domain event into an integration-event DTO via
     {!Amount_reserved.of_domain} and call [~publish_amount_reserved]
-    with it. The composition root wires that port to
-    {!Bus.Event_bus.publish} on the outbound Amount_reserved event
-    bus. *)
+    with it. [correlation_id] propagates the saga-instance identifier
+    from the originating {!Reserve_command.t} into the outbound
+    integration event. The composition root wires
+    [publish_amount_reserved] to {!Bus.Event_bus.publish} on the
+    outbound Amount_reserved event bus. *)

@@ -11,4 +11,5 @@
     [reason] is a free-form string from the underlying exception
     or transport error. *)
 
-type t = { reservation_id : int; reason : string } [@@deriving yojson]
+type t = { correlation_id : string; reservation_id : int; reason : string }
+[@@deriving yojson]

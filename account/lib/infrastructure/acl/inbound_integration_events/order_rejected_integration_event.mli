@@ -12,4 +12,5 @@
     from the originating Submit command); Account uses it to release
     the matching reservation. *)
 
-type t = { reservation_id : int; reason : string } [@@deriving yojson]
+type t = { correlation_id : string; reservation_id : int; reason : string }
+[@@deriving yojson]

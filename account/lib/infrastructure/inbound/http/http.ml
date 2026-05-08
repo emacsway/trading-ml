@@ -63,8 +63,10 @@ let place_order_of_json (j : Yojson.Safe.t) : place_order_request =
     target price (limit / stop) when present; for market orders
     the composition root's [market_price] port supplies the latest
     mark. *)
-let to_reserve_command (market_price : market_price_port) (req : place_order_request) :
-    Account_commands.Reserve_command.t =
+let to_reserve_command
+    ~(correlation_id : string)
+    (market_price : market_price_port)
+    (req : place_order_request) : Account_commands.Reserve_command.t =
   let price =
     match req.kind with
     | Limit p | Stop p -> Decimal.to_string p
@@ -72,6 +74,7 @@ let to_reserve_command (market_price : market_price_port) (req : place_order_req
     | Market -> Decimal.to_string (market_price ~instrument:req.instrument)
   in
   {
+    correlation_id;
     side = Side.to_string req.side;
     symbol = Instrument.to_qualified req.instrument;
     quantity = Decimal.to_string req.quantity;
@@ -87,16 +90,19 @@ let make_handler ~dispatch_reserve ~market_price : Inbound_http.Route.handler =
   | `POST, "/api/orders" ->
       let body_str = Eio.Flow.read_all body in
       let req = place_order_of_json (Yojson.Safe.from_string body_str) in
-      dispatch_reserve (to_reserve_command market_price req);
-      (* TODO: reservation_id is not synchronously knowable on the
-         async bus — outcomes will arrive on integration-event
-         channels, not back through [send]. The Submit dispatch
-         and the HTTP response shape need a proper saga key
-         (HTTP-generated correlation_id) and an SSE-driven
-         UI flow. Placeholder 202 returned for now. *)
+      let correlation_id = Correlation_id.to_string (Correlation_id.generate ()) in
+      dispatch_reserve (to_reserve_command ~correlation_id market_price req);
+      (* The cid is the saga-instance key minted here — the future
+         Place_order_pm Process Manager will key its instance store
+         off this id, and an SSE channel filtered by cid will surface
+         the eventual outcome to the client. *)
       Some
         ( 202,
           `Response
             (Inbound_http.Response.json ~status:`Accepted
-               (`Assoc [ ("status", `String "accepted") ])) )
+               (`Assoc
+                  [
+                    ("status", `String "accepted");
+                    ("correlation_id", `String correlation_id);
+                  ])) )
   | _ -> None

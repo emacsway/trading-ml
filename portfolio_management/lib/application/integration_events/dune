@@ -5,6 +5,7 @@
   yojson
   ppx_yojson_conv_lib
   core
+  correlation_id
   decimal
   datetime
   portfolio_management

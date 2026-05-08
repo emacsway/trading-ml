@@ -84,7 +84,15 @@ let with_margin_policy ctx ~policy = { ctx with margin_policy = policy }
 let with_mark ctx ~mark = { ctx with mark }
 
 let reserve ctx ~side ~symbol ~quantity ~price =
-  let cmd : Account_commands.Reserve_command.t = { side; symbol; quantity; price } in
+  let cmd : Account_commands.Reserve_command.t =
+    {
+      correlation_id = Correlation_id.to_string (Correlation_id.generate ());
+      side;
+      symbol;
+      quantity;
+      price;
+    }
+  in
   let publish_amount_reserved e =
     ctx.amount_reserved_pub := e :: !(ctx.amount_reserved_pub)
   in
@@ -100,7 +108,12 @@ let reserve ctx ~side ~symbol ~quantity ~price =
   { ctx with last_reserve_result = Some result }
 
 let release ctx ~reservation_id =
-  let cmd : Account_commands.Release_command.t = { reservation_id } in
+  let cmd : Account_commands.Release_command.t =
+    {
+      correlation_id = Correlation_id.to_string (Correlation_id.generate ());
+      reservation_id;
+    }
+  in
   let publish_reservation_released e =
     ctx.reservation_released_pub := e :: !(ctx.reservation_released_pub)
   in

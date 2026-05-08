@@ -22,6 +22,14 @@
     and in the handler's [response]. *)
 
 type t = {
+  correlation_id : string;
+      (** Saga-instance identifier. Echoed verbatim by Account into
+        every outbound IE produced from this command
+        ({!Amount_reserved_integration_event.t} on success,
+        {!Reservation_rejected_integration_event.t} on failure) so
+        the {!Place_order_pm} Process Manager in
+        [execution_management] can route the ack back to the
+        originating instance. UUID v4 minted by the saga starter. *)
   side : string;  (** ["BUY"] | ["SELL"] (case-insensitive accepted by handler). *)
   symbol : string;
       (** Qualified instrument: [TICKER@MIC[/BOARD]] —

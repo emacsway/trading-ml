@@ -8,6 +8,7 @@ let () =
       ("decimal", Decimal_test.tests);
       ("rop", Rop_test.tests);
       ("workflow_engine", Workflow_engine_test.tests);
+      ("correlation_id", Correlation_id_test.tests);
       (* Domain core *)
       ("mic", Mic_test.tests);
       ("ticker", Ticker_test.tests);

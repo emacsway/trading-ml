@@ -1,2 +1,8 @@
-type t = { side : string; symbol : string; quantity : string; price : string }
+type t = {
+  correlation_id : string;
+  side : string;
+  symbol : string;
+  quantity : string;
+  price : string;
+}
 [@@deriving yojson]

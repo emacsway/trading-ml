@@ -5,4 +5,7 @@
 
 module Order_rejected = Order_rejected_integration_event
 
-val handle : dispatch_release:(reservation_id:int -> unit) -> Order_rejected.t -> unit
+val handle :
+  dispatch_release:(correlation_id:string -> reservation_id:int -> unit) ->
+  Order_rejected.t ->
+  unit

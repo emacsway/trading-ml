@@ -47,18 +47,20 @@ let make
     ~(publish_unreachable : Order_unreachable.t -> unit)
     (cmd : Submit_order_command.t) : unit =
   let rid = cmd.reservation_id in
+  let cid = cmd.correlation_id in
   let unreachable reason =
-    publish_unreachable Order_unreachable.{ reservation_id = rid; reason }
+    publish_unreachable
+      Order_unreachable.{ correlation_id = cid; reservation_id = rid; reason }
   in
   match try Ok (parse_args cmd) with Invalid_argument m | Failure m -> Error m with
   | Error reason -> unreachable reason
   | Ok (instrument, side, quantity, kind, tif) -> (
-      let cid = Broker.generate_client_order_id broker in
+      let client_order_id = Broker.generate_client_order_id broker in
       match
         try
           Ok
             (Broker.place_order broker ~instrument ~side ~quantity ~kind ~tif
-               ~client_order_id:cid)
+               ~client_order_id)
         with e -> Error (Printexc.to_string e)
       with
       | Error reason -> unreachable reason
@@ -67,11 +69,16 @@ let make
           | Rejected ->
               publish_rejected
                 Order_rejected.
-                  { reservation_id = rid; reason = Order.status_to_string order.status }
+                  {
+                    correlation_id = cid;
+                    reservation_id = rid;
+                    reason = Order.status_to_string order.status;
+                  }
           | _ ->
               publish_accepted
                 Order_accepted.
                   {
+                    correlation_id = cid;
                     reservation_id = rid;
                     broker_order = Broker_queries.Order_view_model.of_domain order;
                   }))

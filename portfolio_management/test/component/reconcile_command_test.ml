@@ -33,7 +33,8 @@ let empty_actual_emits_full_target_as_trades =
               Alcotest.(check string) "book_id" "alpha" ie.book_id;
               let by_symbol =
                 List.map
-                  (fun (t : Portfolio_management_queries.Trade_intent_view_model.t) ->
+                  (fun (leg : Trade_intents_planned_ie.leg) ->
+                    let t = leg.intent in
                     (t.instrument.ticker, t.side, t.quantity))
                   ie.trades
               in

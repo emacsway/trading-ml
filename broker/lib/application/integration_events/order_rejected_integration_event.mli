@@ -11,4 +11,5 @@
     (the broker did not create one). UI tracks the request via
     [reservation_id] only for this terminal outcome. *)
 
-type t = { reservation_id : int; reason : string } [@@deriving yojson]
+type t = { correlation_id : string; reservation_id : int; reason : string }
+[@@deriving yojson]

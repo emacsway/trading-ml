@@ -14,5 +14,11 @@
     by the UI for [GET / DELETE /api/orders/<cid>]); Account does
     not consume it. *)
 
-type t = { reservation_id : int; broker_order : Broker_queries.Order_view_model.t }
+type t = {
+  correlation_id : string;
+      (** Saga-instance identifier echoed verbatim from the
+        originating {!Submit_order_command.t}.correlation_id. *)
+  reservation_id : int;
+  broker_order : Broker_queries.Order_view_model.t;
+}
 [@@deriving yojson]

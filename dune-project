@@ -25,6 +25,7 @@
   uri
   base64
   digestif
+  uuidm
   (alcotest :with-test)
   (qcheck :with-test)
   (gospel (>= 0.3.1))

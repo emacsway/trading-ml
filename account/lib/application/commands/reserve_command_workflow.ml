@@ -19,7 +19,7 @@ let execute
   with
   | Ok domain_event ->
       Account_domain_event_handlers.Publish_integration_event_on_amount_reserved.handle
-        ~publish_amount_reserved domain_event;
+        ~publish_amount_reserved ~correlation_id:cmd.correlation_id domain_event;
       Rop.succeed ()
   | Error errs ->
       List.iter
@@ -28,6 +28,7 @@ let execute
               publish_reservation_rejected
                 Reservation_rejected.
                   {
+                    correlation_id = cmd.correlation_id;
                     side = Core.Side.to_string attempted.side;
                     instrument =
                       Queries.Instrument_view_model.of_domain attempted.instrument;

@@ -18,6 +18,14 @@
     letters/digits/space); callers do not see or supply it. *)
 
 type t = {
+  correlation_id : string;
+      (** Saga-instance identifier propagated by {!Place_order_pm}
+        from {!Account_commands.Reserve_command.t}. Echoed verbatim
+        by every outbound IE ({!Order_accepted_integration_event.t},
+        {!Order_rejected_integration_event.t},
+        {!Order_unreachable_integration_event.t}) so the saga can
+        route the venue's response back to the originating
+        instance. *)
   reservation_id : int;
   symbol : string;
       (** Qualified instrument: [TICKER@MIC[/BOARD]] —

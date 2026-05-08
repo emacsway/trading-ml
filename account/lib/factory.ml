@@ -51,11 +51,11 @@ let build ~bus ~initial_cash ~market_price : t =
        Rop tail is discarded. *)
     | Error _ -> ()
   in
-  let dispatch_release ~reservation_id =
+  let dispatch_release ~correlation_id ~reservation_id =
     match
       Account_commands.Release_command_workflow.execute ~portfolio:portfolio_ref
         ~publish_reservation_released
-        Account_commands.Release_command.{ reservation_id }
+        Account_commands.Release_command.{ correlation_id; reservation_id }
     with
     | Ok () -> ()
     (* Idempotent compensation: a duplicated or late rejection event

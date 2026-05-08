@@ -1,6 +1,7 @@
 open Core
 
 type t = {
+  correlation_id : string;
   reservation_id : int;
   side : string;
   instrument : Queries.Instrument_view_model.t;
@@ -12,8 +13,9 @@ type t = {
 
 type domain = Account.Portfolio.Events.Amount_reserved.t
 
-let of_domain (ev : domain) : t =
+let of_domain ~(correlation_id : string) (ev : domain) : t =
   {
+    correlation_id;
     reservation_id = ev.reservation_id;
     side = Side.to_string ev.side;
     instrument = Queries.Instrument_view_model.of_domain ev.instrument;

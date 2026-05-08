@@ -8,4 +8,5 @@
     The bridge from Broker's outbound event to Account's mirror is
     an ACL adapter wired by the composition root. *)
 
-type t = { reservation_id : int; reason : string } [@@deriving yojson]
+type t = { correlation_id : string; reservation_id : int; reason : string }
+[@@deriving yojson]

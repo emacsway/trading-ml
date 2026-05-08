@@ -7,6 +7,7 @@
   account
   account_commands
   account_integration_events
+  correlation_id
   queries
   gherkin_edsl
   alcotest))

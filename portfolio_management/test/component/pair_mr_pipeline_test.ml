@@ -72,8 +72,8 @@ let pipeline_emits_two_legged_trade_list =
           | [ ie ] ->
               let symbols =
                 List.map
-                  (fun (t : Portfolio_management_queries.Trade_intent_view_model.t) ->
-                    t.instrument.ticker)
+                  (fun (leg : Trade_intents_planned_ie.leg) ->
+                    leg.intent.instrument.ticker)
                   ie.trades
               in
               let unique = List.sort_uniq String.compare symbols in

@@ -4,4 +4,7 @@
 
 module Order_unreachable = Order_unreachable_integration_event
 
-val handle : dispatch_release:(reservation_id:int -> unit) -> Order_unreachable.t -> unit
+val handle :
+  dispatch_release:(correlation_id:string -> reservation_id:int -> unit) ->
+  Order_unreachable.t ->
+  unit
