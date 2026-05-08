@@ -1,0 +1,12 @@
+(test
+ (name pre_trade_risk_component_runner)
+ (libraries
+  core
+  decimal
+  rop
+  pre_trade_risk
+  pre_trade_risk_commands
+  pre_trade_risk_integration_events
+  correlation_id
+  gherkin_edsl
+  alcotest))

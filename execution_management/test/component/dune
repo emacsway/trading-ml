@@ -1,0 +1,12 @@
+(test
+ (name execution_management_component_runner)
+ (libraries
+  core
+  decimal
+  workflow_engine
+  execution_management
+  execution_management_inbound_integration_events
+  execution_management_inbound_queries
+  execution_management_process_managers
+  gherkin_edsl
+  alcotest))
