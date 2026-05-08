@@ -1,11 +1,7 @@
-(** Why3 companion for [risk.mli] — sizing helper only.
+(** Why3 companion for [sizing.mli] — algebraic properties of
+    construction-time alpha-driven sizing. *)
 
-    The pre-trade [check] / [decision] / [limits] moved to the
-    {!Pre_trade_risk} bounded context (see plan M1). Sizing itself
-    will move to {!Portfolio_management.Sizing} in M3. This file
-    captures the residual algebraic property used downstream. *)
-
-module Risk
+module Sizing
   use int.Int
   use real.RealInfix
   use decimal.Decimal
@@ -21,4 +17,7 @@ module Risk
 
   lemma clamp_idempotent : forall s: real.
     clamp_strength (clamp_strength s) = clamp_strength s
+
+  lemma clamp_monotone : forall a b: real.
+    a <=. b -> clamp_strength a <=. clamp_strength b
 end

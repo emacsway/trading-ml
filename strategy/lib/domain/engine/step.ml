@@ -33,13 +33,24 @@ let make_state ~strategy ~cash =
     reservation_seq = 0;
   }
 
+(* Inline copy of the original [Engine.Risk.size_from_strength]. The
+   canonical sizing now lives in {!Portfolio_management.Sizing}; this
+   in-place duplicate keeps Backtest / Live_engine compiling until M5
+   deletes Step entirely and Strategy stops sizing locally. *)
+let size_from_strength_inline ~equity ~price ~max_position_notional ~strength : Decimal.t
+    =
+  let f = Float.max 0.0 (Float.min 1.0 strength) in
+  let budget = Decimal.mul equity (Decimal.of_float f) in
+  let budget = Decimal.min budget max_position_notional in
+  if Decimal.is_zero price then Decimal.zero else Decimal.div budget price
+
 let size_for_signal ~config ~portfolio ~price (sig_ : Signal.t) :
     (Side.t * Decimal.t) option =
   let mark _ = Some price in
   let equity = Account.Portfolio.equity portfolio mark in
   let entry_qty side =
     let q =
-      Risk.size_from_strength ~equity ~price
+      size_from_strength_inline ~equity ~price
         ~max_position_notional:config.max_position_notional
         ~strength:(Float.max 0.1 sig_.strength)
     in
