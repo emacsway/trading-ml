@@ -117,6 +117,54 @@ let test_limit_order_requires_price () =
   Alcotest.(check int) "no Order_accepted" 0 (List.length !accepted);
   Alcotest.(check int) "one Order_rejected" 1 (List.length !rejected)
 
+let test_sell_happy_path_publishes_order_accepted_with_sell_side () =
+  let store = Test_store.create () in
+  let accepted = ref [] in
+  let rejected = ref [] in
+  let result =
+    Workflow.execute ~store:store_module ~store_handle:store
+      ~next_order_id:(next_id_seq ())
+      ~now_ts:(fun () -> 1_700_000_010L)
+      ~placed_after_ts:(fun _ -> 1_700_000_000L)
+      ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
+      ~publish_order_rejected:(fun ie -> rejected := ie :: !rejected)
+      (market_cmd ~side:"SELL" ())
+  in
+  Alcotest.(check bool) "workflow Ok" true (Result.is_ok result);
+  Alcotest.(check int) "store size = 1" 1 (Test_store.length store);
+  Alcotest.(check int) "no rejection" 0 (List.length !rejected);
+  match !accepted with
+  | [ ie ] ->
+      Alcotest.(check string) "side echoed as SELL" "SELL" ie.side;
+      Alcotest.(check int) "reservation_id" 7 ie.reservation_id
+  | _ -> Alcotest.fail "expected exactly one Order_accepted IE"
+
+let test_limit_sell_without_price_is_rejected () =
+  let store = Test_store.create () in
+  let accepted = ref [] in
+  let rejected = ref [] in
+  let cmd : Submit.t =
+    {
+      (market_cmd ~side:"SELL" ()) with
+      kind = { type_ = "LIMIT"; price = None; stop_price = None; limit_price = None };
+    }
+  in
+  let result =
+    Workflow.execute ~store:store_module ~store_handle:store
+      ~next_order_id:(next_id_seq ())
+      ~now_ts:(fun () -> 1_700_000_010L)
+      ~placed_after_ts:(fun _ -> 1_700_000_000L)
+      ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
+      ~publish_order_rejected:(fun ie -> rejected := ie :: !rejected)
+      cmd
+  in
+  Alcotest.(check bool) "workflow Error" true (Result.is_error result);
+  Alcotest.(check int) "no Order_accepted" 0 (List.length !accepted);
+  match !rejected with
+  | [ ie ] ->
+      Alcotest.(check int) "reservation_id echoed on rejection" 7 ie.reservation_id
+  | _ -> Alcotest.fail "expected exactly one Order_rejected IE"
+
 let tests =
   [
     ( "happy path publishes Order_accepted",
@@ -128,4 +176,10 @@ let tests =
     ( "LIMIT without price publishes Order_rejected",
       `Quick,
       test_limit_order_requires_price );
+    ( "SELL happy path publishes Order_accepted with side=SELL",
+      `Quick,
+      test_sell_happy_path_publishes_order_accepted_with_sell_side );
+    ( "LIMIT SELL without price is rejected and echoes reservation_id",
+      `Quick,
+      test_limit_sell_without_price_is_rejected );
   ]

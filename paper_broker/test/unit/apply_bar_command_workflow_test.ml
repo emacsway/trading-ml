@@ -47,6 +47,36 @@ let submit_market_buy
   in
   ()
 
+let submit_limit_sell
+    ~store
+    ~next_id
+    ~now_ts
+    ~placed_after_ts
+    ~correlation_id
+    ~reservation_id
+    ~quantity
+    ~limit =
+  let cmd : Submit.t =
+    {
+      correlation_id;
+      reservation_id;
+      symbol = "SBER@MISX";
+      side = "SELL";
+      quantity;
+      kind =
+        { type_ = "LIMIT"; price = Some limit; stop_price = None; limit_price = None };
+      tif = "GTC";
+    }
+  in
+  let _ =
+    Submit_wf.execute ~store:store_module ~store_handle:store ~next_order_id:next_id
+      ~now_ts ~placed_after_ts
+      ~publish_order_accepted:(fun _ -> ())
+      ~publish_order_rejected:(fun _ -> ())
+      cmd
+  in
+  ()
+
 let bar_cmd
     ?(ts = "2024-01-01T10:00:00Z")
     ?(open_ = "100")
@@ -124,6 +154,25 @@ let test_bar_for_different_instrument_does_not_fill () =
   in
   Alcotest.(check int) "no cross-instrument fill" 0 (List.length !filled)
 
+let test_limit_sell_above_bar_high_does_not_fill () =
+  let store = Test_store.create () in
+  let next_order_id = make_id_seq "po" in
+  let next_exec_id = make_id_seq "ex" in
+  submit_limit_sell ~store ~next_id:next_order_id
+    ~now_ts:(fun () -> 1_700_000_000L)
+    ~placed_after_ts:(fun _ -> 1_700_000_000L)
+    ~correlation_id:"saga-D" ~reservation_id:404 ~quantity:"10" ~limit:"110";
+  let filled = ref [] in
+  let _ =
+    Apply_bar_wf.execute ~store:store_module ~store_handle:store
+      ~slippage_bps:Slippage_bps.zero ~fee_rate:Fee_rate.zero ~next_exec_id
+      ~publish_order_filled:(fun ie -> filled := ie :: !filled)
+      (* Bar prints 95..105; sell-limit at 110 cannot trigger. *)
+      (bar_cmd ~open_:"100" ~high:"105" ~low:"95" ~close:"102" ())
+  in
+  Alcotest.(check int) "no fill on sell-limit above bar high" 0 (List.length !filled);
+  Alcotest.(check int) "order still tracked" 1 (Test_store.length store)
+
 let test_invalid_bar_returns_error () =
   let store = Test_store.create () in
   let next_exec_id = make_id_seq "ex" in
@@ -147,5 +196,8 @@ let tests =
     ( "different-instrument bar does not fill",
       `Quick,
       test_bar_for_different_instrument_does_not_fill );
+    ( "limit sell above bar high does not fill",
+      `Quick,
+      test_limit_sell_above_bar_high_does_not_fill );
     ("invalid bar instrument returns Error", `Quick, test_invalid_bar_returns_error);
   ]

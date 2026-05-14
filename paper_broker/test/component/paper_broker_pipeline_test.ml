@@ -159,6 +159,43 @@ let invalid_side_is_refused_with_round_trip_reservation_id =
           Alcotest.(check int) "store size" 0 (Test_store.length ctx.store));
     ]
 
+let market_sell_opens_a_short_and_fills_at_slipped_open =
+  Gherkin.scenario
+    "A market sell with positive slippage fills at the bar open shifted down for the \
+     seller"
+    fresh_ctx
+    [
+      Gherkin.given "the paper broker is configured with 10 bps of slippage" (fun ctx ->
+          ctx |> with_slippage_bps ~bps:"10");
+      Gherkin.and_ "I have submitted a market sell for 10 SBER@MISX with reservation 21"
+        (fun ctx ->
+          ctx
+          |> submit_market_sell ~correlation_id:"saga-S" ~reservation_id:21
+               ~symbol:"SBER@MISX" ~quantity:"10" ());
+      Gherkin.when_ "the next bar arrives with open 100" (fun ctx ->
+          ctx |> bar_arrives ~symbol:"SBER@MISX" ~open_:"100" ());
+      Gherkin.then_ "the order acceptance announces side=SELL" (fun ctx ->
+          match !(ctx.order_accepted_pub) with
+          | [ ie ] ->
+              Alcotest.(check string) "side echoed as SELL" "SELL" ie.side;
+              Alcotest.(check int) "reservation_id" 21 ie.reservation_id
+          | other ->
+              Alcotest.fail
+                (Printf.sprintf "expected one Order_accepted, got %d" (List.length other)));
+      Gherkin.then_ "the fill is observed for side=SELL at open - slippage (99.9)"
+        (fun ctx ->
+          match !(ctx.order_filled_pub) with
+          | [ ie ] ->
+              Alcotest.(check string) "side echoed as SELL" "SELL" ie.side;
+              Alcotest.(check int) "reservation_id" 21 ie.reservation_id;
+              Alcotest.(check string)
+                "fill_price = open * (1 - 10/10000)" "99.9" ie.fill_price;
+              Alcotest.(check string) "fill_quantity = remaining" "10" ie.fill_quantity
+          | other ->
+              Alcotest.fail
+                (Printf.sprintf "expected one Order_filled, got %d" (List.length other)));
+    ]
+
 let feature =
   Gherkin.feature "paper_broker pipeline"
     [
@@ -167,4 +204,5 @@ let feature =
       limit_buy_below_market_does_not_fill;
       cancellation_announces_release_and_terminalises_the_order;
       invalid_side_is_refused_with_round_trip_reservation_id;
+      market_sell_opens_a_short_and_fills_at_slipped_open;
     ]

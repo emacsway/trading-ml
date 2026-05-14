@@ -137,6 +137,35 @@ let submit_market_buy
   in
   ctx
 
+let submit_market_sell
+    ?(correlation_id = "saga-1")
+    ?(reservation_id = 1)
+    ?(symbol = "SBER@MISX")
+    ?(quantity = "10")
+    ()
+    ctx =
+  let cmd : Paper_broker_commands.Submit_order_command.t =
+    {
+      correlation_id;
+      reservation_id;
+      symbol;
+      side = "SELL";
+      quantity;
+      kind = { type_ = "MARKET"; price = None; stop_price = None; limit_price = None };
+      tif = "GTC";
+    }
+  in
+  let publish_accepted e = ctx.order_accepted_pub := e :: !(ctx.order_accepted_pub) in
+  let publish_rejected e = ctx.order_rejected_pub := e :: !(ctx.order_rejected_pub) in
+  let _ =
+    Submit_wf.execute ~store:store_module ~store_handle:ctx.store
+      ~next_order_id:ctx.next_order_id
+      ~now_ts:(fun () -> !(ctx.now_ts_ref))
+      ~placed_after_ts:(placed_after_ts_for ctx) ~publish_order_accepted:publish_accepted
+      ~publish_order_rejected:publish_rejected cmd
+  in
+  ctx
+
 let submit_limit_buy
     ?(correlation_id = "saga-1")
     ?(reservation_id = 1)
