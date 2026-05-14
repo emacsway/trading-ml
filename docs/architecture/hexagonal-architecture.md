@@ -292,6 +292,86 @@ inbound ACL projects the rejection variants back into a
 [*Cross-BC place-order saga*](#cross-bc-place-order-saga)
 below for the full flow.
 
+## Process correlation is not aggregate state
+
+`correlation_id` identifies a **process** — an act of changing
+some aggregate's state, expressed either as a Command (an
+intent) or as a Domain Event (a fact). It is **not** an
+attribute of the aggregate.
+
+The distinction matters because a single aggregate participates
+in **many processes** over its lifecycle. An Order in a
+brokerage BC is created by one saga (one `correlation_id`),
+cancelled by another (a different `correlation_id`, possibly the
+same saga or a different one), modified by a third, and so on.
+There is no "**the** correlation_id of this Order" — there are
+as many correlation_ids as there were processes that touched it.
+
+This rules out, by construction, the pattern of *wrapping the
+aggregate with a correlation_id* — e.g. a persistence record
+`Pending_order = (Order, correlation_id)`. Such a wrapper
+implies a 1:1 binding between aggregate and process that does
+not hold. Two consequences:
+
+1. The aggregate's persistence is a pure `Repository<Aggregate>`:
+   keyed by the aggregate's identifier (natural — like
+   `reservation_id` for an order in a brokerage BC — or
+   surrogate, like a server-assigned `id`), returning the pure
+   Domain object with no process metadata mixed in.
+2. Process correlation lives in a **separate store** that links
+   `(incoming_command_kind, correlation_id, aggregate_id)`. This
+   store answers questions like "which originating-saga's
+   `correlation_id` should an `Order_filled` integration event
+   echo, given that the bar that produced the fill has no
+   `correlation_id` of its own?" — answer: the `Submit` entry's
+   `correlation_id` for this order.
+
+```text
+                      ┌───────────────────────┐
+   Command in flight  │ Repository<Aggregate> │
+   ────────────────►  │ (pure Domain)         │
+                      └───────────────────────┘
+                                  │ aggregate_id
+                                  ▼
+                      ┌───────────────────────┐
+                      │ Correlation log       │
+                      │  (command_kind,       │
+                      │   correlation_id,     │
+                      │   aggregate_id)       │
+                      └───────────────────────┘
+                                  ▲
+                                  │ correlation_id of
+                                  │  originating process
+                                  │
+                      ┌───────────────────────┐
+   Outbound IE        │ Workflow              │
+   ◄────────────────  │  emits IE with        │
+                      │  correlation_id from  │
+                      │  log (or from current │
+                      │  command in scope)    │
+                      └───────────────────────┘
+```
+
+When the project gains an **event log** (event sourcing in the
+classical sense), this falls out naturally: every event in the
+log carries `correlation_id` (and `causation_id`) in its
+metadata, and the correlation log is just an index over that
+event stream. Until then, the explicit correlation store is the
+substitute.
+
+A practical corollary: when designing outbound integration
+events, ask *which process is this event the consequence of?*
+The answer tells you where to source the `correlation_id`:
+
+- `Order_accepted` — consequence of the `Submit` command → use
+  the command's `correlation_id` (in scope).
+- `Order_rejected` — same.
+- `Order_cancelled` — consequence of the `Cancel` command → use
+  the cancel command's `correlation_id` (in scope).
+- `Order_filled` — consequence of a bar arrival, which is not a
+  saga-driven command. Look up the originating `Submit`
+  correlation in the correlation log for the order being filled.
+
 ## Stable wire contract
 
 **Rule: domain events never cross the HTTP boundary.**

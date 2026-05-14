@@ -254,11 +254,14 @@ Optional BC instantiated when the host runs with `--paper` (or
 for the backtest path). Subscribes to `broker.submit-order-command`
 (saga channel, wire-byte-equivalent to broker's local
 `Submit_order_command`) and `broker.bar-updated` (mirrored via
-this BC's own inbound ACL), maintains a {!Pending_order} store
-keyed by paper-broker order id, and emits fills against the bar
-stream using a pure-FP matching engine (`Matching.price_if_filled`
-+ `Slippage.apply` + `Fee.compute`). The Domain layer has Why3
-specs for the entity (`Order`), the matching rules, and the VOs.
+this BC's own inbound ACL), persists working orders and emits
+fills against the bar stream using a pure-FP matching engine
+(`Matching.price_if_filled` + `Slippage.apply` + `Fee.compute`).
+The Domain layer has Why3 specs for the entity (`Order`), the
+matching rules, and the VOs. Persistence shape — pure
+`Repository<Order>` + a separate process-correlation log — is
+covered by *Process correlation is not aggregate state* in
+[hexagonal-architecture.md](hexagonal-architecture.md).
 
 **Inbound** ← `broker.submit-order-command`,
 `broker.cancel-order-command` (saga-driven command channels;
