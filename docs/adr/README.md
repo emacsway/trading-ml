@@ -24,6 +24,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0009](0009-portfolio-management-bounded-context.md) | Portfolio Management bounded context | Accepted | 2026-05-03 |
 | [0010](0010-alpha-mind-vs-bracket-exit-projection.md) | Alpha-mind vs bracket-exit projection on the strategy → PM contract | Accepted | 2026-05-05 |
 | [0011](0011-risk-evacuation-and-place-order-saga.md) | Risk evacuation from Strategy; pre_trade_risk and execution_management BCs; Place_order saga | Accepted | 2026-05-08 |
+| [0012](0012-paper-broker-bounded-context.md) | Paper broker as a bounded context; matching engine in Why3-verified domain | Accepted | 2026-05-14 |
 
 ## Template
 
