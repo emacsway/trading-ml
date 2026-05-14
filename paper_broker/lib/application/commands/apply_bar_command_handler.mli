@@ -1,19 +1,18 @@
 (** Command handler for {!Apply_bar_command.t}.
 
     Wire-format primitives are parsed back into a domain
-    {!Core.Candle.t}, then every active {!Pending_order.t} on the
-    bar's instrument is tested against the matching rules.
-    Pending orders that match are atomically updated in the
-    {!Order_store.S} via {!Order_store.S.update} and the resulting
+    {!Core.Candle.t}, then every active {!Paper_broker.Order.t} on
+    the bar's instrument is tested against the matching rules.
+    Orders that match are atomically updated in the
+    {!Paper_broker_store.Order_store.S} via
+    {!Paper_broker_store.Order_store.S.update}; resulting
     {!Paper_broker.Order.Events.Fill_observed.t} domain events are
     returned for the enclosing workflow to translate into outbound
     integration events.
 
-    No partial-fill participation cap is applied in this cut — a
-    matched order fills its full remaining quantity at the
-    canonical (then slipped) price. A future participation_rate
-    parameter would slice [fill_quantity] proportionally to
-    [candle.volume]. *)
+    No partial-fill participation cap is applied when
+    [participation_rate = None]. With [Some rate], a single fill is
+    capped at [bar.volume * rate]. *)
 
 (** {1 Validation errors} *)
 
@@ -30,14 +29,13 @@ val validation_error_to_string : validation_error -> string
 type handle_error = Validation of validation_error
 
 type fill_outcome = {
-  pending : Pending_order.t;
+  order : Paper_broker.Order.t;
   event : Paper_broker.Order.Events.Fill_observed.t;
 }
-(** Per-order fill: the post-fill {!Pending_order.t} (whose
-    underlying {!Paper_broker.Order.t} reflects the new
-    [filled]/[status]) plus the corresponding domain event. *)
+(** Per-order fill: the post-fill {!Paper_broker.Order.t} (reflecting
+    new [filled]/[status]) plus the corresponding domain event. *)
 
-module type Store = Order_store.S
+module type Store = Paper_broker_store.Order_store.S
 
 val handle :
   store:(module Store with type t = 'store) ->
@@ -48,13 +46,3 @@ val handle :
   next_exec_id:(unit -> string) ->
   Apply_bar_command.t ->
   (fill_outcome list, handle_error) Rop.t
-(** Parse the bar, sweep active orders on the matching instrument,
-    atomically apply fills and yield the list of resulting fills.
-    Wire-format validation failures short-circuit before any store
-    interaction.
-
-    [participation_rate]: liquidity cap. [None] means no cap (every
-    matching order fills its full [Order.remaining] at the
-    canonical-then-slipped price). [Some rate] caps a single fill at
-    [bar.volume * rate]; the residual stays working for subsequent
-    bars. *)

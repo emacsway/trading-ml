@@ -11,8 +11,16 @@ let build ~bus ~slippage_bps ~fee_rate ?participation_rate () : t =
   in
   let store_module =
     (module Paper_broker_persistence.In_memory_order_store
-    : Paper_broker_commands.Order_store.S
+    : Paper_broker_store.Order_store.S
       with type t = Paper_broker_persistence.In_memory_order_store.t)
+  in
+  let command_log : Paper_broker_persistence.In_memory_order_command_log.t =
+    Paper_broker_persistence.In_memory_order_command_log.create ()
+  in
+  let command_log_module =
+    (module Paper_broker_persistence.In_memory_order_command_log
+    : Paper_broker_store.Order_command_log.S
+      with type t = Paper_broker_persistence.In_memory_order_command_log.t)
   in
   let next_order_id =
     let counter = ref 0 in
@@ -60,7 +68,8 @@ let build ~bus ~slippage_bps ~fee_rate ?participation_rate () : t =
   let dispatch_submit_order (cmd : Paper_broker_commands.Submit_order_command.t) =
     match
       Paper_broker_commands.Submit_order_command_workflow.execute ~store:store_module
-        ~store_handle:store ~next_order_id ~now_ts ~placed_after_ts
+        ~store_handle:store ~command_log:command_log_module
+        ~command_log_handle:command_log ~next_order_id ~now_ts ~placed_after_ts
         ~publish_order_accepted ~publish_order_rejected cmd
     with
     | Ok () -> ()
@@ -73,8 +82,9 @@ let build ~bus ~slippage_bps ~fee_rate ?participation_rate () : t =
     let bar_ts_parsed = Datetime.Iso8601.parse cmd.candle.ts in
     (match
        Paper_broker_commands.Apply_bar_command_workflow.execute ~store:store_module
-         ~store_handle:store ~slippage_bps ~fee_rate ~participation_rate ~next_exec_id
-         ~publish_order_filled cmd
+         ~store_handle:store ~command_log:command_log_module
+         ~command_log_handle:command_log ~slippage_bps ~fee_rate ~participation_rate
+         ~next_exec_id ~publish_order_filled cmd
      with
     | Ok () -> ()
     | Error _ -> ());
@@ -90,7 +100,8 @@ let build ~bus ~slippage_bps ~fee_rate ?participation_rate () : t =
       (cmd : Paper_broker_commands.Cancel_pending_order_command.t) =
     match
       Paper_broker_commands.Cancel_pending_order_command_workflow.execute
-        ~store:store_module ~store_handle:store ~now_ts ~publish_order_cancelled cmd
+        ~store:store_module ~store_handle:store ~command_log:command_log_module
+        ~command_log_handle:command_log ~now_ts ~publish_order_cancelled cmd
     with
     | Ok () -> ()
     | Error _ ->

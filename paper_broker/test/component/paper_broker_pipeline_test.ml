@@ -139,6 +139,7 @@ let invalid_side_is_refused_with_round_trip_reservation_id =
           in
           let _ =
             Submit_wf.execute ~store:store_module ~store_handle:ctx.store
+              ~command_log:log_module ~command_log_handle:ctx.command_log
               ~next_order_id:ctx.next_order_id
               ~now_ts:(fun () -> !(ctx.now_ts_ref))
               ~placed_after_ts:(placed_after_ts_for ctx)

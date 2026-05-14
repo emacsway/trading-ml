@@ -2,7 +2,6 @@ type t = {
   correlation_id : string;
   reservation_id : int;
   id : string;
-  client_order_id : string;
   instrument : Paper_broker_queries.Instrument_view_model.t;
   cancelled_ts : string;
 }
@@ -10,12 +9,11 @@ type t = {
 
 type domain = Paper_broker.Order.Events.Order_cancelled.t
 
-let of_domain ~(correlation_id : string) ~(reservation_id : int) (ev : domain) : t =
+let of_domain ~(correlation_id : string) (ev : domain) : t =
   {
     correlation_id;
-    reservation_id;
+    reservation_id = Paper_broker.Order.Values.Reservation_id.to_int ev.reservation_id;
     id = ev.id;
-    client_order_id = ev.client_order_id;
     instrument = Paper_broker_queries.Instrument_view_model.of_domain ev.instrument;
     cancelled_ts = Datetime.Iso8601.format ev.cancelled_ts;
   }

@@ -1,10 +1,13 @@
 module Values : module type of Values
 module Events : module type of Events
 
-(** Working order inside paper_broker — Entity with identity
-    [client_order_id] and a status lifecycle controlled by
-    {!apply_fill} / {!cancel}. Immutable: every transition returns
-    a fresh aggregate plus the matching domain event.
+(** Working order inside paper_broker — Aggregate Root with
+    surrogate identity [id] (server-assigned by paper_broker) and
+    natural identity [reservation_id] (the client's identifier of
+    the order, see {!Values.Reservation_id}). Status lifecycle
+    controlled by {!apply_fill} / {!cancel}. Immutable: every
+    transition returns a fresh aggregate plus the matching domain
+    event.
 
     Invariants:
     - [quantity > 0];
@@ -14,7 +17,7 @@ module Events : module type of Events
 
 type t = private {
   id : string;
-  client_order_id : string;
+  reservation_id : Values.Reservation_id.t;
   instrument : Core.Instrument.t;
   side : Core.Side.t;
   quantity : Decimal.t;
@@ -34,7 +37,7 @@ val is_terminal : t -> bool
 
 val make :
   id:string ->
-  client_order_id:string ->
+  reservation_id:Values.Reservation_id.t ->
   instrument:Core.Instrument.t ->
   side:Core.Side.t ->
   quantity:Decimal.t ->

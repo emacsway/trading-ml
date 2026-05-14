@@ -4,7 +4,6 @@ type t = {
   correlation_id : string;
   reservation_id : int;
   id : string;
-  client_order_id : string;
   instrument : Paper_broker_queries.Instrument_view_model.t;
   side : string;
   quantity : string;
@@ -14,12 +13,11 @@ type t = {
 
 type domain = Paper_broker.Order.Events.Order_accepted.t
 
-let of_domain ~(correlation_id : string) ~(reservation_id : int) (ev : domain) : t =
+let of_domain ~(correlation_id : string) (ev : domain) : t =
   {
     correlation_id;
-    reservation_id;
+    reservation_id = Paper_broker.Order.Values.Reservation_id.to_int ev.reservation_id;
     id = ev.id;
-    client_order_id = ev.client_order_id;
     instrument = Paper_broker_queries.Instrument_view_model.of_domain ev.instrument;
     side = Side.to_string ev.side;
     quantity = Decimal.to_string ev.quantity;

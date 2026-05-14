@@ -1,25 +1,25 @@
-(** In-memory {!Order_store.S} implementation for sociable tests.
-    Single-threaded; no locking — Alcotest runners are sequential. *)
+(** In-memory {!Paper_broker_store.Order_store.S} implementation for
+    sociable tests. Single-threaded; no locking — Alcotest runners
+    are sequential. *)
 
-module Pending_order = Paper_broker_commands.Pending_order
+module Order = Paper_broker.Order
 
-type t = (string, Pending_order.t) Hashtbl.t
+type t = (string, Order.t) Hashtbl.t
 
 let create () : t = Hashtbl.create 8
 
-let save (t : t) (po : Pending_order.t) =
-  let id = Pending_order.id po in
-  if Hashtbl.mem t id then `Already_exists
+let save (t : t) (order : Order.t) =
+  if Hashtbl.mem t order.id then `Already_exists
   else begin
-    Hashtbl.replace t id po;
+    Hashtbl.replace t order.id order;
     `Ok
   end
 
-let find (t : t) ~id : Pending_order.t option = Hashtbl.find_opt t id
+let find (t : t) ~id : Order.t option = Hashtbl.find_opt t id
 
-let find_active (t : t) : Pending_order.t list =
+let find_active (t : t) : Order.t list =
   Hashtbl.fold
-    (fun _ po acc -> if Pending_order.is_terminal po then acc else po :: acc)
+    (fun _ order acc -> if Order.is_terminal order then acc else order :: acc)
     t []
 
 let update (t : t) ~id ~f =
@@ -27,7 +27,7 @@ let update (t : t) ~id ~f =
   | None -> `Not_found
   | Some current ->
       (match f current with
-      | `Replace po -> Hashtbl.replace t id po
+      | `Replace order -> Hashtbl.replace t id order
       | `Delete -> Hashtbl.remove t id);
       `Updated
 

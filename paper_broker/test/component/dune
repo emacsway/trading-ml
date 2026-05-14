@@ -8,6 +8,7 @@
   paper_broker
   paper_broker_queries
   paper_broker_integration_events
+  paper_broker_store
   paper_broker_commands
   gherkin_edsl
   alcotest))

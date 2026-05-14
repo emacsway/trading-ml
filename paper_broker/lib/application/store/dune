@@ -1,0 +1,5 @@
+(library
+ (name paper_broker_store)
+ (public_name trading.paper_broker.store)
+ (libraries paper_broker)
+ (modules_without_implementation order_store order_command_log))

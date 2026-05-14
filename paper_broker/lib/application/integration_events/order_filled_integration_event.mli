@@ -9,15 +9,17 @@
 
 type t = {
   correlation_id : string;
-      (** Saga-instance identifier echoed from the originating
-          [submit_order_command]. *)
+      (** Saga-instance identifier of the originating
+          [submit_order_command] (process metadata, recovered from
+          the application correlation log since the bar that
+          produced this fill carries no correlation_id of its
+          own). *)
   reservation_id : int;
-      (** Opaque correlation token round-tripped from
-          [submit_order_command]. Account uses it to locate the
-          matching reserved cash/position on
+      (** Client's identifier of the order, sourced from the Domain
+          {!Paper_broker.Order.Events.Fill_observed.reservation_id}.
+          Account uses it to locate the matching ledger state on
           [commit_fill_command]. *)
   id : string;
-  client_order_id : string;
   exec_id : string;
   instrument : Paper_broker_queries.Instrument_view_model.t;
   side : string;
@@ -31,4 +33,4 @@ type t = {
 
 type domain = Paper_broker.Order.Events.Fill_observed.t
 
-val of_domain : correlation_id:string -> reservation_id:int -> domain -> t
+val of_domain : correlation_id:string -> domain -> t

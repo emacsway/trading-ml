@@ -17,8 +17,7 @@ let validation_error_to_string = function
   | Invalid_candle s -> Printf.sprintf "invalid candle: %s" s
 
 type handle_error = Validation of validation_error
-
-type fill_outcome = { pending : Pending_order.t; event : Order.Events.Fill_observed.t }
+type fill_outcome = { order : Order.t; event : Order.Events.Fill_observed.t }
 
 let parse_instrument raw : (Core.Instrument.t, validation_error) Rop.t =
   try Rop.succeed (Core.Instrument.of_qualified raw)
@@ -51,7 +50,7 @@ let parse_candle (candle : Apply_bar_command.candle_dto) :
       try Rop.succeed (Core.Candle.make ~ts ~open_ ~high ~low ~close ~volume)
       with Invalid_argument msg -> Rop.fail (Invalid_candle msg))
 
-module type Store = Order_store.S
+module type Store = Paper_broker_store.Order_store.S
 
 let try_fill_one
     (type store)
@@ -63,9 +62,8 @@ let try_fill_one
     ~(next_exec_id : unit -> string)
     ~(instrument : Core.Instrument.t)
     ~(candle : Core.Candle.t)
-    (pending : Pending_order.t) : fill_outcome option =
+    (order : Order.t) : fill_outcome option =
   let module S = (val store : Store with type t = store) in
-  let order = pending.order in
   if not (Core.Instrument.equal order.instrument instrument) then None
   else if Int64.compare candle.ts order.placed_after_ts <= 0 then None
   else
@@ -88,15 +86,14 @@ let try_fill_one
           let exec_id = next_exec_id () in
           let outcome = ref None in
           let _ =
-            S.update store_handle ~id:(Pending_order.id pending) ~f:(fun current ->
+            S.update store_handle ~id:order.id ~f:(fun current ->
                 match
-                  Order.apply_fill current.order ~exec_id ~fill_quantity ~fill_price ~fee
+                  Order.apply_fill current ~exec_id ~fill_quantity ~fill_price ~fee
                     ~fill_ts:candle.ts
                 with
                 | Ok (order', event) ->
-                    let pending' = Pending_order.with_order current order' in
-                    outcome := Some { pending = pending'; event };
-                    `Replace pending'
+                    outcome := Some { order = order'; event };
+                    `Replace order'
                 | Error _ ->
                     (* Race: the order's status changed between [find_active]
                        and [update] (e.g. a concurrent cancel landed). Leave

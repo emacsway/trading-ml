@@ -11,7 +11,7 @@
   paper_broker_queries
   paper_broker_integration_events
   paper_broker_domain_event_handlers
+  paper_broker_store
   rop)
- (modules_without_implementation order_store)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))

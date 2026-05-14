@@ -1,15 +1,15 @@
 (** Command handler for {!Cancel_pending_order_command.t}.
 
-    Atomically transitions the addressed {!Pending_order.t} via
-    {!Paper_broker.Order.cancel} under the {!Order_store.S}'s
-    serialisation primitive, yielding either the post-cancel
-    pending order plus its domain event or a discriminated failure
-    explaining why the cancellation was rejected. *)
+    Atomically transitions the addressed {!Paper_broker.Order.t} via
+    {!Paper_broker.Order.cancel} under the
+    {!Paper_broker_store.Order_store.S}'s serialisation primitive,
+    yielding either the post-cancel aggregate plus its domain event
+    or a discriminated failure. *)
 
 (** {1 Failure surface} *)
 
 type cancel_error =
-  | Order_not_found of string  (** No {!Pending_order.t} is tracked under this id. *)
+  | Order_not_found of string  (** No {!Paper_broker.Order.t} is tracked under this id. *)
   | Order_already_terminal of Paper_broker.Order.Values.Order_status.t
       (** The addressed order is in a terminal status
           (Filled / Cancelled / Rejected / Expired) and cannot
@@ -22,11 +22,11 @@ val cancel_error_to_string : cancel_error -> string
 type handle_error = Cancel of cancel_error
 
 type cancel_outcome = {
-  pending : Pending_order.t;
+  order : Paper_broker.Order.t;
   event : Paper_broker.Order.Events.Order_cancelled.t;
 }
 
-module type Store = Order_store.S
+module type Store = Paper_broker_store.Order_store.S
 
 val handle :
   store:(module Store with type t = 'store) ->

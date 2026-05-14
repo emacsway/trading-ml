@@ -12,12 +12,9 @@ let cancel_error_to_string = function
 
 type handle_error = Cancel of cancel_error
 
-type cancel_outcome = {
-  pending : Pending_order.t;
-  event : Order.Events.Order_cancelled.t;
-}
+type cancel_outcome = { order : Order.t; event : Order.Events.Order_cancelled.t }
 
-module type Store = Order_store.S
+module type Store = Paper_broker_store.Order_store.S
 
 let handle
     (type store)
@@ -29,11 +26,10 @@ let handle
   let outcome = ref None in
   let result =
     S.update store_handle ~id:cmd.id ~f:(fun current ->
-        match Order.cancel current.order ~cancelled_ts:(now_ts ()) with
+        match Order.cancel current ~cancelled_ts:(now_ts ()) with
         | Ok (order', event) ->
-            let pending' = Pending_order.with_order current order' in
-            outcome := Some (Ok { pending = pending'; event });
-            `Replace pending'
+            outcome := Some (Ok { order = order'; event });
+            `Replace order'
         | Error (Order.Order_already_terminal s) ->
             outcome := Some (Rop.fail (Cancel (Order_already_terminal s)));
             `Replace current)

@@ -1,6 +1,6 @@
-module Pending_order = Paper_broker_commands.Pending_order
+module Order = Paper_broker.Order
 
-type t = { table : (string, Pending_order.t) Hashtbl.t; mutex : Mutex.t }
+type t = { table : (string, Order.t) Hashtbl.t; mutex : Mutex.t }
 
 let create () = { table = Hashtbl.create 64; mutex = Mutex.create () }
 
@@ -8,12 +8,11 @@ let with_lock t f =
   Mutex.lock t.mutex;
   Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
 
-let save t (po : Pending_order.t) =
-  let id = Pending_order.id po in
+let save t (order : Order.t) =
   with_lock t (fun () ->
-      if Hashtbl.mem t.table id then `Already_exists
+      if Hashtbl.mem t.table order.id then `Already_exists
       else begin
-        Hashtbl.replace t.table id po;
+        Hashtbl.replace t.table order.id order;
         `Ok
       end)
 
@@ -22,7 +21,7 @@ let find t ~id = with_lock t (fun () -> Hashtbl.find_opt t.table id)
 let find_active t =
   with_lock t (fun () ->
       Hashtbl.fold
-        (fun _ po acc -> if Pending_order.is_terminal po then acc else po :: acc)
+        (fun _ order acc -> if Order.is_terminal order then acc else order :: acc)
         t.table [])
 
 let update t ~id ~f =
@@ -31,7 +30,7 @@ let update t ~id ~f =
       | None -> `Not_found
       | Some current ->
           (match f current with
-          | `Replace po -> Hashtbl.replace t.table id po
+          | `Replace order -> Hashtbl.replace t.table id order
           | `Delete -> Hashtbl.remove t.table id);
           `Updated)
 

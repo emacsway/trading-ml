@@ -3,6 +3,10 @@
     plus the cumulative filled total so consumers can apply the
     transactional effect atomically.
 
+    [reservation_id] is the client's identifier of the order, echoed
+    so consumers (e.g. Account) can locate the matching ledger
+    state on commit.
+
     Whether the fill closes the order is derivable from
     [new_total_filled] versus the original [quantity] announced by
     {!Order_accepted}. Keeping the order's lifecycle status off this
@@ -13,7 +17,7 @@
 
 type t = {
   id : string;
-  client_order_id : string;
+  reservation_id : Values.Reservation_id.t;
   exec_id : string;
   instrument : Core.Instrument.t;
   side : Core.Side.t;

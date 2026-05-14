@@ -2,11 +2,9 @@
 
     Drives the application-layer workflows directly (no Bus), so the
     component boundary covered by these scenarios includes the
-    Order_store adapter and the outbound integration-event
-    projection. The Hexagonal outbound ports [publish_*] are
-    substituted with in-memory recorders: each publication is
-    appended to a per-scenario [ref] list that the Then-steps
-    inspect. *)
+    Order_store and Order_command_log adapters and the outbound
+    integration-event projection. The Hexagonal outbound ports
+    [publish_*] are substituted with in-memory recorders. *)
 
 module Submit_wf = Paper_broker_commands.Submit_order_command_workflow
 module Apply_bar_wf = Paper_broker_commands.Apply_bar_command_workflow
@@ -21,30 +19,30 @@ module Order_cancelled_ie =
 module Slippage_bps = Paper_broker.Slippage.Values.Slippage_bps
 module Fee_rate = Paper_broker.Fee.Values.Fee_rate
 
-(** Single-threaded in-memory store. Mirrors {!Paper_broker_persistence.In_memory_order_store}
-    minus the Mutex (Alcotest runs scenarios sequentially). Kept
-    in-test so the component layer doesn't need to depend on the
-    infrastructure library. *)
+(** Single-threaded in-memory adapter for the
+    {!Paper_broker_store.Order_store.S} port. Mirrors
+    {!Paper_broker_persistence.In_memory_order_store} without the
+    Mutex (Alcotest scenarios are sequential). Kept in-test so the
+    component layer doesn't pull the infrastructure library. *)
 module Test_store = struct
-  module Pending_order = Paper_broker_commands.Pending_order
+  module Order = Paper_broker.Order
 
-  type t = (string, Pending_order.t) Hashtbl.t
+  type t = (string, Order.t) Hashtbl.t
 
   let create () : t = Hashtbl.create 8
 
-  let save (t : t) (po : Pending_order.t) =
-    let id = Pending_order.id po in
-    if Hashtbl.mem t id then `Already_exists
+  let save (t : t) (order : Order.t) =
+    if Hashtbl.mem t order.id then `Already_exists
     else begin
-      Hashtbl.replace t id po;
+      Hashtbl.replace t order.id order;
       `Ok
     end
 
-  let find (t : t) ~id : Pending_order.t option = Hashtbl.find_opt t id
+  let find (t : t) ~id : Order.t option = Hashtbl.find_opt t id
 
-  let find_active (t : t) : Pending_order.t list =
+  let find_active (t : t) : Order.t list =
     Hashtbl.fold
-      (fun _ po acc -> if Pending_order.is_terminal po then acc else po :: acc)
+      (fun _ order acc -> if Order.is_terminal order then acc else order :: acc)
       t []
 
   let update (t : t) ~id ~f =
@@ -52,18 +50,55 @@ module Test_store = struct
     | None -> `Not_found
     | Some current ->
         (match f current with
-        | `Replace po -> Hashtbl.replace t id po
+        | `Replace order -> Hashtbl.replace t id order
         | `Delete -> Hashtbl.remove t id);
         `Updated
 
   let length (t : t) : int = Hashtbl.length t
 end
 
+(** Single-threaded in-memory adapter for the
+    {!Paper_broker_store.Order_command_log.S} port. *)
+module Test_command_log = struct
+  type entry = { submit : string option; cancel : string option }
+  type t = (string, entry) Hashtbl.t
+
+  let create () : t = Hashtbl.create 8
+
+  let get_entry t aggregate_id =
+    match Hashtbl.find_opt t aggregate_id with
+    | Some e -> e
+    | None -> { submit = None; cancel = None }
+
+  let record_submit t ~aggregate_id ~correlation_id =
+    let cur = get_entry t aggregate_id in
+    Hashtbl.replace t aggregate_id { cur with submit = Some correlation_id }
+
+  let record_cancel t ~aggregate_id ~correlation_id =
+    let cur = get_entry t aggregate_id in
+    Hashtbl.replace t aggregate_id { cur with cancel = Some correlation_id }
+
+  let origin_correlation_id t ~aggregate_id =
+    match Hashtbl.find_opt t aggregate_id with
+    | Some e -> e.submit
+    | None -> None
+
+  let cancel_correlation_id t ~aggregate_id =
+    match Hashtbl.find_opt t aggregate_id with
+    | Some e -> e.cancel
+    | None -> None
+end
+
 let store_module =
-  (module Test_store : Paper_broker_commands.Order_store.S with type t = Test_store.t)
+  (module Test_store : Paper_broker_store.Order_store.S with type t = Test_store.t)
+
+let log_module =
+  (module Test_command_log : Paper_broker_store.Order_command_log.S
+    with type t = Test_command_log.t)
 
 type ctx = {
   store : Test_store.t;
+  command_log : Test_command_log.t;
   next_order_id : unit -> string;
   next_exec_id : unit -> string;
   slippage_bps : Slippage_bps.t;
@@ -86,6 +121,7 @@ let make_id_seq prefix =
 let fresh_ctx () =
   {
     store = Test_store.create ();
+    command_log = Test_command_log.create ();
     next_order_id = make_id_seq "po";
     next_exec_id = make_id_seq "ex";
     slippage_bps = Slippage_bps.zero;
@@ -140,8 +176,8 @@ let submit_market_buy
   let publish_accepted e = ctx.order_accepted_pub := e :: !(ctx.order_accepted_pub) in
   let publish_rejected e = ctx.order_rejected_pub := e :: !(ctx.order_rejected_pub) in
   let _ =
-    Submit_wf.execute ~store:store_module ~store_handle:ctx.store
-      ~next_order_id:ctx.next_order_id
+    Submit_wf.execute ~store:store_module ~store_handle:ctx.store ~command_log:log_module
+      ~command_log_handle:ctx.command_log ~next_order_id:ctx.next_order_id
       ~now_ts:(fun () -> !(ctx.now_ts_ref))
       ~placed_after_ts:(placed_after_ts_for ctx) ~publish_order_accepted:publish_accepted
       ~publish_order_rejected:publish_rejected cmd
@@ -169,8 +205,8 @@ let submit_market_sell
   let publish_accepted e = ctx.order_accepted_pub := e :: !(ctx.order_accepted_pub) in
   let publish_rejected e = ctx.order_rejected_pub := e :: !(ctx.order_rejected_pub) in
   let _ =
-    Submit_wf.execute ~store:store_module ~store_handle:ctx.store
-      ~next_order_id:ctx.next_order_id
+    Submit_wf.execute ~store:store_module ~store_handle:ctx.store ~command_log:log_module
+      ~command_log_handle:ctx.command_log ~next_order_id:ctx.next_order_id
       ~now_ts:(fun () -> !(ctx.now_ts_ref))
       ~placed_after_ts:(placed_after_ts_for ctx) ~publish_order_accepted:publish_accepted
       ~publish_order_rejected:publish_rejected cmd
@@ -200,8 +236,8 @@ let submit_limit_buy
   let publish_accepted e = ctx.order_accepted_pub := e :: !(ctx.order_accepted_pub) in
   let publish_rejected e = ctx.order_rejected_pub := e :: !(ctx.order_rejected_pub) in
   let _ =
-    Submit_wf.execute ~store:store_module ~store_handle:ctx.store
-      ~next_order_id:ctx.next_order_id
+    Submit_wf.execute ~store:store_module ~store_handle:ctx.store ~command_log:log_module
+      ~command_log_handle:ctx.command_log ~next_order_id:ctx.next_order_id
       ~now_ts:(fun () -> !(ctx.now_ts_ref))
       ~placed_after_ts:(placed_after_ts_for ctx) ~publish_order_accepted:publish_accepted
       ~publish_order_rejected:publish_rejected cmd
@@ -228,6 +264,7 @@ let bar_arrives
   let publish_filled e = ctx.order_filled_pub := e :: !(ctx.order_filled_pub) in
   let _ =
     Apply_bar_wf.execute ~store:store_module ~store_handle:ctx.store
+      ~command_log:log_module ~command_log_handle:ctx.command_log
       ~slippage_bps:ctx.slippage_bps ~fee_rate:ctx.fee_rate
       ~participation_rate:ctx.participation_rate ~next_exec_id:ctx.next_exec_id
       ~publish_order_filled:publish_filled cmd
@@ -245,7 +282,8 @@ let cancel_order ?(correlation_id = "cancel-1") ~id () ctx =
   in
   let publish_cancelled e = ctx.order_cancelled_pub := e :: !(ctx.order_cancelled_pub) in
   let _ =
-    Cancel_wf.execute ~store:store_module ~store_handle:ctx.store
+    Cancel_wf.execute ~store:store_module ~store_handle:ctx.store ~command_log:log_module
+      ~command_log_handle:ctx.command_log
       ~now_ts:(fun () -> !(ctx.now_ts_ref))
       ~publish_order_cancelled:publish_cancelled cmd
   in

@@ -1,6 +1,6 @@
 type t = {
   id : string;
-  client_order_id : string;
+  reservation_id : Values.Reservation_id.t;
   exec_id : string;
   instrument : Core.Instrument.t;
   side : Core.Side.t;

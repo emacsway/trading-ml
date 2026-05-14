@@ -8,6 +8,5 @@ module Order_cancelled :
 val handle :
   publish_order_cancelled:(Order_cancelled.t -> unit) ->
   correlation_id:string ->
-  reservation_id:int ->
   Paper_broker.Order.Events.Order_cancelled.t ->
   unit

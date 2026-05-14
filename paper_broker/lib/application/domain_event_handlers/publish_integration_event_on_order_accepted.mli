@@ -8,6 +8,5 @@ module Order_accepted :
 val handle :
   publish_order_accepted:(Order_accepted.t -> unit) ->
   correlation_id:string ->
-  reservation_id:int ->
   Paper_broker.Order.Events.Order_accepted.t ->
   unit

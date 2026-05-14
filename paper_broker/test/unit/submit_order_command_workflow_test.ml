@@ -1,13 +1,18 @@
 (** Sociable tests for {!Paper_broker_commands.Submit_order_command_workflow}.
     Drives the real domain, real handler, real DEH; only the
-    {!Order_store.S} adapter and the bus publish closures are
-    stand-ins. *)
+    {!Paper_broker_store.Order_store.S} and
+    {!Paper_broker_store.Order_command_log.S} adapters and the bus
+    publish closures are stand-ins. *)
 
 module Submit = Paper_broker_commands.Submit_order_command
 module Workflow = Paper_broker_commands.Submit_order_command_workflow
 
 let store_module =
-  (module Test_store : Paper_broker_commands.Order_store.S with type t = Test_store.t)
+  (module Test_store : Paper_broker_store.Order_store.S with type t = Test_store.t)
+
+let log_module =
+  (module Test_command_log : Paper_broker_store.Order_command_log.S
+    with type t = Test_command_log.t)
 
 let next_id_seq () =
   let n = ref 0 in
@@ -35,11 +40,13 @@ let market_cmd
 
 let test_happy_path_publishes_order_accepted () =
   let store = Test_store.create () in
+  let log = Test_command_log.create () in
   let accepted = ref [] in
   let rejected = ref [] in
   let next_id = next_id_seq () in
   let result =
-    Workflow.execute ~store:store_module ~store_handle:store ~next_order_id:next_id
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:next_id
       ~now_ts:(fun () -> 1_700_000_010L)
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
@@ -49,6 +56,9 @@ let test_happy_path_publishes_order_accepted () =
   Alcotest.(check bool) "workflow Ok" true (Result.is_ok result);
   Alcotest.(check int) "store size = 1" 1 (Test_store.length store);
   Alcotest.(check int) "no rejection" 0 (List.length !rejected);
+  Alcotest.(check (option string))
+    "submit correlation recorded in log" (Some "saga-1")
+    (Test_command_log.origin_correlation_id log ~aggregate_id:"po-1");
   match !accepted with
   | [ ie ] ->
       Alcotest.(check string) "correlation_id" "saga-1" ie.correlation_id;
@@ -62,11 +72,12 @@ let test_happy_path_publishes_order_accepted () =
 
 let test_invalid_side_publishes_rejection () =
   let store = Test_store.create () in
+  let log = Test_command_log.create () in
   let accepted = ref [] in
   let rejected = ref [] in
   let result =
-    Workflow.execute ~store:store_module ~store_handle:store
-      ~next_order_id:(next_id_seq ())
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:(next_id_seq ())
       ~now_ts:(fun () -> 1_700_000_010L)
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
@@ -96,6 +107,7 @@ let test_invalid_side_publishes_rejection () =
 
 let test_limit_order_requires_price () =
   let store = Test_store.create () in
+  let log = Test_command_log.create () in
   let accepted = ref [] in
   let rejected = ref [] in
   let cmd : Submit.t =
@@ -105,8 +117,8 @@ let test_limit_order_requires_price () =
     }
   in
   let result =
-    Workflow.execute ~store:store_module ~store_handle:store
-      ~next_order_id:(next_id_seq ())
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:(next_id_seq ())
       ~now_ts:(fun () -> 1_700_000_010L)
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
@@ -119,11 +131,12 @@ let test_limit_order_requires_price () =
 
 let test_sell_happy_path_publishes_order_accepted_with_sell_side () =
   let store = Test_store.create () in
+  let log = Test_command_log.create () in
   let accepted = ref [] in
   let rejected = ref [] in
   let result =
-    Workflow.execute ~store:store_module ~store_handle:store
-      ~next_order_id:(next_id_seq ())
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:(next_id_seq ())
       ~now_ts:(fun () -> 1_700_000_010L)
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
@@ -141,6 +154,7 @@ let test_sell_happy_path_publishes_order_accepted_with_sell_side () =
 
 let test_limit_sell_without_price_is_rejected () =
   let store = Test_store.create () in
+  let log = Test_command_log.create () in
   let accepted = ref [] in
   let rejected = ref [] in
   let cmd : Submit.t =
@@ -150,8 +164,8 @@ let test_limit_sell_without_price_is_rejected () =
     }
   in
   let result =
-    Workflow.execute ~store:store_module ~store_handle:store
-      ~next_order_id:(next_id_seq ())
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:(next_id_seq ())
       ~now_ts:(fun () -> 1_700_000_010L)
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
@@ -165,9 +179,27 @@ let test_limit_sell_without_price_is_rejected () =
       Alcotest.(check int) "reservation_id echoed on rejection" 7 ie.reservation_id
   | _ -> Alcotest.fail "expected exactly one Order_rejected IE"
 
+let test_non_positive_reservation_id_is_rejected () =
+  let store = Test_store.create () in
+  let log = Test_command_log.create () in
+  let accepted = ref [] in
+  let rejected = ref [] in
+  let result =
+    Workflow.execute ~store:store_module ~store_handle:store ~command_log:log_module
+      ~command_log_handle:log ~next_order_id:(next_id_seq ())
+      ~now_ts:(fun () -> 1_700_000_010L)
+      ~placed_after_ts:(fun _ -> 1_700_000_000L)
+      ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
+      ~publish_order_rejected:(fun ie -> rejected := ie :: !rejected)
+      (market_cmd ~reservation_id:0 ())
+  in
+  Alcotest.(check bool) "workflow Error" true (Result.is_error result);
+  Alcotest.(check int) "no Order_accepted" 0 (List.length !accepted);
+  Alcotest.(check int) "one Order_rejected" 1 (List.length !rejected)
+
 let tests =
   [
-    ( "happy path publishes Order_accepted",
+    ( "happy path publishes Order_accepted and records origin correlation",
       `Quick,
       test_happy_path_publishes_order_accepted );
     ( "invalid side publishes Order_rejected",
@@ -182,4 +214,7 @@ let tests =
     ( "LIMIT SELL without price is rejected and echoes reservation_id",
       `Quick,
       test_limit_sell_without_price_is_rejected );
+    ( "reservation_id <= 0 is rejected at validation",
+      `Quick,
+      test_non_positive_reservation_id_is_rejected );
   ]
