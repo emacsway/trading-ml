@@ -88,7 +88,7 @@ let try_fill_one
           let _ =
             S.update store_handle ~id:order.id ~f:(fun current ->
                 match
-                  Order.apply_fill current ~exec_id ~fill_quantity ~fill_price ~fee
+                  Order.commit_fill current ~exec_id ~fill_quantity ~fill_price ~fee
                     ~fill_ts:candle.ts
                 with
                 | Ok (order', event) ->

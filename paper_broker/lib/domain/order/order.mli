@@ -5,7 +5,7 @@ module Events : module type of Events
     surrogate identity [id] (server-assigned by paper_broker) and
     natural identity [reservation_id] (the client's identifier of
     the order, see {!Values.Reservation_id}). Status lifecycle
-    controlled by {!apply_fill} / {!cancel}. Immutable: every
+    controlled by {!commit_fill} / {!cancel}. Immutable: every
     transition returns a fresh aggregate plus the matching domain
     event.
 
@@ -49,20 +49,20 @@ val make :
 (** Creates a fresh order in [New] status. Raises [Invalid_argument]
     on [quantity <= 0], [created_ts < 0], or [placed_after_ts < 0]. *)
 
-type apply_fill_error =
+type commit_fill_error =
   | Order_already_terminal of Values.Order_status.t
   | Overfill of { remaining : Decimal.t; attempted : Decimal.t }
   | Non_positive_fill_quantity of Decimal.t
   | Negative_fee of Decimal.t
 
-val apply_fill :
+val commit_fill :
   t ->
   exec_id:string ->
   fill_quantity:Decimal.t ->
   fill_price:Decimal.t ->
   fee:Decimal.t ->
   fill_ts:int64 ->
-  (t * Events.Order_filled.t, apply_fill_error) result
+  (t * Events.Order_filled.t, commit_fill_error) result
 (** Applies a partial or full fill. The new status is
     [Partially_filled] when filled total is below [quantity], else
     [Filled]. *)

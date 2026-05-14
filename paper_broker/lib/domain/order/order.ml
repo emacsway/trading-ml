@@ -54,13 +54,13 @@ let make
   in
   (order, event)
 
-type apply_fill_error =
+type commit_fill_error =
   | Order_already_terminal of Values.Order_status.t
   | Overfill of { remaining : Decimal.t; attempted : Decimal.t }
   | Non_positive_fill_quantity of Decimal.t
   | Negative_fee of Decimal.t
 
-let apply_fill t ~exec_id ~fill_quantity ~fill_price ~fee ~fill_ts =
+let commit_fill t ~exec_id ~fill_quantity ~fill_price ~fee ~fill_ts =
   if is_terminal t then Error (Order_already_terminal t.status)
   else if not (Decimal.is_positive fill_quantity) then
     Error (Non_positive_fill_quantity fill_quantity)

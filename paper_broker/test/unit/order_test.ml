@@ -51,7 +51,7 @@ let test_reservation_id_rejects_negative () =
 let test_partial_fill_transitions_to_partially_filled () =
   let o = new_buy_market ~quantity:"10" () in
   match
-    Order.apply_fill o ~exec_id:"e1" ~fill_quantity:(dec "3") ~fill_price:(dec "100")
+    Order.commit_fill o ~exec_id:"e1" ~fill_quantity:(dec "3") ~fill_price:(dec "100")
       ~fee:Decimal.zero ~fill_ts:1_700_000_001L
   with
   | Error _ -> Alcotest.fail "expected Ok"
@@ -71,7 +71,7 @@ let test_partial_fill_transitions_to_partially_filled () =
 let test_full_fill_transitions_to_filled () =
   let o = new_buy_market ~quantity:"10" () in
   match
-    Order.apply_fill o ~exec_id:"e1" ~fill_quantity:(dec "10") ~fill_price:(dec "100")
+    Order.commit_fill o ~exec_id:"e1" ~fill_quantity:(dec "10") ~fill_price:(dec "100")
       ~fee:Decimal.zero ~fill_ts:1_700_000_001L
   with
   | Error _ -> Alcotest.fail "expected Ok"
@@ -84,14 +84,14 @@ let test_fill_after_terminal_rejected () =
   let o = new_buy_market ~quantity:"10" () in
   let o' =
     match
-      Order.apply_fill o ~exec_id:"e1" ~fill_quantity:(dec "10") ~fill_price:(dec "100")
+      Order.commit_fill o ~exec_id:"e1" ~fill_quantity:(dec "10") ~fill_price:(dec "100")
         ~fee:Decimal.zero ~fill_ts:1_700_000_001L
     with
     | Ok (o', _) -> o'
     | Error _ -> Alcotest.fail "first fill should succeed"
   in
   match
-    Order.apply_fill o' ~exec_id:"e2" ~fill_quantity:(dec "1") ~fill_price:(dec "100")
+    Order.commit_fill o' ~exec_id:"e2" ~fill_quantity:(dec "1") ~fill_price:(dec "100")
       ~fee:Decimal.zero ~fill_ts:1_700_000_002L
   with
   | Error (Order.Order_already_terminal Filled) -> ()
@@ -100,7 +100,7 @@ let test_fill_after_terminal_rejected () =
 let test_overfill_rejected () =
   let o = new_buy_market ~quantity:"10" () in
   match
-    Order.apply_fill o ~exec_id:"e1" ~fill_quantity:(dec "11") ~fill_price:(dec "100")
+    Order.commit_fill o ~exec_id:"e1" ~fill_quantity:(dec "11") ~fill_price:(dec "100")
       ~fee:Decimal.zero ~fill_ts:1_700_000_001L
   with
   | Error (Order.Overfill { remaining; attempted }) ->
@@ -121,7 +121,7 @@ let test_cancel_after_filled_rejected () =
   let o = new_buy_market ~quantity:"5" () in
   let o' =
     match
-      Order.apply_fill o ~exec_id:"e1" ~fill_quantity:(dec "5") ~fill_price:(dec "100")
+      Order.commit_fill o ~exec_id:"e1" ~fill_quantity:(dec "5") ~fill_price:(dec "100")
         ~fee:Decimal.zero ~fill_ts:1_700_000_001L
     with
     | Ok (o', _) -> o'
