@@ -1,0 +1,18 @@
+(** Why3 companion for [slippage_bps.mli] — the wrapper enforces
+    [bps >= 0], so any [t] viewed through [to_decimal] is a
+    non-negative [Decimal.t]. *)
+
+module Slippage_bps
+  use int.Int
+  use decimal.Decimal
+
+  type t
+
+  function to_decimal (b: t) : Decimal.t
+
+  (** Slippage in basis points is non-negative by construction.
+      [0] is the canonical "no slippage" sentinel. *)
+  axiom non_negative : forall b: t. raw (to_decimal b) >= 0
+
+  lemma not_negative : forall b: t. not (is_negative (to_decimal b))
+end

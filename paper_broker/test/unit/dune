@@ -1,0 +1,5 @@
+(test
+ (name paper_broker_unit_runner)
+ (libraries core decimal paper_broker alcotest))
+
+(include_subdirs unqualified)
