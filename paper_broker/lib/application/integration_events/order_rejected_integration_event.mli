@@ -9,7 +9,7 @@
 
 type t = {
   correlation_id : string;
-  reservation_id : int;
+  placement_id : int;
       (** Opaque correlation token from the originating
           [submit_order_command]. Account releases the reservation
           on this event. *)

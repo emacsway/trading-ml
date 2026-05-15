@@ -31,12 +31,12 @@ let submit_market_buy
     ~now_ts
     ~placed_after_ts
     ~correlation_id
-    ~reservation_id
+    ~placement_id
     ~quantity =
   let cmd : Submit.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol = "SBER@MISX";
       side = "BUY";
       quantity;
@@ -60,13 +60,13 @@ let submit_limit_sell
     ~now_ts
     ~placed_after_ts
     ~correlation_id
-    ~reservation_id
+    ~placement_id
     ~quantity
     ~limit =
   let cmd : Submit.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol = "SBER@MISX";
       side = "SELL";
       quantity;
@@ -106,7 +106,7 @@ let test_bar_fills_market_buy_at_open () =
   submit_market_buy ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-A" ~reservation_id:101 ~quantity:"10";
+    ~correlation_id:"saga-A" ~placement_id:101 ~quantity:"10";
   let filled = ref [] in
   let result =
     Apply_bar_wf.execute ~store:store_module ~store_handle:store ~command_log:log_module
@@ -119,7 +119,7 @@ let test_bar_fills_market_buy_at_open () =
   match !filled with
   | [ ie ] ->
       Alcotest.(check string) "correlation_id from origin log" "saga-A" ie.correlation_id;
-      Alcotest.(check int) "reservation_id" 101 ie.reservation_id;
+      Alcotest.(check int) "placement_id" 101 ie.placement_id;
       Alcotest.(check string) "fill price = open" "100" ie.fill_price;
       Alcotest.(check string) "fill quantity = remaining" "10" ie.fill_quantity;
       Alcotest.(check string) "new_total_filled" "10" ie.new_total_filled
@@ -134,7 +134,7 @@ let test_bar_at_placed_after_ts_does_not_fill () =
   submit_market_buy ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> bar_ts_int64)
     ~placed_after_ts:(fun _ -> bar_ts_int64)
-    ~correlation_id:"saga-B" ~reservation_id:202 ~quantity:"10";
+    ~correlation_id:"saga-B" ~placement_id:202 ~quantity:"10";
   let filled = ref [] in
   let _ =
     Apply_bar_wf.execute ~store:store_module ~store_handle:store ~command_log:log_module
@@ -154,7 +154,7 @@ let test_bar_for_different_instrument_does_not_fill () =
   submit_market_buy ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-C" ~reservation_id:303 ~quantity:"10";
+    ~correlation_id:"saga-C" ~placement_id:303 ~quantity:"10";
   let filled = ref [] in
   let other_bar : Apply_bar.t = { (bar_cmd ()) with instrument = "GAZP@MISX" } in
   let _ =
@@ -174,7 +174,7 @@ let test_participation_rate_caps_market_buy_to_partial_fill () =
   submit_market_buy ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-PR" ~reservation_id:606 ~quantity:"100";
+    ~correlation_id:"saga-PR" ~placement_id:606 ~quantity:"100";
   let filled = ref [] in
   let rate = Some (Participation_rate.of_decimal (Decimal.of_string "0.1")) in
   let _ =
@@ -202,7 +202,7 @@ let test_zero_volume_bar_does_not_fill_under_cap () =
   submit_market_buy ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-ZV" ~reservation_id:707 ~quantity:"10";
+    ~correlation_id:"saga-ZV" ~placement_id:707 ~quantity:"10";
   let filled = ref [] in
   let rate = Some (Participation_rate.of_decimal (Decimal.of_string "0.5")) in
   let _ =
@@ -223,7 +223,7 @@ let test_limit_sell_above_bar_high_does_not_fill () =
   submit_limit_sell ~store ~log ~next_id:next_order_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-D" ~reservation_id:404 ~quantity:"10" ~limit:"110";
+    ~correlation_id:"saga-D" ~placement_id:404 ~quantity:"10" ~limit:"110";
   let filled = ref [] in
   let _ =
     Apply_bar_wf.execute ~store:store_module ~store_handle:store ~command_log:log_module

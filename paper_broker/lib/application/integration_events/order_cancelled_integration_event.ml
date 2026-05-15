@@ -1,6 +1,6 @@
 type t = {
   correlation_id : string;
-  reservation_id : int;
+  placement_id : int;
   id : string;
   instrument : Paper_broker_queries.Instrument_view_model.t;
   cancelled_ts : string;
@@ -12,7 +12,7 @@ type domain = Paper_broker.Order.Events.Order_cancelled.t
 let of_domain ~(correlation_id : string) (ev : domain) : t =
   {
     correlation_id;
-    reservation_id = Paper_broker.Order.Values.Reservation_id.to_int ev.reservation_id;
+    placement_id = Paper_broker.Order.Values.Placement_id.to_int ev.placement_id;
     id = ev.id;
     instrument = Paper_broker_queries.Instrument_view_model.of_domain ev.instrument;
     cancelled_ts = Datetime.Iso8601.format ev.cancelled_ts;

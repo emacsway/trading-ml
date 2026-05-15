@@ -1,6 +1,6 @@
 type t = {
   id : string;
-  reservation_id : Values.Reservation_id.t;
+  placement_id : Values.Placement_id.t;
   instrument : Core.Instrument.t;
   side : Core.Side.t;
   quantity : Decimal.t;

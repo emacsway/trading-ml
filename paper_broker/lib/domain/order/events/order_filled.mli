@@ -3,7 +3,7 @@
     plus the cumulative filled total so consumers can apply the
     transactional effect atomically.
 
-    [reservation_id] is the client's identifier of the order, echoed
+    [placement_id] is the client's identifier of the order, echoed
     so consumers (e.g. Account) can locate the matching ledger
     state on commit.
 
@@ -17,7 +17,7 @@
 
 type t = {
   id : string;
-  reservation_id : Values.Reservation_id.t;
+  placement_id : Values.Placement_id.t;
   exec_id : string;
   instrument : Core.Instrument.t;
   side : Core.Side.t;

@@ -7,7 +7,7 @@
     that travels on the InMemory bus today serialises as-is on a
     real (network) bus tomorrow.
 
-    [reservation_id] is the cross-BC saga key — created by Account
+    [placement_id] is the cross-BC saga key — created by Account
     when reserving cash / quantity, propagated by the inbound
     HTTP layer into this command, echoed back by every
     {!Broker_integration_events} variant the handler emits. The
@@ -26,7 +26,7 @@ type t = {
         {!Order_unreachable_integration_event.t}) so the saga can
         route the venue's response back to the originating
         instance. *)
-  reservation_id : int;
+  placement_id : int;
   symbol : string;
       (** Qualified instrument: [TICKER@MIC[/BOARD]] —
         {!Core.Instrument.of_qualified} round-trips it. *)

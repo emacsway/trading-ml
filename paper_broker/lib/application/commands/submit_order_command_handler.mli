@@ -2,10 +2,10 @@
 
     Owns the entire submission step: parse the wire-format command,
     validate the primitives back into domain VOs (side, instrument,
-    decimal qty, kind variant, tif, reservation_id), allocate a
+    decimal qty, kind variant, tif, placement_id), allocate a
     fresh order id via the injected port, build the
     {!Paper_broker.Order.t} aggregate via {!Paper_broker.Order.make}
-    with [reservation_id] as the client-supplied natural identifier,
+    with [placement_id] as the client-supplied natural identifier,
     and persist via the {!Paper_broker_store.Order_store.S} port.
 
     Returns the saved {!Paper_broker.Order.t} plus the
@@ -21,7 +21,7 @@ type validation_error =
   | Invalid_side of string
   | Invalid_quantity_format of string
   | Non_positive_quantity of string
-  | Non_positive_reservation_id of int
+  | Non_positive_placement_id of int
   | Invalid_kind of string
   | Invalid_kind_price_format of { field : string; value : string }
   | Non_positive_kind_price of { field : string; value : string }
@@ -34,7 +34,7 @@ val validation_error_to_string : validation_error -> string
 
 type validated_submit_order_command = {
   correlation_id : string;
-  reservation_id : Paper_broker.Order.Values.Reservation_id.t;
+  placement_id : Paper_broker.Order.Values.Placement_id.t;
   instrument : Core.Instrument.t;
   side : Core.Side.t;
   quantity : Decimal.t;

@@ -3,7 +3,7 @@
     {!Broker.place_order} call whose returned [Order.status] is
     NOT [Rejected].
 
-    [reservation_id] echoes the saga key supplied in
+    [placement_id] echoes the saga key supplied in
     {!Submit_order_command.t}; consumers (SSE, audit, Account
     correlation) match by it.
 
@@ -18,7 +18,7 @@ type t = {
   correlation_id : string;
       (** Saga-instance identifier echoed verbatim from the
         originating {!Submit_order_command.t}.correlation_id. *)
-  reservation_id : int;
+  placement_id : int;
   broker_order : Broker_queries.Order_view_model.t;
 }
 [@@deriving yojson]

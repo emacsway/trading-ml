@@ -3,7 +3,7 @@ module Events = Events
 
 type t = {
   id : string;
-  reservation_id : Values.Reservation_id.t;
+  placement_id : Values.Placement_id.t;
   instrument : Core.Instrument.t;
   side : Core.Side.t;
   quantity : Decimal.t;
@@ -20,7 +20,7 @@ let is_terminal (t : t) = Values.Order_status.is_terminal t.status
 
 let make
     ~id
-    ~reservation_id
+    ~placement_id
     ~instrument
     ~side
     ~quantity
@@ -37,7 +37,7 @@ let make
   let order =
     {
       id;
-      reservation_id;
+      placement_id;
       instrument;
       side;
       quantity;
@@ -50,7 +50,7 @@ let make
     }
   in
   let event : Events.Order_accepted.t =
-    { id; reservation_id; instrument; side; quantity; created_ts }
+    { id; placement_id; instrument; side; quantity; created_ts }
   in
   (order, event)
 
@@ -78,7 +78,7 @@ let commit_fill t ~exec_id ~fill_quantity ~fill_price ~fee ~fill_ts =
       let event : Events.Order_filled.t =
         {
           id = t.id;
-          reservation_id = t.reservation_id;
+          placement_id = t.placement_id;
           exec_id;
           instrument = t.instrument;
           side = t.side;
@@ -100,7 +100,7 @@ let cancel t ~cancelled_ts =
     let event : Events.Order_cancelled.t =
       {
         id = t.id;
-        reservation_id = t.reservation_id;
+        placement_id = t.placement_id;
         instrument = t.instrument;
         cancelled_ts;
       }

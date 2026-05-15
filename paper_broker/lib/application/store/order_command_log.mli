@@ -20,7 +20,7 @@
     correlation_id).
 
     Aggregate identity is the surrogate {!Paper_broker.Order.t.id}
-    (string). For paper_broker, [reservation_id] is the natural
+    (string). For paper_broker, [placement_id] is the natural
     identifier and could equally be used — the implementation can
     key by either; this port abstracts that choice. *)
 

@@ -21,7 +21,7 @@ module Order
   use side.Side
   use order.values.order_status.Order_status as OS
   use order.values.order_kind.Order_kind as K
-  use order.values.reservation_id.Reservation_id as RI
+  use order.values.placement_id.Placement_id as PI
 
   (** Opaque carriers. Their per-VO invariants live in the dedicated
       [.mlw] modules; structural reasoning here doesn't depend on
@@ -31,7 +31,7 @@ module Order
 
   type t = {
     id : int;
-    reservation_id : RI.t;
+    placement_id : PI.t;
     instrument : instrument;
     side : Side.t;
     quantity : Decimal.t;
@@ -84,7 +84,7 @@ module Order
       grows by exactly [fill_qty]; the resulting status is [Filled]
       iff the new total reaches [quantity], else [Partially_filled].
 
-      Other fields (id, reservation_id, instrument, side, quantity,
+      Other fields (id, placement_id, instrument, side, quantity,
       kind, tif, ts) are preserved. *)
   predicate commit_fill_post
     (before: t) (after: t) (fill_qty: Decimal.t) =
@@ -95,7 +95,7 @@ module Order
     /\ raw after.filled = raw before.filled + raw fill_qty
     /\ after.quantity = before.quantity
     /\ after.id = before.id
-    /\ after.reservation_id = before.reservation_id
+    /\ after.placement_id = before.placement_id
     /\ after.instrument = before.instrument
     /\ after.side = before.side
     /\ after.kind = before.kind
@@ -131,7 +131,7 @@ module Order
     /\ not (OS.is_terminal before.status)
     /\ after.status = OS.Cancelled
     /\ after.id = before.id
-    /\ after.reservation_id = before.reservation_id
+    /\ after.placement_id = before.placement_id
     /\ after.instrument = before.instrument
     /\ after.side = before.side
     /\ after.quantity = before.quantity

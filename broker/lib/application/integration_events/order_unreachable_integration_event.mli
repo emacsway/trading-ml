@@ -7,9 +7,9 @@
     care about transport health (retry policies, alerting) can
     listen to this channel only.
 
-    [reservation_id] echoes the saga key for compensation lookup.
+    [placement_id] echoes the saga key for compensation lookup.
     [reason] is a free-form string from the underlying exception
     or transport error. *)
 
-type t = { correlation_id : string; reservation_id : int; reason : string }
+type t = { correlation_id : string; placement_id : int; reason : string }
 [@@deriving yojson]

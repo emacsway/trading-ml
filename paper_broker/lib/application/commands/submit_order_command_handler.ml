@@ -1,7 +1,7 @@
 module Order = Paper_broker.Order
 module Order_kind = Order.Values.Order_kind
 module Order_kind_view_model = Paper_broker_queries.Order_kind_view_model
-module Reservation_id = Order.Values.Reservation_id
+module Placement_id = Order.Values.Placement_id
 module Time_in_force = Order.Values.Time_in_force
 
 type validation_error =
@@ -9,7 +9,7 @@ type validation_error =
   | Invalid_side of string
   | Invalid_quantity_format of string
   | Non_positive_quantity of string
-  | Non_positive_reservation_id of int
+  | Non_positive_placement_id of int
   | Invalid_kind of string
   | Invalid_kind_price_format of { field : string; value : string }
   | Non_positive_kind_price of { field : string; value : string }
@@ -21,7 +21,7 @@ let validation_error_to_string = function
   | Invalid_side s -> Printf.sprintf "invalid side: %S (expected BUY | SELL)" s
   | Invalid_quantity_format s -> Printf.sprintf "invalid quantity format: %S" s
   | Non_positive_quantity s -> Printf.sprintf "quantity must be > 0, got %s" s
-  | Non_positive_reservation_id n -> Printf.sprintf "reservation_id must be > 0, got %d" n
+  | Non_positive_placement_id n -> Printf.sprintf "placement_id must be > 0, got %d" n
   | Invalid_kind s ->
       Printf.sprintf "invalid kind: %S (expected MARKET | LIMIT | STOP | STOP_LIMIT)" s
   | Invalid_kind_price_format { field; value } ->
@@ -33,7 +33,7 @@ let validation_error_to_string = function
 
 type validated_submit_order_command = {
   correlation_id : string;
-  reservation_id : Reservation_id.t;
+  placement_id : Placement_id.t;
   instrument : Core.Instrument.t;
   side : Core.Side.t;
   quantity : Decimal.t;
@@ -65,9 +65,9 @@ let parse_quantity raw : (Decimal.t, validation_error) Rop.t =
       if Decimal.is_positive d then Rop.succeed d
       else Rop.fail (Non_positive_quantity raw)
 
-let parse_reservation_id n : (Reservation_id.t, validation_error) Rop.t =
-  try Rop.succeed (Reservation_id.of_int n)
-  with Invalid_argument _ -> Rop.fail (Non_positive_reservation_id n)
+let parse_placement_id n : (Placement_id.t, validation_error) Rop.t =
+  try Rop.succeed (Placement_id.of_int n)
+  with Invalid_argument _ -> Rop.fail (Non_positive_placement_id n)
 
 let parse_tif raw : (Time_in_force.t, validation_error) Rop.t =
   match String.uppercase_ascii raw with
@@ -117,12 +117,12 @@ let validate (cmd : Submit_order_command.t) :
   let+ side = parse_side cmd.side
   and+ instrument = parse_instrument cmd.symbol
   and+ quantity = parse_quantity cmd.quantity
-  and+ reservation_id = parse_reservation_id cmd.reservation_id
+  and+ placement_id = parse_placement_id cmd.placement_id
   and+ kind = parse_kind cmd.kind
   and+ tif = parse_tif cmd.tif in
   {
     correlation_id = cmd.correlation_id;
-    reservation_id;
+    placement_id;
     instrument;
     side;
     quantity;
@@ -149,9 +149,8 @@ let handle
       let created_ts = now_ts () in
       let placed_after_ts = placed_after_ts v.instrument in
       let order, event =
-        Order.make ~id ~reservation_id:v.reservation_id ~instrument:v.instrument
-          ~side:v.side ~quantity:v.quantity ~kind:v.kind ~tif:v.tif ~created_ts
-          ~placed_after_ts
+        Order.make ~id ~placement_id:v.placement_id ~instrument:v.instrument ~side:v.side
+          ~quantity:v.quantity ~kind:v.kind ~tif:v.tif ~created_ts ~placed_after_ts
       in
       (match S.save store_handle order with
       | `Ok -> ()

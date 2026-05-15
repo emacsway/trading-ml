@@ -22,7 +22,7 @@ let next_id_seq () =
 
 let market_cmd
     ?(correlation_id = "saga-1")
-    ?(reservation_id = 7)
+    ?(placement_id = 7)
     ?(symbol = "SBER@MISX")
     ?(side = "BUY")
     ?(quantity = "10")
@@ -30,7 +30,7 @@ let market_cmd
     () : Submit.t =
   {
     correlation_id;
-    reservation_id;
+    placement_id;
     symbol;
     side;
     quantity;
@@ -62,7 +62,7 @@ let test_happy_path_publishes_order_accepted () =
   match !accepted with
   | [ ie ] ->
       Alcotest.(check string) "correlation_id" "saga-1" ie.correlation_id;
-      Alcotest.(check int) "reservation_id" 7 ie.reservation_id;
+      Alcotest.(check int) "placement_id" 7 ie.placement_id;
       Alcotest.(check string) "id" "po-1" ie.id;
       Alcotest.(check string) "side" "BUY" ie.side;
       Alcotest.(check string) "quantity" "10" ie.quantity;
@@ -90,7 +90,7 @@ let test_invalid_side_publishes_rejection () =
   match !rejected with
   | [ ie ] ->
       Alcotest.(check string) "correlation_id" "saga-1" ie.correlation_id;
-      Alcotest.(check int) "reservation_id" 7 ie.reservation_id;
+      Alcotest.(check int) "placement_id" 7 ie.placement_id;
       let contains_substring s sub =
         let ls = String.length s and lsub = String.length sub in
         let rec loop i =
@@ -149,7 +149,7 @@ let test_sell_happy_path_publishes_order_accepted_with_sell_side () =
   match !accepted with
   | [ ie ] ->
       Alcotest.(check string) "side echoed as SELL" "SELL" ie.side;
-      Alcotest.(check int) "reservation_id" 7 ie.reservation_id
+      Alcotest.(check int) "placement_id" 7 ie.placement_id
   | _ -> Alcotest.fail "expected exactly one Order_accepted IE"
 
 let test_limit_sell_without_price_is_rejected () =
@@ -175,11 +175,10 @@ let test_limit_sell_without_price_is_rejected () =
   Alcotest.(check bool) "workflow Error" true (Result.is_error result);
   Alcotest.(check int) "no Order_accepted" 0 (List.length !accepted);
   match !rejected with
-  | [ ie ] ->
-      Alcotest.(check int) "reservation_id echoed on rejection" 7 ie.reservation_id
+  | [ ie ] -> Alcotest.(check int) "placement_id echoed on rejection" 7 ie.placement_id
   | _ -> Alcotest.fail "expected exactly one Order_rejected IE"
 
-let test_non_positive_reservation_id_is_rejected () =
+let test_non_positive_placement_id_is_rejected () =
   let store = Test_store.create () in
   let log = Test_command_log.create () in
   let accepted = ref [] in
@@ -191,7 +190,7 @@ let test_non_positive_reservation_id_is_rejected () =
       ~placed_after_ts:(fun _ -> 1_700_000_000L)
       ~publish_order_accepted:(fun ie -> accepted := ie :: !accepted)
       ~publish_order_rejected:(fun ie -> rejected := ie :: !rejected)
-      (market_cmd ~reservation_id:0 ())
+      (market_cmd ~placement_id:0 ())
   in
   Alcotest.(check bool) "workflow Error" true (Result.is_error result);
   Alcotest.(check int) "no Order_accepted" 0 (List.length !accepted);
@@ -211,10 +210,10 @@ let tests =
     ( "SELL happy path publishes Order_accepted with side=SELL",
       `Quick,
       test_sell_happy_path_publishes_order_accepted_with_sell_side );
-    ( "LIMIT SELL without price is rejected and echoes reservation_id",
+    ( "LIMIT SELL without price is rejected and echoes placement_id",
       `Quick,
       test_limit_sell_without_price_is_rejected );
-    ( "reservation_id <= 0 is rejected at validation",
+    ( "placement_id <= 0 is rejected at validation",
       `Quick,
-      test_non_positive_reservation_id_is_rejected );
+      test_non_positive_placement_id_is_rejected );
   ]

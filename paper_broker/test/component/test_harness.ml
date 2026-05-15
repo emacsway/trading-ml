@@ -157,7 +157,7 @@ let placed_after_ts_for ctx instrument =
 
 let submit_market_buy
     ?(correlation_id = "saga-1")
-    ?(reservation_id = 1)
+    ?(placement_id = 1)
     ?(symbol = "SBER@MISX")
     ?(quantity = "10")
     ()
@@ -165,7 +165,7 @@ let submit_market_buy
   let cmd : Paper_broker_commands.Submit_order_command.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol;
       side = "BUY";
       quantity;
@@ -186,7 +186,7 @@ let submit_market_buy
 
 let submit_market_sell
     ?(correlation_id = "saga-1")
-    ?(reservation_id = 1)
+    ?(placement_id = 1)
     ?(symbol = "SBER@MISX")
     ?(quantity = "10")
     ()
@@ -194,7 +194,7 @@ let submit_market_sell
   let cmd : Paper_broker_commands.Submit_order_command.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol;
       side = "SELL";
       quantity;
@@ -215,7 +215,7 @@ let submit_market_sell
 
 let submit_limit_buy
     ?(correlation_id = "saga-1")
-    ?(reservation_id = 1)
+    ?(placement_id = 1)
     ?(symbol = "SBER@MISX")
     ?(quantity = "10")
     ~limit
@@ -224,7 +224,7 @@ let submit_limit_buy
   let cmd : Paper_broker_commands.Submit_order_command.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol;
       side = "BUY";
       quantity;

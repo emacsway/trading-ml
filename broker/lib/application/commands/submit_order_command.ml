@@ -1,6 +1,6 @@
 type t = {
   correlation_id : string;
-  reservation_id : int;
+  placement_id : int;
   symbol : string;
   side : string;
   quantity : string;

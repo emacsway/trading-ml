@@ -40,9 +40,5 @@ let execute
       let reason = String.concat "; " reasons in
       publish_order_rejected
         Order_rejected.
-          {
-            correlation_id = cmd.correlation_id;
-            reservation_id = cmd.reservation_id;
-            reason;
-          };
+          { correlation_id = cmd.correlation_id; placement_id = cmd.placement_id; reason };
       Error errs

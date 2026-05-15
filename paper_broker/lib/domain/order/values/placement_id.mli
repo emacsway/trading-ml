@@ -8,13 +8,13 @@
 
     In our system the only client of paper_broker is the
     execution_management saga, which threads the Account-side
-    [reservation_id] (a monotonic positive integer) through every
+    [placement_id] (a monotonic positive integer) through every
     [Submit_order_command]. paper_broker treats the value as
     opaque — it does not interpret it as a "reservation" in the
     Account sense; for paper_broker's Domain it is simply "the
     client's identifier of this order".
 
-    Invariant: [reservation_id > 0]. Catches malformed wire
+    Invariant: [placement_id > 0]. Catches malformed wire
     payloads at the validation boundary; pins a Domain assumption
     Why3 can use. *)
 

@@ -26,11 +26,11 @@ let submit_market_buy
     ~now_ts
     ~placed_after_ts
     ~correlation_id
-    ~reservation_id =
+    ~placement_id =
   let cmd : Submit.t =
     {
       correlation_id;
-      reservation_id;
+      placement_id;
       symbol = "SBER@MISX";
       side = "BUY";
       quantity = "10";
@@ -54,7 +54,7 @@ let test_cancel_working_order_publishes_ie () =
   submit_market_buy ~store ~log ~next_id
     ~now_ts:(fun () -> 1_700_000_000L)
     ~placed_after_ts:(fun _ -> 1_700_000_000L)
-    ~correlation_id:"saga-A" ~reservation_id:42;
+    ~correlation_id:"saga-A" ~placement_id:42;
   let cancelled = ref [] in
   let result =
     Cancel_wf.execute ~store:store_module ~store_handle:store ~command_log:log_module
@@ -74,7 +74,7 @@ let test_cancel_working_order_publishes_ie () =
   | [ ie ] ->
       Alcotest.(check string)
         "correlation_id from cancel cmd" "cancel-A" ie.correlation_id;
-      Alcotest.(check int) "reservation_id from Domain Order" 42 ie.reservation_id;
+      Alcotest.(check int) "placement_id from Domain Order" 42 ie.placement_id;
       Alcotest.(check string) "id" "po-1" ie.id
   | _ -> Alcotest.fail "expected exactly one Order_cancelled IE"
 

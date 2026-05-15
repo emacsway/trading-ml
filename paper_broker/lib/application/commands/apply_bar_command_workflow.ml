@@ -31,7 +31,7 @@ let execute
                    logged. Either the log was wiped (restart with persisted
                    store), or the order was inserted out-of-band. Emit with
                    empty correlation_id to keep the IE shape valid; downstream
-                   sagas key by reservation_id anyway. *)
+                   sagas key by placement_id anyway. *)
                 ""
           in
           Paper_broker_domain_event_handlers.Publish_integration_event_on_order_filled

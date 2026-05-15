@@ -14,9 +14,9 @@ type t = {
           the application correlation log since the bar that
           produced this fill carries no correlation_id of its
           own). *)
-  reservation_id : int;
+  placement_id : int;
       (** Client's identifier of the order, sourced from the Domain
-          {!Paper_broker.Order.Events.Order_filled.reservation_id}.
+          {!Paper_broker.Order.Events.Order_filled.placement_id}.
           Account uses it to locate the matching ledger state on
           [commit_fill_command]. *)
   id : string;

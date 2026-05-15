@@ -1,0 +1,12 @@
+(** Why3 companion for [placement_id.mli] — the wrapper enforces
+    [placement_id > 0]. *)
+
+module Placement_id
+  use int.Int
+
+  type t
+
+  function to_int (r: t) : int
+
+  axiom positive : forall r: t. to_int r > 0
+end

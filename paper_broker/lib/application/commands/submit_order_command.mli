@@ -4,12 +4,12 @@
     Carries the same shape as the broker BC's local
     [submit_order_command] so the same on-bus channel can be
     handled by either backend depending on deployment. paper_broker
-    treats [reservation_id] as an opaque round-trip token; it
+    treats [placement_id] as an opaque round-trip token; it
     never reads or interprets it. *)
 
 type t = {
   correlation_id : string;
-  reservation_id : int;
+  placement_id : int;
   symbol : string;
       (** Qualified symbol [TICKER@MIC] (with optional [/BOARD]
           suffix), parsed by the receiver. *)

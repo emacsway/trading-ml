@@ -4,7 +4,7 @@
 
 type t = {
   correlation_id : string;  (** Saga-instance identifier of the cancel command. *)
-  reservation_id : int;
+  placement_id : int;
       (** Client's identifier of the order, sourced from the
           Domain event. Account releases the remaining reservation
           on this event. *)

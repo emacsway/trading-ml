@@ -3,19 +3,19 @@
 module Order = Paper_broker.Order
 module Order_kind = Order.Values.Order_kind
 module Order_status = Order.Values.Order_status
-module Reservation_id = Order.Values.Reservation_id
+module Placement_id = Order.Values.Placement_id
 module Time_in_force = Order.Values.Time_in_force
 open Core
 
 let dec = Decimal.of_string
-let rid = Reservation_id.of_int
+let pid = Placement_id.of_int
 
 let inst =
   Instrument.make ~ticker:(Ticker.of_string "SBER") ~venue:(Mic.of_string "MISX") ()
 
 let new_buy_market ?(quantity = "10") () =
   let o, _ev =
-    Order.make ~id:"po-1" ~reservation_id:(rid 1) ~instrument:inst ~side:Side.Buy
+    Order.make ~id:"po-1" ~placement_id:(pid 1) ~instrument:inst ~side:Side.Buy
       ~quantity:(dec quantity) ~kind:Order_kind.market ~tif:Time_in_force.GTC
       ~created_ts:1_700_000_000L ~placed_after_ts:1_700_000_000L
   in
@@ -31,22 +31,22 @@ let test_make_returns_new_status () =
 
 let test_make_rejects_non_positive_quantity () =
   match
-    Order.make ~id:"x" ~reservation_id:(rid 1) ~instrument:inst ~side:Side.Buy
+    Order.make ~id:"x" ~placement_id:(pid 1) ~instrument:inst ~side:Side.Buy
       ~quantity:Decimal.zero ~kind:Order_kind.market ~tif:Time_in_force.GTC ~created_ts:0L
       ~placed_after_ts:0L
   with
   | exception Invalid_argument _ -> ()
   | _ -> Alcotest.fail "expected Invalid_argument for quantity=0"
 
-let test_reservation_id_rejects_zero () =
-  match Reservation_id.of_int 0 with
+let test_placement_id_rejects_zero () =
+  match Placement_id.of_int 0 with
   | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument for reservation_id=0"
+  | _ -> Alcotest.fail "expected Invalid_argument for placement_id=0"
 
-let test_reservation_id_rejects_negative () =
-  match Reservation_id.of_int (-1) with
+let test_placement_id_rejects_negative () =
+  match Placement_id.of_int (-1) with
   | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument for reservation_id=-1"
+  | _ -> Alcotest.fail "expected Invalid_argument for placement_id=-1"
 
 let test_partial_fill_transitions_to_partially_filled () =
   let o = new_buy_market ~quantity:"10" () in
@@ -143,6 +143,6 @@ let tests =
     ("overfill rejected", `Quick, test_overfill_rejected);
     ("cancel from New succeeds", `Quick, test_cancel_from_new_succeeds);
     ("cancel after Filled rejected", `Quick, test_cancel_after_filled_rejected);
-    ("Reservation_id rejects 0", `Quick, test_reservation_id_rejects_zero);
-    ("Reservation_id rejects -1", `Quick, test_reservation_id_rejects_negative);
+    ("Placement_id rejects 0", `Quick, test_placement_id_rejects_zero);
+    ("Placement_id rejects -1", `Quick, test_placement_id_rejects_negative);
   ]

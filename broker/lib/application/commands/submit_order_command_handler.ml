@@ -46,11 +46,11 @@ let make
     ~(publish_rejected : Order_rejected.t -> unit)
     ~(publish_unreachable : Order_unreachable.t -> unit)
     (cmd : Submit_order_command.t) : unit =
-  let rid = cmd.reservation_id in
+  let pid = cmd.placement_id in
   let cid = cmd.correlation_id in
   let unreachable reason =
     publish_unreachable
-      Order_unreachable.{ correlation_id = cid; reservation_id = rid; reason }
+      Order_unreachable.{ correlation_id = cid; placement_id = pid; reason }
   in
   match try Ok (parse_args cmd) with Invalid_argument m | Failure m -> Error m with
   | Error reason -> unreachable reason
@@ -71,7 +71,7 @@ let make
                 Order_rejected.
                   {
                     correlation_id = cid;
-                    reservation_id = rid;
+                    placement_id = pid;
                     reason = Order.status_to_string order.status;
                   }
           | _ ->
@@ -79,6 +79,6 @@ let make
                 Order_accepted.
                   {
                     correlation_id = cid;
-                    reservation_id = rid;
+                    placement_id = pid;
                     broker_order = Broker_queries.Order_view_model.of_domain order;
                   }))
