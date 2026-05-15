@@ -5,7 +5,6 @@
  (libraries
   bus
   core
-  common
   decimal
   broker
   broker_commands
@@ -19,7 +18,4 @@
   eio
   eio.unix
   yojson
-  ppx_yojson_conv_lib)
- (preprocess
-  (pps ppx_yojson_conv))
- (flags (:standard -open Common)))
+  ppx_yojson_conv_lib))

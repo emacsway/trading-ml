@@ -1,4 +1,4 @@
-(** Read-model DTO for {!Common.Order.t}. *)
+(** Read-model DTO for {!Broker_domain.Order.t}. *)
 
 type t = {
   id : string;
@@ -16,6 +16,6 @@ type t = {
 }
 [@@deriving yojson]
 
-type domain = Common.Order.t
+type domain = Broker_domain.Order.t
 
 val of_domain : domain -> t

@@ -4,7 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
-  core common decimal
+  core broker_domain decimal
   broker_queries
   broker
   broker_integration_events)
@@ -13,4 +13,4 @@
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-   -open Common)))
+   -open Broker_domain)))

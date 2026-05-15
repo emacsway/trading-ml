@@ -1,7 +1,7 @@
 (test
  (name broker_unit_runner)
  (libraries
-  core common decimal
+  core broker_domain decimal
   broker
   broker_integration_events
   broker_queries
@@ -17,7 +17,7 @@
   unix
   alcotest
   qcheck-core)
- (flags (:standard -open Common -w -33)))
+ (flags (:standard -open Broker_domain -w -33)))
 
 ; Same flatten-everything convention as test/unit/. Filenames
 ; carry [finam_] / [bcs_] prefix so flat namespace doesn't collide.

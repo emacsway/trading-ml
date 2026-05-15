@@ -3,7 +3,7 @@
  (public_name trading.broker.inbound_http)
  (libraries
   core
-  common
+  broker_domain
   decimal
   broker
   broker_queries
@@ -12,4 +12,4 @@
   cohttp-eio
   log
   yojson)
- (flags (:standard -open Common)))
+ (flags (:standard -open Broker_domain)))
