@@ -20,16 +20,6 @@ module _ :
 
 module _ :
   View_model.S
-    with type t = Order_kind_view_model.t
-     and type domain = Order_kind_view_model.domain =
-  Order_kind_view_model
-
-module _ :
-  View_model.S
     with type t = Signal_view_model.t
      and type domain = Signal_view_model.domain =
   Signal_view_model
-
-module _ :
-  View_model.S with type t = Order_view_model.t and type domain = Order_view_model.domain =
-  Order_view_model
