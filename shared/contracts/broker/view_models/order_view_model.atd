@@ -1,0 +1,34 @@
+(* Wire contract: broker/lib/application/view_models/order_view_model.ml
+
+   Embedded types:
+   - instrument_view_model — see view_models/instrument_view_model.atd
+   - order_kind_view_model — see view_models/order_kind_view_model.atd *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type order_kind_view_model = {
+  type_ <json name="type"> : string;
+  ?price : string option;
+  ?stop_price : string option;
+  ?limit_price : string option;
+}
+
+type t = {
+  id : string;
+  exec_id : string;
+  client_order_id : string;
+  instrument : instrument_view_model;
+  side : string;
+  quantity : string;
+  filled : string;
+  remaining : string;
+  kind : order_kind_view_model;
+  tif : string;
+  status : string;
+  created_ts : int;
+}

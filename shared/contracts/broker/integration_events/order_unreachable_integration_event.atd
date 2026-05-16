@@ -1,0 +1,7 @@
+(* Wire contract: broker/lib/application/integration_events/order_unreachable_integration_event.ml *)
+
+type t = {
+  correlation_id : string;
+  placement_id : int;
+  reason : string;
+}

@@ -1,0 +1,42 @@
+(* Wire contract: broker/lib/application/integration_events/order_accepted_integration_event.ml
+
+   DIVERGENCE: structurally different from
+   paper_broker/integration_events/order_accepted_integration_event.atd
+   (nested broker_order vs flat fields, created_ts as int64 vs
+   iso8601 string). Pending alignment per the cross-BC contract
+   reconciliation. *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type order_kind_view_model = {
+  type_ <json name="type"> : string;
+  ?price : string option;
+  ?stop_price : string option;
+  ?limit_price : string option;
+}
+
+type order_view_model = {
+  id : string;
+  exec_id : string;
+  client_order_id : string;
+  instrument : instrument_view_model;
+  side : string;
+  quantity : string;
+  filled : string;
+  remaining : string;
+  kind : order_kind_view_model;
+  tif : string;
+  status : string;
+  created_ts : int;
+}
+
+type t = {
+  correlation_id : string;
+  placement_id : int;
+  broker_order : order_view_model;
+}

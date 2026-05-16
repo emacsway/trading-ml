@@ -1,0 +1,7 @@
+(* Wire contract: execution_management/lib/application/integration_events/trade_submission_blocked_integration_event.ml *)
+
+type t = {
+  correlation_id : string;
+  reason : string;
+  occurred_at : string;
+}

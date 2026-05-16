@@ -1,0 +1,20 @@
+(* Wire contract: account/lib/application/view_models/reservation_view_model.ml
+
+   Embedded types:
+   - instrument_view_model — see view_models/instrument_view_model.atd *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  id : int;
+  side : string;
+  instrument : instrument_view_model;
+  cover_qty : string;
+  open_qty : string;
+  per_unit_collateral : string;
+}

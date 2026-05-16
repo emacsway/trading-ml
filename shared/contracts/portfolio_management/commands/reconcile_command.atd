@@ -1,0 +1,6 @@
+(* Wire contract: portfolio_management/lib/application/commands/reconcile_command.ml *)
+
+type t = {
+  book_id : string;
+  computed_at : string;
+}

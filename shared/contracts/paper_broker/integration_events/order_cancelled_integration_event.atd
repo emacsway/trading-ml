@@ -1,0 +1,16 @@
+(* Wire contract: paper_broker/lib/application/integration_events/order_cancelled_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  correlation_id : string;
+  placement_id : int;
+  id : string;
+  instrument : instrument_view_model;
+  cancelled_ts : string;
+}

@@ -1,0 +1,34 @@
+(* Wire contract: account/lib/application/view_models/portfolio_view_model.ml
+
+   Embedded types:
+   - position_view_model — see view_models/position_view_model.atd
+   - reservation_view_model — see view_models/reservation_view_model.atd *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type position_view_model = {
+  instrument : instrument_view_model;
+  quantity : string;
+  avg_price : string;
+}
+
+type reservation_view_model = {
+  id : int;
+  side : string;
+  instrument : instrument_view_model;
+  cover_qty : string;
+  open_qty : string;
+  per_unit_collateral : string;
+}
+
+type t = {
+  cash : string;
+  realized_pnl : string;
+  positions : position_view_model list;
+  reservations : reservation_view_model list;
+}

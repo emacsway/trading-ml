@@ -1,0 +1,18 @@
+(* Wire contract: strategy/lib/application/view_models/signal_view_model.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  ts : int <ocaml repr="int64">;
+  instrument : instrument_view_model;
+  action : string;
+  strength : float;
+  ?stop_loss : string option;
+  ?take_profit : string option;
+  reason : string;
+}

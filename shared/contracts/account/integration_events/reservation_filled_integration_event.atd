@@ -1,0 +1,21 @@
+(* Wire contract: account/lib/application/integration_events/reservation_filled_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  correlation_id : string;
+  reservation_id : int;
+  instrument : instrument_view_model;
+  side : string;
+  filled_quantity : string;
+  fill_price : string;
+  fee : string;
+  new_position_quantity : string;
+  new_avg_price : string;
+  new_cash : string;
+}

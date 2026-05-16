@@ -1,0 +1,6 @@
+(* Wire contract: paper_broker/lib/application/commands/cancel_pending_order_command.ml *)
+
+type t = {
+  correlation_id : string;
+  id : string;
+}

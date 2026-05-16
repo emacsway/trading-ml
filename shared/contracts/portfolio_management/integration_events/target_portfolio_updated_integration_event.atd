@@ -1,0 +1,21 @@
+(* Wire contract: portfolio_management/lib/application/integration_events/target_portfolio_updated_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type change = {
+  instrument : instrument_view_model;
+  previous_qty : string;
+  new_qty : string;
+}
+
+type t = {
+  book_id : string;
+  source : string;
+  proposed_at : string;
+  changed : change list;
+}

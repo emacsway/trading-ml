@@ -1,0 +1,16 @@
+(* Wire contract: account/lib/application/integration_events/reservation_rejected_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  correlation_id : string;
+  side : string;
+  instrument : instrument_view_model;
+  quantity : string;
+  reason : string;
+}

@@ -1,0 +1,17 @@
+(* Wire contract: pre_trade_risk/lib/application/view_models/position_snapshot_view_model.ml
+
+   Embedded types:
+   - instrument_view_model — see view_models/instrument_view_model.atd *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  instrument : instrument_view_model;
+  quantity : string;
+  avg_price : string;
+}

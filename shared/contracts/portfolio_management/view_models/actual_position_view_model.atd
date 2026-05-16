@@ -1,0 +1,14 @@
+(* Wire contract: portfolio_management/lib/application/view_models/actual_position_view_model.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  instrument : instrument_view_model;
+  quantity : string;
+  avg_price : string;
+}

@@ -1,0 +1,8 @@
+(* Wire contract: portfolio_management/lib/application/view_models/instrument_view_model.ml *)
+
+type t = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}

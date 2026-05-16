@@ -1,0 +1,13 @@
+(* Wire contract: portfolio_management/lib/application/commands/set_target_command.ml *)
+
+type position = {
+  instrument : string;
+  target_qty : string;
+}
+
+type t = {
+  book_id : string;
+  source : string;
+  proposed_at : string;
+  positions : position list;
+}

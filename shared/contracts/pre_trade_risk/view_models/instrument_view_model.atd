@@ -1,0 +1,8 @@
+(* Wire contract: pre_trade_risk/lib/application/view_models/instrument_view_model.ml *)
+
+type t = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}

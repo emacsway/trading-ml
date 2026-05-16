@@ -1,0 +1,26 @@
+(* Wire contract: portfolio_management/lib/application/integration_events/trade_intents_planned_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type trade_intent_view_model = {
+  book_id : string;
+  instrument : instrument_view_model;
+  side : string;
+  quantity : string;
+}
+
+type leg = {
+  correlation_id : string;
+  intent : trade_intent_view_model;
+}
+
+type t = {
+  book_id : string;
+  trades : leg list;
+  computed_at : string;
+}

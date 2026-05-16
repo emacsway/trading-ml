@@ -1,0 +1,22 @@
+(* Wire contract: broker/lib/application/commands/submit_order_command.ml
+
+   Mirror of paper_broker/commands/submit_order_command.atd — the
+   saga targets either broker uniformly. Keep both in lock-step;
+   shared/tests/contract/ verifies wire equivalence. *)
+
+type order_kind_view_model = {
+  type_ <json name="type"> : string;
+  ?price : string option;
+  ?stop_price : string option;
+  ?limit_price : string option;
+}
+
+type t = {
+  correlation_id : string;
+  placement_id : int;
+  symbol : string;
+  side : string;
+  quantity : string;
+  kind : order_kind_view_model;
+  tif : string;
+}

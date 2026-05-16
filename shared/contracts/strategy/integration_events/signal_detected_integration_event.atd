@@ -1,0 +1,18 @@
+(* Wire contract: strategy/lib/application/integration_events/signal_detected_integration_event.ml *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  strategy_id : string;
+  instrument : instrument_view_model;
+  direction : string;
+  strength : float;
+  price : string;
+  reason : string;
+  occurred_at : string;
+}

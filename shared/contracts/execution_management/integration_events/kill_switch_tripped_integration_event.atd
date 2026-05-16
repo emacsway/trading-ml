@@ -1,0 +1,8 @@
+(* Wire contract: execution_management/lib/application/integration_events/kill_switch_tripped_integration_event.ml *)
+
+type t = {
+  peak_equity : string;
+  current_equity : string;
+  drawdown : float;
+  occurred_at : string;
+}

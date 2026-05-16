@@ -1,0 +1,9 @@
+(* Wire contract: account/lib/application/commands/commit_fill_command.ml *)
+
+type t = {
+  correlation_id : string;
+  reservation_id : int;
+  quantity : string;
+  price : string;
+  fee : string;
+}

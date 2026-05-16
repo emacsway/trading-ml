@@ -1,0 +1,10 @@
+(* Wire contract: broker/lib/application/view_models/order_kind_view_model.ml
+
+   Mirror of paper_broker/view_models/order_kind_view_model.atd. *)
+
+type t = {
+  type_ <json name="type"> : string;
+  ?price : string option;
+  ?stop_price : string option;
+  ?limit_price : string option;
+}

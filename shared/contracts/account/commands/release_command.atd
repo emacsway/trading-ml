@@ -1,0 +1,6 @@
+(* Wire contract: account/lib/application/commands/release_command.ml *)
+
+type t = {
+  correlation_id : string;
+  reservation_id : int;
+}

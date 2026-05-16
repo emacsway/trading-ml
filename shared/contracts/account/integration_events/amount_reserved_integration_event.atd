@@ -1,0 +1,21 @@
+(* Wire contract: account/lib/application/integration_events/amount_reserved_integration_event.ml
+
+   Embedded types:
+   - instrument_view_model — see view_models/instrument_view_model.atd *)
+
+type instrument_view_model = {
+  ticker : string;
+  venue : string;
+  ?isin : string option;
+  ?board : string option;
+}
+
+type t = {
+  correlation_id : string;
+  reservation_id : int;
+  side : string;
+  instrument : instrument_view_model;
+  quantity : string;
+  price : string;
+  reserved_cash : string;
+}
