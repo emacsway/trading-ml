@@ -1,10 +1,40 @@
 (library
  (name broker_integration_events)
  (public_name trading.broker.integration_events)
- (libraries yojson ppx_yojson_conv_lib core broker_domain decimal broker_view_models)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core broker_domain decimal broker_view_models)
  (preprocess
   (pps ppx_yojson_conv))
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open Broker_domain)))
+
+; Wire contract generation. The .atd source is the single
+; source of truth for the wire shape; atdgen emits typed
+; OCaml records (_t) and JSON codecs (_j) at build time.
+; Hand-written `<name>.ml` modules wrap these via `include`
+; and add the `of_domain` projection.
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/integration_events/order_rejected_integration_event.atd))
+ (targets order_rejected_integration_event_t.ml
+          order_rejected_integration_event_t.mli
+          order_rejected_integration_event_j.ml
+          order_rejected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_rejected_integration_event %{atd})
+   (run atdgen -j -o order_rejected_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/integration_events/order_unreachable_integration_event.atd))
+ (targets order_unreachable_integration_event_t.ml
+          order_unreachable_integration_event_t.mli
+          order_unreachable_integration_event_j.ml
+          order_unreachable_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_unreachable_integration_event %{atd})
+   (run atdgen -j -o order_unreachable_integration_event %{atd}))))

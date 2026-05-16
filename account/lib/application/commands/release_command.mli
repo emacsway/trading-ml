@@ -9,6 +9,15 @@
     [correlation_id] propagates the saga-instance identifier from
     the {!Place_order_pm} Process Manager so audit / SSE can
     attribute the compensating release back to the originating
-    saga; it is not consumed by the Account aggregate itself. *)
+    saga; it is not consumed by the Account aggregate itself.
 
-type t = { correlation_id : string; reservation_id : int } [@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/account/commands/release_command.atd]
+    via atdgen. *)
+
+include module type of Release_command_t
+
+include module type of Release_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

@@ -1,4 +1,4 @@
-(** Inbound command to PM: «zafiksiruj current alpha view for
+(** Inbound command to PM: «record current alpha view for
     [(alpha_source_id, instrument)] as the supplied directional
     reading».
 
@@ -17,14 +17,15 @@
     [book_id] is deliberately absent: it is not part of [Alpha_view]'s
     identity. Per-book fan-out happens later, in the
     {!Apply_proposed_targets_on_alpha_direction_changed} domain-
-    event handler. *)
+    event handler.
 
-type t = {
-  alpha_source_id : string;
-  instrument : string;  (** [TICKER@MIC[/BOARD]] *)
-  direction : string;  (** ["UP"] | ["DOWN"] | ["FLAT"] *)
-  strength : float;  (** [[0.0; 1.0]] *)
-  price : string;  (** Decimal string accepted by {!Decimal.of_string} *)
-  occurred_at : string;  (** ISO-8601 *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/portfolio_management/commands/define_alpha_view_command.atd]
+    via atdgen. *)
+
+include module type of Define_alpha_view_command_t
+
+include module type of Define_alpha_view_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

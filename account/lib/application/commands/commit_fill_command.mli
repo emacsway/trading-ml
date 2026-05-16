@@ -13,32 +13,13 @@
     and {!Account_integration_events.Cash_changed_integration_event}.
 
     Wire-format DTO — primitives only. Decimals as canonical
-    strings (ADR 0007). *)
+    strings (ADR 0007). The wire shape is generated from
+    [shared/contracts/account/commands/commit_fill_command.atd]
+    via atdgen. *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier echoed verbatim from the
-        upstream {!Reserve_command}. The Place_order_pm in
-        execution_management uses the value as the saga routing
-        key; Account echoes it onto every outbound IE produced
-        from this command so downstream consumers can correlate
-        the position / cash change with the originating intent. *)
-  reservation_id : int;
-      (** The reservation id Account minted in response to the
-        original {!Reserve_command}, echoed through the saga and
-        sent back on the fill. Resolves the lookup performed by
-        {!Account.Portfolio.commit_fill}; on absence the
-        aggregate returns
-        [Error (Reservation_not_found _)] and the application
-        layer (factory) decides what to do (today: silent drop,
-        consistent with the same policy applied to
-        [account.release-command]). *)
-  quantity : string;
-      (** Actual filled quantity, decimal string. Bit-exact
-        round-trip via {!Decimal.of_string}. *)
-  price : string;  (** Actual fill price, decimal string. *)
-  fee : string;
-      (** Actual fee charged by the venue / brokerage, decimal
-        string. Non-negative. *)
-}
-[@@deriving yojson]
+include module type of Commit_fill_command_t
+
+include module type of Commit_fill_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

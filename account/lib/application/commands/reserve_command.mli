@@ -19,22 +19,15 @@
 
     No [reservation_id] field: Account creates the id internally
     (own counter) on success and surfaces it in {!Amount_reserved.t}
-    and in the handler's [response]. *)
+    and in the handler's [response].
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier. Echoed verbatim by Account into
-        every outbound IE produced from this command
-        ({!Amount_reserved_integration_event.t} on success,
-        {!Reservation_rejected_integration_event.t} on failure) so
-        the {!Place_order_pm} Process Manager in
-        [execution_management] can route the ack back to the
-        originating instance. UUID v4 minted by the saga starter. *)
-  side : string;  (** ["BUY"] | ["SELL"] (case-insensitive accepted by handler). *)
-  symbol : string;
-      (** Qualified instrument: [TICKER@MIC[/BOARD]] —
-        {!Core.Instrument.of_qualified} round-trips it. *)
-  quantity : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-  price : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/account/commands/reserve_command.atd]
+    via atdgen. *)
+
+include module type of Reserve_command_t
+
+include module type of Reserve_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

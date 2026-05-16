@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core decimal
   account
   account_view_models
@@ -14,3 +15,33 @@
   (pps ppx_yojson_conv))
  (flags
   (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/commands/release_command.atd))
+ (targets release_command_t.ml release_command_t.mli
+          release_command_j.ml release_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o release_command %{atd})
+   (run atdgen -j -o release_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/commands/reserve_command.atd))
+ (targets reserve_command_t.ml reserve_command_t.mli
+          reserve_command_j.ml reserve_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reserve_command %{atd})
+   (run atdgen -j -o reserve_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/commands/commit_fill_command.atd))
+ (targets commit_fill_command_t.ml commit_fill_command_t.mli
+          commit_fill_command_j.ml commit_fill_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o commit_fill_command %{atd})
+   (run atdgen -j -o commit_fill_command %{atd}))))

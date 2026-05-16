@@ -13,13 +13,13 @@
     reduces size can extend the contract without breaking the wire
     shape.
 
-    DTO-shaped: primitives only. *)
+    DTO-shaped: primitives only. The wire shape is generated from
+    [shared/contracts/pre_trade_risk/integration_events/trade_intent_approved_integration_event.atd]
+    via atdgen. *)
 
-type t = {
-  correlation_id : string;
-  book_id : string;
-  symbol : string;
-  side : string;
-  quantity : string;
-}
-[@@deriving yojson]
+include module type of Trade_intent_approved_integration_event_t
+
+include module type of Trade_intent_approved_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

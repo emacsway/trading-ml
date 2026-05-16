@@ -9,7 +9,15 @@
 
     [placement_id] echoes the saga key for compensation lookup.
     [reason] is a free-form string from the underlying exception
-    or transport error. *)
+    or transport error.
 
-type t = { correlation_id : string; placement_id : int; reason : string }
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/broker/integration_events/order_unreachable_integration_event.atd]
+    via atdgen. *)
+
+include module type of Order_unreachable_integration_event_t
+
+include module type of Order_unreachable_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

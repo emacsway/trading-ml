@@ -13,28 +13,15 @@
     Outcome flows back through {!Trade_intent_approved_integration_event}
     or {!Trade_intent_rejected_integration_event} on the BC's outbound
     bus; the {!Place_order_pm} Process Manager in [execution_management]
-    keys both by [correlation_id]. *)
+    keys both by [correlation_id].
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier — propagated verbatim from
-        {!Portfolio_management_integration_events.Trade_intents_planned_integration_event.leg.correlation_id}.
-        Echoed into the outbound IE so the saga routes the assessment
-        back. *)
-  book_id : string;
-  symbol : string;
-      (** Qualified instrument: [TICKER@MIC[/BOARD]] —
-        {!Core.Instrument.of_qualified} round-trips it. *)
-  side : string;  (** ["BUY"] | ["SELL"] (case-insensitive). *)
-  quantity : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-  price : string;
-      (** Mark used for notional / exposure calculations. Synthesised by
-        the inbound ACL handler from the most recent
-        {!Risk_view.Values.Position_snapshot.avg_price} for the
-        instrument, or [Decimal.zero] when the instrument is not
-        currently held — in which case the gate rejects with
-        ["zero price"], matching the original [Engine.Risk.check]
-        contract. A future milestone will route real marks via a
-        Bar_updated subscription. *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/pre_trade_risk/commands/assess_trade_intent_command.atd]
+    via atdgen. *)
+
+include module type of Assess_trade_intent_command_t
+
+include module type of Assess_trade_intent_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

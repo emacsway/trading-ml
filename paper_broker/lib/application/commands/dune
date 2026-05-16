@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core
   decimal
   datetime
@@ -15,3 +16,15 @@
   rop)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/paper_broker/commands/cancel_pending_order_command.atd))
+ (targets cancel_pending_order_command_t.ml
+          cancel_pending_order_command_t.mli
+          cancel_pending_order_command_j.ml
+          cancel_pending_order_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o cancel_pending_order_command %{atd})
+   (run atdgen -j -o cancel_pending_order_command %{atd}))))

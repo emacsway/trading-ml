@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core
   decimal
   datetime
@@ -14,3 +15,39 @@
   portfolio_management_domain_event_handlers)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/commands/commit_actual_fill_command.atd))
+ (targets commit_actual_fill_command_t.ml
+          commit_actual_fill_command_t.mli
+          commit_actual_fill_command_j.ml
+          commit_actual_fill_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o commit_actual_fill_command %{atd})
+   (run atdgen -j -o commit_actual_fill_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/commands/define_alpha_view_command.atd))
+ (targets define_alpha_view_command_t.ml
+          define_alpha_view_command_t.mli
+          define_alpha_view_command_j.ml
+          define_alpha_view_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o define_alpha_view_command %{atd})
+   (run atdgen -j -o define_alpha_view_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/commands/reconcile_command.atd))
+ (targets reconcile_command_t.ml
+          reconcile_command_t.mli
+          reconcile_command_j.ml
+          reconcile_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reconcile_command %{atd})
+   (run atdgen -j -o reconcile_command %{atd}))))

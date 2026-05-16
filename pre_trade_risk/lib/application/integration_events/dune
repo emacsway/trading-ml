@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core
   decimal
   datetime
@@ -13,3 +14,27 @@
   (pps ppx_yojson_conv))
  (flags
   (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/integration_events/trade_intent_approved_integration_event.atd))
+ (targets trade_intent_approved_integration_event_t.ml
+          trade_intent_approved_integration_event_t.mli
+          trade_intent_approved_integration_event_j.ml
+          trade_intent_approved_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o trade_intent_approved_integration_event %{atd})
+   (run atdgen -j -o trade_intent_approved_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/integration_events/trade_intent_rejected_integration_event.atd))
+ (targets trade_intent_rejected_integration_event_t.ml
+          trade_intent_rejected_integration_event_t.mli
+          trade_intent_rejected_integration_event_j.ml
+          trade_intent_rejected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o trade_intent_rejected_integration_event %{atd})
+   (run atdgen -j -o trade_intent_rejected_integration_event %{atd}))))

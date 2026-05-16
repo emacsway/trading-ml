@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core
   decimal
   datetime
@@ -15,3 +16,27 @@
   (pps ppx_yojson_conv))
  (flags
   (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/commands/assess_trade_intent_command.atd))
+ (targets assess_trade_intent_command_t.ml
+          assess_trade_intent_command_t.mli
+          assess_trade_intent_command_j.ml
+          assess_trade_intent_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o assess_trade_intent_command %{atd})
+   (run atdgen -j -o assess_trade_intent_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/commands/record_fill_command.atd))
+ (targets record_fill_command_t.ml
+          record_fill_command_t.mli
+          record_fill_command_j.ml
+          record_fill_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o record_fill_command %{atd})
+   (run atdgen -j -o record_fill_command %{atd}))))

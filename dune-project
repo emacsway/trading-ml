@@ -20,6 +20,8 @@
   cohttp-eio
   yojson
   ppx_yojson_conv
+  atd
+  atdgen
   tls
   tls-eio
   uri

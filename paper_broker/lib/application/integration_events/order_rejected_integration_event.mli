@@ -5,14 +5,15 @@
 
     Distinct from "broker rejected the order at the venue" — for
     paper_broker, this fires when the request never enters the
-    book in the first place. *)
+    book in the first place.
 
-type t = {
-  correlation_id : string;
-  placement_id : int;
-      (** Opaque correlation token from the originating
-          [submit_order_command]. Account releases the reservation
-          on this event. *)
-  reason : string;
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/paper_broker/integration_events/order_rejected_integration_event.atd]
+    via atdgen. *)
+
+include module type of Order_rejected_integration_event_t
+
+include module type of Order_rejected_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

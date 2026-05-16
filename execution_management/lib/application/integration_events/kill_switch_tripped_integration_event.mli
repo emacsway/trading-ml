@@ -1,11 +1,14 @@
 (** Integration event: the kill switch tripped — submissions are
     halted until an operator resets it. Telemetry-only consumers
-    (SSE, audit, alerting). *)
+    (SSE, audit, alerting).
 
-type t = {
-  peak_equity : string;  (** Decimal string. *)
-  current_equity : string;  (** Decimal string. *)
-  drawdown : float;  (** Fraction in [0, 1]. *)
-  occurred_at : string;  (** ISO-8601. *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/execution_management/integration_events/kill_switch_tripped_integration_event.atd]
+    via atdgen. *)
+
+include module type of Kill_switch_tripped_integration_event_t
+
+include module type of Kill_switch_tripped_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

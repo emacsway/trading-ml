@@ -1,9 +1,5 @@
-type t = {
-  alpha_source_id : string;
-  instrument : string;
-  direction : string;
-  strength : float;
-  price : string;
-  occurred_at : string;
-}
-[@@deriving yojson]
+include Define_alpha_view_command_t
+include Define_alpha_view_command_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
