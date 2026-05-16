@@ -12,14 +12,8 @@ let execute
   let cid = cmd.correlation_id in
   let pid = cmd.placement_id in
   match Submit_order_command_handler.handle ~broker cmd with
-  | Ok (Accepted order) ->
-      publish_accepted
-        Order_accepted.
-          {
-            correlation_id = cid;
-            placement_id = pid;
-            broker_order = Order_view_model.of_domain order;
-          };
+  | Ok (Accepted _order) ->
+      publish_accepted Order_accepted.{ correlation_id = cid; placement_id = pid };
       Rop.succeed ()
   | Ok (Rejected { order = _; reason }) ->
       publish_rejected Order_rejected.{ correlation_id = cid; placement_id = pid; reason };

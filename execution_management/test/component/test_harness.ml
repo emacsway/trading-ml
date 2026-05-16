@@ -82,29 +82,10 @@ let push_reservation_rejected ctx ~correlation_id ~symbol ~side ~quantity ~reaso
   Pm.Engine.on_event ctx.engine (Pm.Reservation_rejected ev);
   ctx
 
-let order_view ~symbol ~side ~quantity : Iqr.Order_view_model.t =
-  {
-    id = "broker-order";
-    exec_id = "exec-id";
-    client_order_id = "client-id";
-    instrument = instrument_vm ~symbol;
-    side;
-    quantity;
-    filled = "0";
-    remaining = quantity;
-    kind = { type_ = "MARKET"; price = None; stop_price = None; limit_price = None };
-    tif = "DAY";
-    status = "NEW";
-    created_ts = 0L;
-  }
-
-let push_order_accepted ctx ~correlation_id ~reservation_id ~symbol ~side ~quantity =
+let push_order_accepted ctx ~correlation_id ~reservation_id ~symbol:_ ~side:_ ~quantity:_
+    =
   let ev : Inbound.Order_accepted_integration_event.t =
-    {
-      correlation_id;
-      placement_id = reservation_id;
-      broker_order = order_view ~symbol ~side ~quantity;
-    }
+    { correlation_id; placement_id = reservation_id }
   in
   Pm.Engine.on_event ctx.engine (Pm.Order_accepted ev);
   ctx

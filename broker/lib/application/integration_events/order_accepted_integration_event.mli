@@ -1,18 +1,12 @@
-(** Integration event: the broker accepted a submission.
-    Published by {!Submit_order_command_handler} after a successful
-    {!Broker.place_order} call whose returned [Order.status] is
-    NOT [Rejected].
+(** Integration event: broker accepted a submission.
+    Published by {!Submit_order_command_workflow} after a
+    successful {!Broker.place_order} call whose returned status is
+    not [Rejected].
 
     [placement_id] echoes the saga key supplied in
-    {!Submit_order_command.t}; consumers (SSE, audit, Account
-    correlation) match by it.
-
-    [broker_order] is the Order DTO as observed at submission time —
-    [status] is typically [New] / [Pending_new], but may already
-    reflect a partial or full fill on aggressive orders. The
-    [client_order_id] field inside is Broker's wire identity (used
-    by the UI for [GET / DELETE /api/orders/<cid>]); Account does
-    not consume it. *)
+    {!Submit_order_command.t}; it is the only identity of an
+    in-flight order in our model. Consumers (Account compensation,
+    audit, SSE) match by [correlation_id] + [placement_id]. *)
 
 include module type of Order_accepted_integration_event_t
 include module type of Order_accepted_integration_event_j with type t := t

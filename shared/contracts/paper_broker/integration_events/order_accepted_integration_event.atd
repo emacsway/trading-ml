@@ -1,10 +1,11 @@
 (* Wire contract: paper_broker/lib/application/integration_events/order_accepted_integration_event.ml
 
-   DIVERGENCE: structurally different from
-   broker/integration_events/order_accepted_integration_event.atd
-   (flat fields vs nested broker_order, created_ts as iso8601 string
-   vs int64). Pending alignment per the cross-BC contract
-   reconciliation.
+   DIVERGENCE: broker's sibling contract carries only
+   {correlation_id, placement_id} — broker has no aggregate of
+   its own to project. paper_broker DOES own a matching aggregate
+   and surfaces its state at acceptance (surrogate [id],
+   instrument, side, quantity, created_ts). Consumers match on
+   [placement_id] regardless and ignore the projection.
 
    Cross-referenced types resolved via atdgen at code-generation
    time; the consumer library opens Paper_broker_view_models so

@@ -1,23 +1,14 @@
 (* Wire contract: broker/lib/application/integration_events/order_accepted_integration_event.ml
 
-   DIVERGENCE: structurally different from
-   paper_broker/integration_events/order_accepted_integration_event.atd
-   (nested broker_order vs flat fields, created_ts as int64 vs
-   iso8601 string). Pending alignment per the cross-BC contract
-   reconciliation.
-
-   Cross-referenced types resolved via atdgen at code-generation
-   time; the consumer library opens Broker_view_models so the
-   bare `Order_view_model_t` name binds across libraries:
-
-   - order_view_model — see view_models/order_view_model.atd *)
-
-type order_view_model <ocaml from="Order_view_model" t="t"> = abstract
+   The IE announces "broker accepted the submission for this
+   placement". Consumers (Account compensation, audit, SSE) match
+   solely on [correlation_id] + [placement_id]; no projection of
+   the order's state is published — there is nothing meaningful
+   broker can report at acceptance time beyond "the venue did not
+   refuse it", and the placement_id is enough to correlate. *)
 
 type t = {
   correlation_id <doc text="Saga-instance identifier echoed verbatim from the originating Submit_order_command.t.correlation_id."> : string;
 
-  placement_id : int;
-
-  broker_order : order_view_model;
+  placement_id <doc text="Cross-BC saga key minted by Account at reservation time and echoed through Submit. The only stable identity of an in-flight order in our model."> : int;
 }

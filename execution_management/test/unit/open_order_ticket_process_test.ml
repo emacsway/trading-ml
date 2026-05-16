@@ -33,24 +33,8 @@ let reservation_rejected : Inbound.Reservation_rejected_integration_event.t =
     reason = "insufficient cash";
   }
 
-let order_view : Execution_management_external_view_models.Order_view_model.t =
-  {
-    id = "o1";
-    exec_id = "e1";
-    client_order_id = "c1";
-    instrument = instrument_vm;
-    side = "BUY";
-    quantity = "10";
-    filled = "0";
-    remaining = "10";
-    kind = { type_ = "MARKET"; price = None; stop_price = None; limit_price = None };
-    tif = "DAY";
-    status = "NEW";
-    created_ts = 0L;
-  }
-
 let order_accepted : Inbound.Order_accepted_integration_event.t =
-  { correlation_id = cid; placement_id = 42; broker_order = order_view }
+  { correlation_id = cid; placement_id = 42 }
 
 let order_rejected : Inbound.Order_rejected_integration_event.t =
   { correlation_id = cid; placement_id = 42; reason = "no liquidity" }
