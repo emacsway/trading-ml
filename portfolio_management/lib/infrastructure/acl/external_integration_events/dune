@@ -36,3 +36,13 @@
   (progn
    (run atdgen -t -o reservation_filled_integration_event %{atd})
    (run atdgen -j -o reservation_filled_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/strategy/integration_events/signal_detected_integration_event.atd))
+ (targets signal_detected_integration_event_t.ml signal_detected_integration_event_t.mli
+          signal_detected_integration_event_j.ml signal_detected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o signal_detected_integration_event %{atd})
+   (run atdgen -j -o signal_detected_integration_event %{atd}))))

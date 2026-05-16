@@ -16,41 +16,13 @@
     alpha's.
 
     DTO-shaped: primitives + nested view model, no domain values.
-    [@@deriving yojson] auto-generates the on-wire format. *)
+    Wire format generated from the atd contract. *)
 
-type t = {
-  strategy_id : string;
-      (** Identifier of the strategy instance that emitted the signal.
-          Consumed by Portfolio Management's alpha-driven policy to
-          route the signal to the matching policy state (multiple
-          strategies may run on the same instrument). Not present in
-          [Signal.t]; supplied by the publishing layer. *)
-  instrument : View_models.Instrument_view_model.t;
-  direction : string;
-      (** Projected from {!Common.Signal.action}:
-          - [Enter_long]                  → ["UP"]
-          - [Enter_short]                 → ["DOWN"]
-          - [Exit_long]  / [Exit_short]   → ["FLAT"] (alpha-expiry; outcome carried in [reason])
-          - [Hold]                        → ["FLAT"]
+include module type of Signal_detected_integration_event_t
+include module type of Signal_detected_integration_event_j with type t := t
 
-          For [FLAT] originating from a bracket exit, [reason] carries
-          the outcome label ("SL hit" / "TP hit" / "timeout") for
-          downstream telemetry; consumers MUST NOT switch on [reason]
-          for trading decisions. *)
-  strength : float;  (** Strategy confidence, [0.0; 1.0]. *)
-  price : string;
-      (** Close of the bar that produced the signal, as a {!Decimal}
-          string. Carried in the event itself so the consumer (alpha-
-          driven portfolio construction) sizes against the *exact*
-          price the strategy was looking at when it decided —
-          eliminates the timing-join class of bugs that an external
-          marks-cache would introduce. *)
-  reason : string;  (** Free-form audit context from [Signal.reason]. *)
-  occurred_at : string;
-      (** ISO-8601 datetime ([YYYY-MM-DDTHH:MM:SSZ]) of the bar close
-          that triggered the signal. *)
-}
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Signal.t
 

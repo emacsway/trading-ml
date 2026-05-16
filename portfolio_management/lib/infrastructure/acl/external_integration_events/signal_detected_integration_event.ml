@@ -1,10 +1,5 @@
-type t = {
-  strategy_id : string;
-  instrument : Portfolio_management_external_view_models.Instrument_view_model.t;
-  direction : string;
-  strength : float;
-  price : string;
-  reason : string;
-  occurred_at : string;
-}
-[@@deriving yojson]
+include Signal_detected_integration_event_t
+include Signal_detected_integration_event_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)

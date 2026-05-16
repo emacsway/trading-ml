@@ -1,9 +1,21 @@
 (library
  (name strategy_integration_events)
  (public_name trading.strategy.integration_events)
- (libraries yojson ppx_yojson_conv_lib core common decimal datetime view_models)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core common decimal datetime view_models)
  (preprocess (pps ppx_yojson_conv))
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-   -open Common)))
+   -open Common
+   -open View_models)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/strategy/integration_events/signal_detected_integration_event.atd))
+ (targets signal_detected_integration_event_t.ml signal_detected_integration_event_t.mli
+          signal_detected_integration_event_j.ml signal_detected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o signal_detected_integration_event %{atd})
+   (run atdgen -j -o signal_detected_integration_event %{atd}))))

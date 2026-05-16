@@ -1,13 +1,8 @@
-type t = {
-  ts : int64;
-  instrument : Instrument_view_model.t;
-  action : string;
-  strength : float;
-  stop_loss : string option;
-  take_profit : string option;
-  reason : string;
-}
-[@@deriving yojson]
+include Signal_view_model_t
+include Signal_view_model_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
 
 type domain = Signal.t
 

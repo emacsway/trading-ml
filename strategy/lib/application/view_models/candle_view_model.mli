@@ -7,15 +7,11 @@
     [Number(x)] would lose precision the same way OCaml's
     {!Decimal.of_float} does. *)
 
-type t = {
-  ts : int64;
-  open_ : string; [@key "open"]
-  high : string;
-  low : string;
-  close : string;
-  volume : string;
-}
-[@@deriving yojson]
+include module type of Candle_view_model_t
+include module type of Candle_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Core.Candle.t
 

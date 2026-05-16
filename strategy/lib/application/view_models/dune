@@ -1,9 +1,39 @@
 (library
  (name view_models)
  (public_name trading.view_models)
- (libraries yojson ppx_yojson_conv_lib core common decimal)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime core common decimal)
  (preprocess (pps ppx_yojson_conv))
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open Common)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/strategy/view_models/instrument_view_model.atd))
+ (targets instrument_view_model_t.ml instrument_view_model_t.mli
+          instrument_view_model_j.ml instrument_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o instrument_view_model %{atd})
+   (run atdgen -j -o instrument_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/strategy/view_models/candle_view_model.atd))
+ (targets candle_view_model_t.ml candle_view_model_t.mli
+          candle_view_model_j.ml candle_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o candle_view_model %{atd})
+   (run atdgen -j -o candle_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/strategy/view_models/signal_view_model.atd))
+ (targets signal_view_model_t.ml signal_view_model_t.mli
+          signal_view_model_j.ml signal_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o signal_view_model %{atd})
+   (run atdgen -j -o signal_view_model %{atd}))))
