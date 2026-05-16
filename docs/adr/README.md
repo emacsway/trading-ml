@@ -27,6 +27,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0012](0012-paper-broker-bounded-context.md) | Paper broker as a bounded context; matching engine in Why3-verified domain | Accepted | 2026-05-14 |
 | [0013](0013-clock-injection.md) | Time injection: Domain takes timestamps, Application reads from injected Clock | Accepted | 2026-05-14 |
 | [0014](0014-atd-wire-contracts.md) | ATD-generated wire contracts for cross-BC DTOs | Accepted | 2026-05-16 |
+| [0015](0015-broker-domain-model.md) | Broker domain model | Accepted | 2026-05-16 |
 
 ## Template
 
