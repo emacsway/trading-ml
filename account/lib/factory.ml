@@ -92,7 +92,8 @@ let build ~bus ~initial_cash ~market_price : t =
     Bus.subscribe
       (consume ~uri:"in-memory://broker.order-rejected" ~group:"account-compensation"
          ~t_of_yojson:
-           Account_external_integration_events.Order_rejected_integration_event.t_of_yojson)
+           Account_external_integration_events.Order_rejected_integration_event
+           .t_of_yojson)
       (Account_external_integration_events.Order_rejected_integration_event_handler.handle
          ~dispatch_release)
   in

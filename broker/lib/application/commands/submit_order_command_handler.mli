@@ -50,7 +50,7 @@ type broker_outcome =
   | Accepted of Order.t
   | Rejected of { order : Order.t; reason : string }
   | Unreachable of { reason : string }
-(** Tri-state result of the [Broker.place_order] call. [Accepted]
+      (** Tri-state result of the [Broker.place_order] call. [Accepted]
     when the broker returned an order with any non-[Rejected]
     status; [Rejected] when it returned [status = Rejected]
     (venue refusal); [Unreachable] when the adapter raised
@@ -59,9 +59,7 @@ type broker_outcome =
 type handle_error = Validation of validation_error
 
 val handle :
-  broker:Broker.client ->
-  Submit_order_command.t ->
-  (broker_outcome, handle_error) Rop.t
+  broker:Broker.client -> Submit_order_command.t -> (broker_outcome, handle_error) Rop.t
 (** Validate the command, and on success contact the broker.
     Returns the [broker_outcome] on success or an accumulated
     list of validation errors. *)

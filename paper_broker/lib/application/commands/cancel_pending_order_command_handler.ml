@@ -5,8 +5,7 @@ type cancel_error =
   | Order_already_terminal of Order.Values.Order_status.t
 
 let cancel_error_to_string = function
-  | Order_not_found pid ->
-      Printf.sprintf "no working order for placement_id %d" pid
+  | Order_not_found pid -> Printf.sprintf "no working order for placement_id %d" pid
   | Order_already_terminal s ->
       Printf.sprintf "order is already in terminal status %s"
         (Order.Values.Order_status.to_string s)

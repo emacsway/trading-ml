@@ -43,8 +43,7 @@ let update_by_placement_id t ~placement_id ~f =
             | Some _ -> acc
             | None ->
                 if
-                  Order.Values.Placement_id.to_int order.Order.placement_id
-                  = placement_id
+                  Order.Values.Placement_id.to_int order.Order.placement_id = placement_id
                 then Some order
                 else None)
           t.table None

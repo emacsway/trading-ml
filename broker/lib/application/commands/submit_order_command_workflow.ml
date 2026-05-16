@@ -22,8 +22,7 @@ let execute
           };
       Rop.succeed ()
   | Ok (Rejected { order = _; reason }) ->
-      publish_rejected
-        Order_rejected.{ correlation_id = cid; placement_id = pid; reason };
+      publish_rejected Order_rejected.{ correlation_id = cid; placement_id = pid; reason };
       Rop.succeed ()
   | Ok (Unreachable { reason }) ->
       publish_unreachable

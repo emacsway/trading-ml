@@ -6,7 +6,9 @@ let test_of_list_to_list_roundtrip () =
 let test_map () =
   Alcotest.(check (list int))
     "x2" [ 2; 4; 6 ]
-    (Pipe.Stream.of_list [ 1; 2; 3 ] |> Pipe.Stream.map (fun x -> x * 2) |> Pipe.Stream.to_list)
+    (Pipe.Stream.of_list [ 1; 2; 3 ]
+    |> Pipe.Stream.map (fun x -> x * 2)
+    |> Pipe.Stream.to_list)
 
 let test_filter_map () =
   Alcotest.(check (list int))
@@ -78,7 +80,9 @@ let test_unfold () =
 
 let test_zip_terminates_with_shorter () =
   let zipped =
-    Pipe.Stream.zip (Pipe.Stream.of_list [ 1; 2; 3; 4 ]) (Pipe.Stream.of_list [ "a"; "b" ])
+    Pipe.Stream.zip
+      (Pipe.Stream.of_list [ 1; 2; 3; 4 ])
+      (Pipe.Stream.of_list [ "a"; "b" ])
     |> Pipe.Stream.to_list
   in
   Alcotest.(check (list (pair int string))) "zip truncates" [ (1, "a"); (2, "b") ] zipped

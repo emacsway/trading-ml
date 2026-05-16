@@ -1,6 +1,7 @@
 module Apply_bar_command = Portfolio_management_commands.Apply_bar_command
 
-let qualify (vm : Portfolio_management_external_view_models.Instrument_view_model.t) : string =
+let qualify (vm : Portfolio_management_external_view_models.Instrument_view_model.t) :
+    string =
   match vm.board with
   | Some b -> Printf.sprintf "%s@%s/%s" vm.ticker vm.venue b
   | None -> Printf.sprintf "%s@%s" vm.ticker vm.venue

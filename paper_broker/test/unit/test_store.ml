@@ -38,9 +38,7 @@ let update_by_placement_id (t : t) ~placement_id ~f =
         match acc with
         | Some _ -> acc
         | None ->
-            if
-              Order.Values.Placement_id.to_int order.Order.placement_id
-              = placement_id
+            if Order.Values.Placement_id.to_int order.Order.placement_id = placement_id
             then Some order
             else None)
       t None
