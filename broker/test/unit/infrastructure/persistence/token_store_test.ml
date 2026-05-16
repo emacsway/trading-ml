@@ -1,5 +1,7 @@
 (** Unit tests for {!Token_store}. *)
 
+module Token_store = Broker_persistence.Token_store
+
 let test_env_reads_existing_var () =
   (* Reuse a var we're sure exists in the test environment: HOME. *)
   let home = Sys.getenv "HOME" in

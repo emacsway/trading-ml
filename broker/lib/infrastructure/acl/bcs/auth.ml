@@ -17,6 +17,8 @@
     for state-swap, never across the HTTP round-trip, so concurrent
     Eio fibers can't self-deadlock. *)
 
+module Token_store = Broker_persistence.Token_store
+
 type jwt = { token : string; expires_at : float }
 
 type t = {

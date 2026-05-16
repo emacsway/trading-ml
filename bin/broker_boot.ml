@@ -1,4 +1,5 @@
 open Core
+module Token_store = Broker_persistence.Token_store
 
 let arg_value name args =
   let rec find = function

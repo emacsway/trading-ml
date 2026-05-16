@@ -24,6 +24,7 @@
     Delete the file to force re-bootstrap from env. *)
 
 open Core
+module Token_store = Broker_persistence.Token_store
 
 let refresh_token_file = "/tmp/trading-bcs-smoke-refresh"
 

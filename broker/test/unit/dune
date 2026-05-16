@@ -9,7 +9,7 @@
   websocket
   finam
   bcs
-  token_store
+  broker_persistence
   acl_common
   eio
   eio_main

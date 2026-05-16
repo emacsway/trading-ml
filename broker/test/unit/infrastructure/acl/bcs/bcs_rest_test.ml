@@ -2,6 +2,7 @@
     response decoding including BCS-specific quirks (newest-first
     ordering, plain-float decimals). *)
 
+module Token_store = Broker_persistence.Token_store
 open Core
 open Bcs
 

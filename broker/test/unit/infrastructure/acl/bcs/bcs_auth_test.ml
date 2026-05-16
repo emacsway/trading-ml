@@ -2,6 +2,7 @@
     caching semantics, invalidation. Driven by a fake
     [Http_transport.t] so no network is involved. *)
 
+module Token_store = Broker_persistence.Token_store
 open Bcs
 
 (** Base64url without padding. Matches what Keycloak emits. *)

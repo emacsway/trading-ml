@@ -21,6 +21,6 @@
             strategy_external_integration_events strategy_external_view_models
             bus in_memory
             logistic_regression triple_barrier
-            http_transport finam bcs acl_common datetime token_store synthetic server log logs
+            http_transport finam bcs acl_common datetime broker_persistence synthetic server log logs
             eio_main mirage-crypto-rng.unix unix)
  (flags (:standard -open Common)))

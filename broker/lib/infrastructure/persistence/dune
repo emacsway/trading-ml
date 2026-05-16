@@ -1,3 +1,4 @@
 (library
- (name token_store)
- (public_name trading.broker.token_store))
+ (name broker_persistence)
+ (public_name trading.broker.persistence)
+ (libraries broker_store))
