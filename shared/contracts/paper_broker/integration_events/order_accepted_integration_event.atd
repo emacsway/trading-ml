@@ -4,14 +4,15 @@
    broker/integration_events/order_accepted_integration_event.atd
    (flat fields vs nested broker_order, created_ts as iso8601 string
    vs int64). Pending alignment per the cross-BC contract
-   reconciliation. *)
+   reconciliation.
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
+   Cross-referenced types resolved via atdgen at code-generation
+   time; the consumer library opens Paper_broker_view_models so
+   the bare `Instrument_view_model_t` name binds across libraries:
+
+   - instrument_view_model — see view_models/instrument_view_model.atd *)
+
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
   correlation_id : string;

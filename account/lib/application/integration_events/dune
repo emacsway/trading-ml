@@ -1,8 +1,59 @@
 (library
  (name account_integration_events)
  (public_name trading.account.integration_events)
- (libraries yojson ppx_yojson_conv_lib core decimal account account_view_models)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core decimal account account_view_models)
  (preprocess
   (pps ppx_yojson_conv))
  (flags
-  (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Account_view_models)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/amount_reserved_integration_event.atd))
+ (targets amount_reserved_integration_event_t.ml
+          amount_reserved_integration_event_t.mli
+          amount_reserved_integration_event_j.ml
+          amount_reserved_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o amount_reserved_integration_event %{atd})
+   (run atdgen -j -o amount_reserved_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/reservation_filled_integration_event.atd))
+ (targets reservation_filled_integration_event_t.ml
+          reservation_filled_integration_event_t.mli
+          reservation_filled_integration_event_j.ml
+          reservation_filled_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reservation_filled_integration_event %{atd})
+   (run atdgen -j -o reservation_filled_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/reservation_rejected_integration_event.atd))
+ (targets reservation_rejected_integration_event_t.ml
+          reservation_rejected_integration_event_t.mli
+          reservation_rejected_integration_event_j.ml
+          reservation_rejected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reservation_rejected_integration_event %{atd})
+   (run atdgen -j -o reservation_rejected_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/reservation_released_integration_event.atd))
+ (targets reservation_released_integration_event_t.ml
+          reservation_released_integration_event_t.mli
+          reservation_released_integration_event_j.ml
+          reservation_released_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reservation_released_integration_event %{atd})
+   (run atdgen -j -o reservation_released_integration_event %{atd}))))

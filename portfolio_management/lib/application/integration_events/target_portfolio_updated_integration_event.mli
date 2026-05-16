@@ -7,22 +7,13 @@
     (execution / reconciler) filter on it.
 
     DTO-shaped: primitives + nested view model, no domain values.
-    [@@deriving yojson] auto-generates the on-wire format. *)
+    Wire format generated from the atd contract. *)
 
-type change = {
-  instrument : Portfolio_management_view_models.Instrument_view_model.t;
-  previous_qty : string;  (** signed Decimal string *)
-  new_qty : string;
-}
-[@@deriving yojson]
+include module type of Target_portfolio_updated_integration_event_t
+include module type of Target_portfolio_updated_integration_event_j with type t := t
 
-type t = {
-  book_id : string;
-  source : string;
-  proposed_at : string;  (** ISO-8601 *)
-  changed : change list;
-}
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Portfolio_management.Target_portfolio.Events.Target_set.t
 

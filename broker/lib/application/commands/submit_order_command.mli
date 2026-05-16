@@ -3,9 +3,10 @@
 
     Wire-format DTO — primitives + view-model DTOs, no
     {!Core.Instrument.t} / {!Core.Side.t} / {!Decimal.t}.
-    Compile-time guarantee via [@@deriving yojson]: the message
-    that travels on the InMemory bus today serialises as-is on a
-    real (network) bus tomorrow.
+    The atd source is the single source of truth for the wire
+    shape; atdgen emits the typed record (_t) and JSON codec (_j)
+    consumed by the InMemory bus today and a real (network) bus
+    tomorrow with byte-identical framing.
 
     [placement_id] is the cross-BC saga key — created by Account
     when reserving cash / quantity, propagated by the inbound
@@ -17,22 +18,8 @@
     active broker's wire validator (BCS dashed-UUID, Finam
     letters/digits/space); callers do not see or supply it. *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier propagated by {!Place_order_pm}
-        from {!Account_commands.Reserve_command.t}. Echoed verbatim
-        by every outbound IE ({!Order_accepted_integration_event.t},
-        {!Order_rejected_integration_event.t},
-        {!Order_unreachable_integration_event.t}) so the saga can
-        route the venue's response back to the originating
-        instance. *)
-  placement_id : int;
-  symbol : string;
-      (** Qualified instrument: [TICKER@MIC[/BOARD]] —
-        {!Core.Instrument.of_qualified} round-trips it. *)
-  side : string;  (** ["BUY"] | ["SELL"]. *)
-  quantity : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-  kind : Broker_view_models.Order_kind_view_model.t;
-  tif : string;  (** ["GTC"] | ["DAY"] | ["IOC"] | ["FOK"]. *)
-}
-[@@deriving yojson]
+include module type of Submit_order_command_t
+include module type of Submit_order_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

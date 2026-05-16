@@ -1,18 +1,12 @@
-(* Wire contract: portfolio_management/lib/application/integration_events/trade_intents_planned_integration_event.ml *)
+(* Wire contract: portfolio_management/lib/application/integration_events/trade_intents_planned_integration_event.ml
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
+   Cross-referenced types resolved via atdgen at code-generation
+   time; the consumer library opens Portfolio_management_view_models
+   so the bare `Trade_intent_view_model_t` name binds across libraries:
 
-type trade_intent_view_model = {
-  book_id : string;
-  instrument : instrument_view_model;
-  side : string;
-  quantity : string;
-}
+   - trade_intent_view_model — see view_models/trade_intent_view_model.atd *)
+
+type trade_intent_view_model <ocaml from="Trade_intent_view_model" t="t"> = abstract
 
 type leg = {
   correlation_id : string;

@@ -2,14 +2,15 @@
 
    Mirror of paper_broker/commands/submit_order_command.atd — the
    saga targets either broker uniformly. Keep both in lock-step;
-   shared/tests/contract/ verifies wire equivalence. *)
+   shared/tests/contract/ verifies wire equivalence.
 
-type order_kind_view_model = {
-  type_ <json name="type"> : string;
-  ?price : string option;
-  ?stop_price : string option;
-  ?limit_price : string option;
-}
+   Cross-referenced types resolved via atdgen at code-generation
+   time; the consumer library opens Broker_view_models so the
+   bare `Order_kind_view_model_t` name binds across libraries:
+
+   - order_kind_view_model — see view_models/order_kind_view_model.atd *)
+
+type order_kind_view_model <ocaml from="Order_kind_view_model" t="t"> = abstract
 
 type t = {
   correlation_id : string;

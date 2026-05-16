@@ -7,21 +7,11 @@
 
     DTO-shaped: primitives + nested view model. *)
 
-type leg = {
-  correlation_id : string;
-      (** Saga-instance identifier minted per trade leg at IE
-        construction time. Each leg of a multi-trade plan starts an
-        independent {!Place_order_pm} saga; downstream BCs
-        ([pre_trade_risk], [execution_management], Account, Broker)
-        echo this id verbatim through their commands and IEs so the
-        Process Manager can route the eventual venue acks back to
-        the originating leg. UUID v4. *)
-  intent : Portfolio_management_view_models.Trade_intent_view_model.t;
-}
-[@@deriving yojson]
+include module type of Trade_intents_planned_integration_event_t
+include module type of Trade_intents_planned_integration_event_j with type t := t
 
-type t = { book_id : string; trades : leg list; computed_at : string  (** ISO-8601 *) }
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Portfolio_management.Reconciliation.Events.Trades_planned.t
 

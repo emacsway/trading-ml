@@ -16,27 +16,11 @@
     domain values. Decimals on the wire as canonical strings
     (ADR 0007). *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier echoed from the upstream
-          {!Commit_fill_command.t}. *)
-  reservation_id : int;
-  instrument : Account_view_models.Instrument_view_model.t;
-  side : string;  (** ["BUY"] | ["SELL"]. *)
-  filled_quantity : string;
-      (** Actual fill quantity, decimal string. Always positive —
-          sign is carried by [side]. *)
-  fill_price : string;
-  fee : string;
-  new_position_quantity : string;
-      (** Signed post-fill quantity, decimal string. Negative
-          denotes a short, ["0"] denotes a closed position. *)
-  new_avg_price : string;
-      (** Post-fill VWAP of the surviving position. ["0"] when
-          [new_position_quantity] is ["0"]. *)
-  new_cash : string;  (** Post-fill cash balance, decimal string. *)
-}
-[@@deriving yojson]
+include module type of Reservation_filled_integration_event_t
+include module type of Reservation_filled_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Account.Portfolio.Events.Reservation_filled.t
 

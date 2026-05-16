@@ -15,7 +15,10 @@
   paper_broker_store
   rop)
  (preprocess (pps ppx_yojson_conv))
- (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+ (flags
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Paper_broker_view_models)))
 
 (rule
  (deps
@@ -28,3 +31,27 @@
   (progn
    (run atdgen -t -o cancel_pending_order_command %{atd})
    (run atdgen -j -o cancel_pending_order_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/paper_broker/commands/submit_order_command.atd))
+ (targets submit_order_command_t.ml
+          submit_order_command_t.mli
+          submit_order_command_j.ml
+          submit_order_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o submit_order_command %{atd})
+   (run atdgen -j -o submit_order_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/paper_broker/commands/apply_bar_command.atd))
+ (targets apply_bar_command_t.ml
+          apply_bar_command_t.mli
+          apply_bar_command_j.ml
+          apply_bar_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o apply_bar_command %{atd})
+   (run atdgen -j -o apply_bar_command %{atd}))))

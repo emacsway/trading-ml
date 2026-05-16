@@ -1,11 +1,12 @@
-(* Wire contract: account/lib/application/integration_events/reservation_filled_integration_event.ml *)
+(* Wire contract: account/lib/application/integration_events/reservation_filled_integration_event.ml
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
+   Cross-referenced types resolved via atdgen at code-generation
+   time; the consumer library opens Account_view_models so the
+   bare `Instrument_view_model_t` name binds across libraries:
+
+   - instrument_view_model — see view_models/instrument_view_model.atd *)
+
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
   correlation_id : string;

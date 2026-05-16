@@ -1,12 +1,5 @@
-type candle_dto = {
-  ts : string;
-  open_ : string; [@key "open"]
-  high : string;
-  low : string;
-  close : string;
-  volume : string;
-}
-[@@deriving yojson]
+include Apply_bar_command_t
+include Apply_bar_command_j
 
-type t = { instrument : string; timeframe : string; candle : candle_dto }
-[@@deriving yojson]
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)

@@ -3,15 +3,8 @@
     [portfolio_management.Apply_bar_command] so the same
     [broker.bar-updated] channel can be consumed by either BC. *)
 
-type candle_dto = {
-  ts : string;  (** ISO-8601. *)
-  open_ : string; [@key "open"]
-  high : string;
-  low : string;
-  close : string;
-  volume : string;
-}
-[@@deriving yojson]
+include module type of Apply_bar_command_t
+include module type of Apply_bar_command_j with type t := t
 
-type t = { instrument : string; timeframe : string; candle : candle_dto }
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

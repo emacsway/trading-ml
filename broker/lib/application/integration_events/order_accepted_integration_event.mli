@@ -14,11 +14,8 @@
     by the UI for [GET / DELETE /api/orders/<cid>]); Account does
     not consume it. *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier echoed verbatim from the
-        originating {!Submit_order_command.t}.correlation_id. *)
-  placement_id : int;
-  broker_order : Broker_view_models.Order_view_model.t;
-}
-[@@deriving yojson]
+include module type of Order_accepted_integration_event_t
+include module type of Order_accepted_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

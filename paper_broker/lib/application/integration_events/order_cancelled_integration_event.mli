@@ -2,17 +2,11 @@
     cancelled. Published on [in-memory://broker.order-cancelled]
     after a successful [cancel_pending_order_command_workflow]. *)
 
-type t = {
-  correlation_id : string;  (** Saga-instance identifier of the cancel command. *)
-  placement_id : int;
-      (** Client's identifier of the order, sourced from the
-          Domain event. Account releases the remaining reservation
-          on this event. *)
-  id : string;
-  instrument : Paper_broker_view_models.Instrument_view_model.t;
-  cancelled_ts : string;
-}
-[@@deriving yojson]
+include module type of Order_cancelled_integration_event_t
+include module type of Order_cancelled_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Paper_broker.Order.Events.Order_cancelled.t
 

@@ -8,13 +8,8 @@
     consumers still get the attempt context (side / instrument /
     quantity) plus a free-form [reason] string for reporting. *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier echoed verbatim from
-        {!Reserve_command.t}.correlation_id. *)
-  side : string;
-  instrument : Account_view_models.Instrument_view_model.t;
-  quantity : string;  (** Decimal string — see {!Reserve_command.t}. *)
-  reason : string;
-}
-[@@deriving yojson]
+include module type of Reservation_rejected_integration_event_t
+include module type of Reservation_rejected_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

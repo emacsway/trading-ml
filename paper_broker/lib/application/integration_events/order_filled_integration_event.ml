@@ -1,19 +1,10 @@
 open Core
 
-type t = {
-  correlation_id : string;
-  placement_id : int;
-  id : string;
-  exec_id : string;
-  instrument : Paper_broker_view_models.Instrument_view_model.t;
-  side : string;
-  fill_quantity : string;
-  fill_price : string;
-  fee : string;
-  new_total_filled : string;
-  fill_ts : string;
-}
-[@@deriving yojson]
+include Order_filled_integration_event_t
+include Order_filled_integration_event_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
 
 type domain = Paper_broker.Order.Events.Order_filled.t
 
@@ -23,7 +14,7 @@ let of_domain ~(correlation_id : string) (ev : domain) : t =
     placement_id = Paper_broker.Order.Values.Placement_id.to_int ev.placement_id;
     id = ev.id;
     exec_id = ev.exec_id;
-    instrument = Paper_broker_view_models.Instrument_view_model.of_domain ev.instrument;
+    instrument = Instrument_view_model.of_domain ev.instrument;
     side = Side.to_string ev.side;
     fill_quantity = Decimal.to_string ev.fill_quantity;
     fill_price = Decimal.to_string ev.fill_price;

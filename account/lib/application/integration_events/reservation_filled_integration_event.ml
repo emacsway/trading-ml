@@ -1,18 +1,10 @@
 open Core
 
-type t = {
-  correlation_id : string;
-  reservation_id : int;
-  instrument : Account_view_models.Instrument_view_model.t;
-  side : string;
-  filled_quantity : string;
-  fill_price : string;
-  fee : string;
-  new_position_quantity : string;
-  new_avg_price : string;
-  new_cash : string;
-}
-[@@deriving yojson]
+include Reservation_filled_integration_event_t
+include Reservation_filled_integration_event_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
 
 type domain = Account.Portfolio.Events.Reservation_filled.t
 
@@ -20,7 +12,7 @@ let of_domain ~(correlation_id : string) (ev : domain) : t =
   {
     correlation_id;
     reservation_id = ev.reservation_id;
-    instrument = Account_view_models.Instrument_view_model.of_domain ev.instrument;
+    instrument = Instrument_view_model.of_domain ev.instrument;
     side = Side.to_string ev.side;
     filled_quantity = Decimal.to_string ev.filled_quantity;
     fill_price = Decimal.to_string ev.fill_price;

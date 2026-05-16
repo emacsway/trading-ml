@@ -32,7 +32,7 @@ let parse_ts raw : (int64, validation_error) Rop.t =
   let parsed = Datetime.Iso8601.parse raw in
   if Int64.equal parsed 0L then Rop.fail (Invalid_ts raw) else Rop.succeed parsed
 
-let parse_candle (candle : Apply_bar_command.candle_dto) :
+let parse_candle (candle : Candle_view_model.t) :
     (Core.Candle.t, validation_error) Rop.t =
   let parsed_fields =
     let open Rop in

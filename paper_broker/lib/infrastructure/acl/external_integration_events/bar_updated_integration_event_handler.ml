@@ -1,4 +1,5 @@
 module Apply_bar_command = Paper_broker_commands.Apply_bar_command
+module Candle_view_model = Paper_broker_view_models.Candle_view_model
 
 let qualify (vm : Paper_broker_external_view_models.Instrument_view_model.t) : string =
   match vm.board with
@@ -8,7 +9,7 @@ let qualify (vm : Paper_broker_external_view_models.Instrument_view_model.t) : s
 let handle
     ~(dispatch_apply_bar : Apply_bar_command.t -> unit)
     (ev : Bar_updated_integration_event.t) : unit =
-  let candle : Apply_bar_command.candle_dto =
+  let candle : Candle_view_model.t =
     {
       ts = ev.candle.ts;
       open_ = ev.candle.open_;

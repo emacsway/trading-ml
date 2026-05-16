@@ -51,3 +51,27 @@
   (progn
    (run atdgen -t -o reconcile_command %{atd})
    (run atdgen -j -o reconcile_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/commands/apply_bar_command.atd))
+ (targets apply_bar_command_t.ml
+          apply_bar_command_t.mli
+          apply_bar_command_j.ml
+          apply_bar_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o apply_bar_command %{atd})
+   (run atdgen -j -o apply_bar_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/commands/set_target_command.atd))
+ (targets set_target_command_t.ml
+          set_target_command_t.mli
+          set_target_command_j.ml
+          set_target_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o set_target_command %{atd})
+   (run atdgen -j -o set_target_command %{atd}))))

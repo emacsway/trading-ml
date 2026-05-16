@@ -22,11 +22,10 @@
 
 open Core
 
-type t = {
-  instrument : Broker_view_models.Instrument_view_model.t;
-  timeframe : string;  (** [Timeframe.to_string] form. *)
-  candle : Broker_view_models.Candle_view_model.t;
-}
-[@@deriving yojson]
+include module type of Bar_updated_integration_event_t
+include module type of Bar_updated_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 val of_domain : instrument:Instrument.t -> timeframe:Timeframe.t -> candle:Candle.t -> t

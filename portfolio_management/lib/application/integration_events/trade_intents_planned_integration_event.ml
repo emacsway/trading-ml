@@ -1,10 +1,8 @@
-type leg = {
-  correlation_id : string;
-  intent : Portfolio_management_view_models.Trade_intent_view_model.t;
-}
-[@@deriving yojson]
+include Trade_intents_planned_integration_event_t
+include Trade_intents_planned_integration_event_j
 
-type t = { book_id : string; trades : leg list; computed_at : string } [@@deriving yojson]
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
 
 type domain = Portfolio_management.Reconciliation.Events.Trades_planned.t
 
@@ -16,7 +14,7 @@ let of_domain (ev : domain) : t =
         (fun i ->
           {
             correlation_id = Correlation_id.to_string (Correlation_id.generate ());
-            intent = Portfolio_management_view_models.Trade_intent_view_model.of_domain i;
+            intent = Trade_intent_view_model.of_domain i;
           })
         ev.trades;
     computed_at = Datetime.Iso8601.format ev.computed_at;

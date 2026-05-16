@@ -3,28 +3,18 @@
 
     Published by {!Reserve_command_workflow} after
     {!Account.Portfolio.try_reserve} succeeds. [reservation_id]
-    is the cross-BC saga key — the
-    inbound HTTP adapter propagates it into {!Submit_order_command.t}
-    so Broker echoes it back, and the Account compensation
-    subscriber matches by it on rejection.
+    is the cross-BC saga key — the inbound HTTP adapter propagates
+    it into {!Submit_order_command.t} so Broker echoes it back, and
+    the Account compensation subscriber matches by it on rejection.
 
     DTO-shaped: primitives + nested view model, no domain values.
-    [@@deriving yojson] auto-generates the on-wire format. *)
+    Wire format generated from the atd contract. *)
 
-type t = {
-  correlation_id : string;
-      (** Saga-instance identifier echoed verbatim from
-        {!Reserve_command.t}.correlation_id. Allows the
-        {!Place_order_pm} Process Manager in [execution_management]
-        to route this ack back to the originating instance. *)
-  reservation_id : int;
-  side : string;
-  instrument : Account_view_models.Instrument_view_model.t;
-  quantity : string;  (** Decimal string — see {!Reserve_command.t}. *)
-  price : string;
-  reserved_cash : string;
-}
-[@@deriving yojson]
+include module type of Amount_reserved_integration_event_t
+include module type of Amount_reserved_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Account.Portfolio.Events.Amount_reserved.t
 

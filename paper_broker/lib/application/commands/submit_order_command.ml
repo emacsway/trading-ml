@@ -1,10 +1,5 @@
-type t = {
-  correlation_id : string;
-  placement_id : int;
-  symbol : string;
-  side : string;
-  quantity : string;
-  kind : Paper_broker_view_models.Order_kind_view_model.t;
-  tif : string;
-}
-[@@deriving yojson]
+include Submit_order_command_t
+include Submit_order_command_j
+
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)

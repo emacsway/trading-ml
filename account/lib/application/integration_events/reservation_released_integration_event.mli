@@ -4,12 +4,11 @@
     completion. The released cash / quantity is again available
     to subsequent commands. *)
 
-type t = {
-  reservation_id : int;
-  side : string;
-  instrument : Account_view_models.Instrument_view_model.t;
-}
-[@@deriving yojson]
+include module type of Reservation_released_integration_event_t
+include module type of Reservation_released_integration_event_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Account.Portfolio.Events.Reservation_released.t
 

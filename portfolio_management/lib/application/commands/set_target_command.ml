@@ -1,9 +1,5 @@
-type position = { instrument : string; target_qty : string } [@@deriving yojson]
+include Set_target_command_t
+include Set_target_command_j
 
-type t = {
-  book_id : string;
-  source : string;
-  proposed_at : string;
-  positions : position list;
-}
-[@@deriving yojson]
+let yojson_of_t (v : t) : Yojson.Safe.t = Yojson.Safe.from_string (string_of_t v)
+let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)

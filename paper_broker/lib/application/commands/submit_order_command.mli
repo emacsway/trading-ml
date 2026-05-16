@@ -7,15 +7,8 @@
     treats [placement_id] as an opaque round-trip token; it
     never reads or interprets it. *)
 
-type t = {
-  correlation_id : string;
-  placement_id : int;
-  symbol : string;
-      (** Qualified symbol [TICKER@MIC] (with optional [/BOARD]
-          suffix), parsed by the receiver. *)
-  side : string;  (** ["BUY"] | ["SELL"]. *)
-  quantity : string;  (** Decimal string; receiver enforces [> 0]. *)
-  kind : Paper_broker_view_models.Order_kind_view_model.t;
-  tif : string;  (** ["GTC"] | ["DAY"] | ["IOC"] | ["FOK"]. *)
-}
-[@@deriving yojson]
+include module type of Submit_order_command_t
+include module type of Submit_order_command_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

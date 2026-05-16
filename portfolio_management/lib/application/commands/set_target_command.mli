@@ -15,16 +15,8 @@
     {!Portfolio_management.Target_portfolio.apply_proposal} directly
     on the success path of their own workflows. *)
 
-type position = {
-  instrument : string;  (** [TICKER@MIC[/BOARD]] *)
-  target_qty : string;  (** signed Decimal string *)
-}
-[@@deriving yojson]
+include module type of Set_target_command_t
+include module type of Set_target_command_j with type t := t
 
-type t = {
-  book_id : string;
-  source : string;
-  proposed_at : string;  (** ISO-8601 *)
-  positions : position list;
-}
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

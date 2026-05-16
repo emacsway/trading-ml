@@ -8,7 +8,8 @@
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-   -open Broker_domain)))
+   -open Broker_domain
+   -open Broker_view_models)))
 
 ; Wire contract generation. The .atd source is the single
 ; source of truth for the wire shape; atdgen emits typed
@@ -38,3 +39,27 @@
   (progn
    (run atdgen -t -o order_unreachable_integration_event %{atd})
    (run atdgen -j -o order_unreachable_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/integration_events/bar_updated_integration_event.atd))
+ (targets bar_updated_integration_event_t.ml
+          bar_updated_integration_event_t.mli
+          bar_updated_integration_event_j.ml
+          bar_updated_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o bar_updated_integration_event %{atd})
+   (run atdgen -j -o bar_updated_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/integration_events/order_accepted_integration_event.atd))
+ (targets order_accepted_integration_event_t.ml
+          order_accepted_integration_event_t.mli
+          order_accepted_integration_event_j.ml
+          order_accepted_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_accepted_integration_event %{atd})
+   (run atdgen -j -o order_accepted_integration_event %{atd}))))

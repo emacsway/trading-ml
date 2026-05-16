@@ -17,19 +17,8 @@
       - future external entries (CLI replay, backtest harness) that
         want to drive pair-mr policies without going through the bus. *)
 
-type candle_dto = {
-  ts : string;  (** ISO-8601 *)
-  open_ : string; [@key "open"]
-  high : string;
-  low : string;
-  close : string;
-  volume : string;
-}
-[@@deriving yojson]
+include module type of Apply_bar_command_t
+include module type of Apply_bar_command_j with type t := t
 
-type t = {
-  instrument : string;  (** [TICKER@MIC[/BOARD]] *)
-  timeframe : string;
-  candle : candle_dto;
-}
-[@@deriving yojson]
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

@@ -5,6 +5,7 @@
   yojson
   ppx_yojson_conv_lib
   paper_broker_external_view_models
+  paper_broker_view_models
   paper_broker_commands)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))

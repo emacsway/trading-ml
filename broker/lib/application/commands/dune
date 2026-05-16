@@ -4,6 +4,7 @@
  (libraries
   yojson
   ppx_yojson_conv_lib
+  atdgen-runtime
   core broker_domain decimal
   broker_view_models
   broker
@@ -13,4 +14,22 @@
  (flags
   (:standard
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-   -open Broker_domain)))
+   -open Broker_domain
+   -open Broker_view_models)))
+
+; Wire contract generation. The .atd source is the single
+; source of truth for the wire shape; atdgen emits typed
+; OCaml records (_t) and JSON codecs (_j) at build time.
+; Hand-written `<name>.ml` modules wrap these via `include`
+; and add the `of_domain` projection.
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/commands/submit_order_command.atd))
+ (targets submit_order_command_t.ml
+          submit_order_command_t.mli
+          submit_order_command_j.ml
+          submit_order_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o submit_order_command %{atd})
+   (run atdgen -j -o submit_order_command %{atd}))))
