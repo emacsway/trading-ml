@@ -1,8 +1,14 @@
 (* Wire contract: broker/lib/application/view_models/order_view_model.ml
 
+   Projection of an order's observable state, expressed in our
+   vocabulary. The only identity is [placement_id] (the cross-BC
+   saga key); venue-native handles ([client_order_id], server-side
+   ids, exec ids) are concerns of the ACL adapter and never reach
+   this view model.
+
    Cross-referenced types resolved via atdgen at code-generation
-   time; both producers (this view model's _j codec and the IE
-   envelopes that embed it) and consumers share a single typed
+   time; both producers (this view model's _j codec and any IE
+   envelope that embeds it) and consumers share a single typed
    record across the library:
 
    - instrument_view_model — see view_models/instrument_view_model.atd
@@ -13,9 +19,7 @@ type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 type order_kind_view_model <ocaml from="Order_kind_view_model" t="t"> = abstract
 
 type t = {
-  id : string;
-  exec_id : string;
-  client_order_id : string;
+  placement_id <doc text="Cross-BC saga key minted by Account at reservation time and echoed through Submit. The only stable identity of an order in our model."> : int;
   instrument : instrument_view_model;
   side : string;
   quantity : string;

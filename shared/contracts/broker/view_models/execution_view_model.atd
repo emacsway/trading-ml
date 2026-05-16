@@ -1,0 +1,14 @@
+(* Wire contract: broker/lib/application/view_models/execution_view_model.ml
+
+   One execution (trade / fill slice) for a placement. A single
+   order may be filled across multiple executions — the broker
+   ACL emits per-execution detail in venue-actual numbers (not
+   intended). Identity of the parent order is [placement_id],
+   carried separately by the calling context. *)
+
+type t = {
+  ts <doc text="ISO-8601 timestamp at which the venue reported this execution."> : string;
+  quantity <doc text="Decimal string. Sum across executions equals the order's [filled]."> : string;
+  price <doc text="Decimal string — broker's actual fill price, not the order's intended price."> : string;
+  fee <doc text="Decimal string — venue-side commission for this execution."> : string;
+}

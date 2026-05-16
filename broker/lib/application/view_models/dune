@@ -49,3 +49,13 @@
   (progn
    (run atdgen -t -o order_view_model %{atd})
    (run atdgen -j -o order_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/view_models/execution_view_model.atd))
+ (targets execution_view_model_t.ml execution_view_model_t.mli
+          execution_view_model_j.ml execution_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o execution_view_model %{atd})
+   (run atdgen -j -o execution_view_model %{atd}))))
