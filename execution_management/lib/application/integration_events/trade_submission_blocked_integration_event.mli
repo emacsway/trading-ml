@@ -1,7 +1,7 @@
 (** Integration event: execution_management blocked a submission
     before it reached the venue.
 
-    Telemetry-only. The {!Place_order_pm} saga does not consume this
+    Telemetry-only. The {!Open_order_ticket_process} saga does not consume this
     event — instances that hit a gate never start, and there is no
     Reserve/Submit chain to compensate. The IE exists so SSE / audit
     consumers can show the user why an approved trade intent never

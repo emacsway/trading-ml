@@ -41,7 +41,7 @@ sits one level above and is concerned only with the graph.
         │                       │  Execution Management    │
         │                       │  (kill-switch,           │
         │                       │   rate-limit,            │
-        │                       │   Place_order saga)      │
+        │                       │   Open_order_ticket saga)│
         │                       └─┬───────────────────┬────┘
         │                         │                   │
         │            Reserve_cmd  │                   │  Submit_order_cmd
@@ -175,7 +175,7 @@ different points of the pipeline with different semantics.
 ADR 0011. Two domain aggregates: `Kill_switch` (peak-equity
 tracking, max-drawdown halt) and `Rate_limit` (rolling timestamp
 window). Both Why3-checkable. The BC also hosts the
-`Place_order_pm` Process Manager — the saga that sequences
+`Open_order_ticket_process` Process Manager — the saga that sequences
 `Reserve(Account) → Submit(Broker) → Release(Account)` on
 compensation. The saga runtime is `shared/lib/workflow_engine`
 (the Process Manager template per Hohpe & Woolf, EIP ch. 11);
@@ -296,7 +296,7 @@ inhabitants:
 - `correlation_id/` — UUIDv4 newtype used as the saga routing
   key (ADR 0011 §1).
 - `workflow_engine/` — the Process Manager runtime
-  (`Make(WORKFLOW)(STORE)`). `Place_order_pm` is the first
+  (`Make(WORKFLOW)(STORE)`). `Open_order_ticket_process` is the first
   concrete instance.
 - `inbound_http/` — `Route.handler` contract; per-BC
   `inbound/http/` modules compose into the trading host's HTTP
@@ -395,20 +395,20 @@ through fills, with `cid` denoting the saga `correlation_id`:
 6. execution_management ← pre-trade-risk.trade-intent-approved
    Kill_switch + Rate_limit gate
    if blocked → execution-management.trade-submission-blocked
-   else       → Place_order_pm.start                  [cid_n]
+   else       → Open_order_ticket_process.start                  [cid_n]
                 → account.reserve-command              [cid_n]
 7. account            ← account.reserve-command
    Reserve_command_workflow
    → account.amount-reserved | account.reservation-rejected   [cid_n]
 8. execution_management ← account.amount-reserved
-   Place_order_pm.transition: Awaiting_reservation → Submitted
+   Open_order_ticket_process.transition: Awaiting_reservation → Submitted
    → broker.submit-order-command                      [cid_n]
 9. broker (live) or paper_broker (--paper)  ← broker.submit-order-command
    Submit_order_command_handler.make (live) or
    Submit_order_command_workflow.execute (paper)
    → broker.order-{accepted,rejected,unreachable}     [cid_n]
 10. execution_management ← broker.order-{rejected,unreachable}
-    Place_order_pm.transition: Submitted → Compensated
+    Open_order_ticket_process.transition: Submitted → Compensated
     → account.release-command                         [cid_n]
 11. account            ← account.release-command
     Release_command_workflow
@@ -427,7 +427,7 @@ through fills, with `cid` denoting the saga `correlation_id`:
 ```
 
 The pure saga transitions (steps 6, 8, 10) are pinned by
-`execution_management/test/unit/place_order_pm_test.ml` against the
+`execution_management/test/unit/open_order_ticket_process_test.ml` against the
 `Definition.transition` function — bus-free, Eio-free. End-to-end
 component tests that drive the saga through the in-memory bus are
 a follow-up; the pure test plus the per-BC component tests

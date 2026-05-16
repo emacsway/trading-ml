@@ -125,14 +125,14 @@ old `Engine.Risk.check`, `default_limits`, and `decision` move here
 verbatim, with `Account.Portfolio.t` replaced by `Risk_view.t` so
 the cross-BC import is dissolved at the same checkpoint.
 
-### 3. New BC `execution_management` (EMS) hosting `Place_order_pm`
+### 3. New BC `execution_management` (EMS) hosting `Open_order_ticket_process`
 
 Two domain aggregates: `Kill_switch` (peak-equity tracking,
 max-drawdown halt) and `Rate_limit` (rolling timestamp window).
 Both have Why3-checkable invariants
 (`peak_equity ≥ 0`, `halted ⇒ no submissions`).
 
-The saga `Place_order_pm` is a `Workflow_engine.WORKFLOW`
+The saga `Open_order_ticket_process` is a `Workflow_engine.WORKFLOW`
 implementation. Its `transition` function is pure
 `(state, event) → (state, command list)`. Five live transitions
 plus an idempotent fall-through:
@@ -298,7 +298,7 @@ decision §4 above for the full comparison.
 
 ### Order as a separate aggregate or BC
 
-Rejected. Order lifecycle is saga state in `Place_order_pm`:
+Rejected. Order lifecycle is saga state in `Open_order_ticket_process`:
 identity (`correlation_id`), status transitions
 (`Awaiting_reservation` → `Submitted` → `Done | Compensated`),
 idempotency on duplicate broker IEs, and cancel-in-flight
@@ -342,7 +342,7 @@ is the equivalence proof.
   invariants), venue submission in Broker (port adapter). No
   responsibility is hosted by a BC whose ubiquitous language
   doesn't match.
-- `Place_order_pm` is the canonical Process-Manager instance the
+- `Open_order_ticket_process` is the canonical Process-Manager instance the
   shared `workflow_engine` library was waiting for. Future sagas
   (cancel-replace, OCO, multi-leg execution) reuse the same
   runtime template.
@@ -429,4 +429,4 @@ is the equivalence proof.
   Layer) — Process-Manager-as-application-service.
 - Wlaschin, *Domain Modeling Made Functional*, ch. 9 — the
   Railway-Oriented saga with explicit compensation, the conceptual
-  shape `Place_order_pm.transition` realises.
+  shape `Open_order_ticket_process.transition` realises.

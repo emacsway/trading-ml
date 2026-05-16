@@ -1,7 +1,11 @@
-(** Place_order Process Manager.
+(** Open_order_ticket process — the cross-BC saga that opens an
+    order ticket: turns an approved trade intent into a fully-placed
+    broker order. Per the OrderTicket / OrderTicket.Placement model
+    being introduced in execution_management, the saga's correlation
+    id will eventually become the ticket identifier; today it remains
+    a free-form uuid minted by the saga initiator.
 
-    Coordinates the cross-BC saga that turns a [Trade_intent_approved]
-    integration event into a fully-placed broker order:
+    Coordinates the cross-BC choreography:
 
     {v
       Trade_intent_approved   →  Reserve_command  (Account)

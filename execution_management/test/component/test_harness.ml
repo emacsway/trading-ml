@@ -1,5 +1,5 @@
 (** In-process test harness for the Execution_management BC's
-    Place_order Process Manager.
+    Open_order_ticket process.
 
     Boots the saga {!Engine} on top of an {!In_memory_store} and a
     recording [dispatch] callback: every saga-emitted command is
@@ -19,7 +19,7 @@
     Every later transition is driven by [push_*] helpers that wrap
     {!Engine.on_event} on the appropriate event constructor. *)
 
-module Pm = Execution_management_process_managers.Place_order_pm
+module Pm = Execution_management_process_managers.Open_order_ticket_process
 module Inbound = Execution_management_external_integration_events
 module Iqr = Execution_management_external_view_models
 

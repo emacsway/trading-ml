@@ -1,4 +1,4 @@
-(** BDD specification for the Place_order saga.
+(** BDD specification for the Open_order_ticket saga.
 
     Drives the saga end-to-end through the engine + recording
     dispatch, exercising the happy path and three compensation
@@ -6,7 +6,7 @@
     separate scenarios. *)
 
 module Gherkin = Gherkin_edsl
-module Pm = Execution_management_process_managers.Place_order_pm
+module Pm = Execution_management_process_managers.Open_order_ticket_process
 open Test_harness
 
 let cid = "saga-component-A"
@@ -216,7 +216,7 @@ let unrelated_correlation_id_does_not_advance_other_sagas =
     ]
 
 let feature =
-  Gherkin.feature "Place_order saga"
+  Gherkin.feature "Open_order_ticket saga"
     [
       happy_path;
       reservation_rejected_compensates_without_release;

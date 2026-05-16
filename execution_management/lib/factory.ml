@@ -1,4 +1,4 @@
-module Pm = Execution_management_process_managers.Place_order_pm
+module Pm = Execution_management_process_managers.Open_order_ticket_process
 module Inbound = Execution_management_external_integration_events
 module Outbound_ie = Execution_management_integration_events
 

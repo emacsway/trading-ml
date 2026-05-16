@@ -1,8 +1,8 @@
-(** Unit tests for {!Execution_management_process_managers.Place_order_pm.Definition}.
+(** Unit tests for {!Execution_management_process_managers.Open_order_ticket_process.Definition}.
     Drives the pure transition function across happy + compensation
     paths. No bus, no Eio. *)
 
-module Pm = Execution_management_process_managers.Place_order_pm
+module Pm = Execution_management_process_managers.Open_order_ticket_process
 module Inbound = Execution_management_external_integration_events
 
 let cid = "saga-A"

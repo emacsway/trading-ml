@@ -3,7 +3,7 @@
     Published by {!Assess_trade_intent_command_workflow} after
     {!Pre_trade_risk.Assessment.assess} returns [Approve qty]. The
     [correlation_id] echoes the originating
-    {!Assess_trade_intent_command.t} so the {!Place_order_pm} Process
+    {!Assess_trade_intent_command.t} so the {!Open_order_ticket_process} Process
     Manager in [execution_management] can route the approval back to
     the originating saga instance.
 
