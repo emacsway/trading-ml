@@ -4,9 +4,18 @@
     static MIC; the per-board distinction (TQBR/SPBFUT/...) lives on
     the {!Instrument.t} as [board], not here.
 
-    Order identity: BCS uses the caller-supplied [clientOrderId] as the
-    server-side id too, so the port's [client_order_id] key maps 1:1
-    with no extra bookkeeping (unlike Finam which issues its own id).
+    {b Order identity at the port.} The placement-keyed methods
+    speak [placement_id : int]. The adapter mints a BCS-format
+    [client_order_id] (dashed UUIDv4 — BCS's validator rejects any
+    other shape) on submit and records the linkage in a private
+    {!Placement_handle_store}. Cancel / get / get_executions
+    resolve through that store; [None] when the placement was
+    never observed by this adapter.
+
+    {b Order identity at venue.} BCS uses the caller-supplied
+    [clientOrderId] as the server-side id too, so once a
+    placement is bound to a [client_order_id] the venue echoes
+    the same string back; no separate cid↔server-id map.
 
     Quantity conversion: the port speaks [Decimal.t] for uniformity,
     but BCS's REST wire format wants a plain integer (MOEX equities
@@ -18,53 +27,110 @@
 
 open Core
 
-type t = Rest.t
+type t = { rest : Rest.t; placements : Placement_handle_store.t }
 
 let name = "bcs"
 
-let bars t ~n ~instrument ~timeframe = Rest.bars t ~n ~instrument ~timeframe
+let make (rest : Rest.t) : t = { rest; placements = Placement_handle_store.create () }
+
+let bars t ~n ~instrument ~timeframe = Rest.bars t.rest ~n ~instrument ~timeframe
 
 let venues _t : Mic.t list = [ Mic.of_string "MISX" ]
 
-let place_order t ~instrument ~side ~quantity ~kind ~tif:_ ~client_order_id =
-  let q_int = int_of_float (Decimal.to_float quantity) in
-  Rest.create_order t ~instrument ~side ~quantity:q_int ~kind ~client_order_id ()
-
-let get_orders t = Rest.get_orders t
-let get_order t ~client_order_id = Rest.get_order t ~client_order_id
-let cancel_order t ~client_order_id = Rest.cancel_order t ~client_order_id
-
-(** Project account-wide deals into per-execution records for the
-    order identified by [client_order_id]. BCS's deal payload does
-    not carry [clientOrderId] — only [orderNum] (broker-assigned).
-    So we resolve the order first to pick up its [exec_id] (= the
-    [orderNum] kept on [Order.t]), then filter the deals list by
-    string-equality on that id. Returns [] if the order has no
-    [exec_id] yet (still pending) or no fills against it.
-
-    Unverified against a live account — per-call [get_order] is
-    an extra HTTP roundtrip; a cid→exec_id cache (like Finam's)
-    is the obvious follow-up once we see volume. *)
-let get_executions t ~client_order_id =
-  let order = Rest.get_order t ~client_order_id in
-  if order.exec_id = "" then []
-  else
-    Rest.get_deals t
-    |> List.filter_map (fun (order_num, exec) ->
-        if order_num = order.exec_id then Some exec else None)
-
 (** UUIDv4 in canonical dashed form — BCS validates [clientOrderId]
     as "UUID format" and 400s on anything else. *)
-let generate_client_order_id _ =
+let mint_client_order_id () =
   Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string
 
+let place_order_by_placement_id
+    t
+    ~placement_id
+    ~instrument
+    ~side
+    ~quantity
+    ~kind
+    ~tif:_
+    : Order_view_model.t =
+  let cid = mint_client_order_id () in
+  (match
+     Placement_handle_store.record t.placements ~placement_id ~client_order_id:cid
+   with
+  | `Ok | `Already_exists -> ());
+  let q_int = int_of_float (Decimal.to_float quantity) in
+  let order =
+    Rest.create_order t.rest ~instrument ~side ~quantity:q_int ~kind ~client_order_id:cid
+      ()
+  in
+  Order_view_model.of_domain ~placement_id order
+
+let cancel_order_by_placement_id t ~placement_id : Order_view_model.t option =
+  match Placement_handle_store.find_client_order_id t.placements ~placement_id with
+  | None -> None
+  | Some cid ->
+      let order = Rest.cancel_order t.rest ~client_order_id:cid in
+      Some (Order_view_model.of_domain ~placement_id order)
+
+let get_order_by_placement_id t ~placement_id : Order_view_model.t option =
+  match Placement_handle_store.find_client_order_id t.placements ~placement_id with
+  | None -> None
+  | Some cid ->
+      let order = Rest.get_order t.rest ~client_order_id:cid in
+      Some (Order_view_model.of_domain ~placement_id order)
+
+(** Project account-wide deals into per-execution records for the
+    placement identified by [placement_id]. BCS's deal payload
+    does not carry [clientOrderId] — only [orderNum]
+    (broker-assigned). So we resolve the order first to pick up
+    its [exec_id] (= the [orderNum] kept on [Order.t]), then
+    filter the deals list by string-equality on that id.
+    Returns [] if the placement is unknown, has no [exec_id] yet
+    (still pending), or no fills against it. *)
+let get_executions_by_placement_id t ~placement_id : Execution_view_model.t list =
+  match Placement_handle_store.find_client_order_id t.placements ~placement_id with
+  | None -> []
+  | Some cid -> (
+      let order = Rest.get_order t.rest ~client_order_id:cid in
+      if order.exec_id = "" then []
+      else
+        Rest.get_deals t.rest
+        |> List.filter_map (fun (order_num, exec) ->
+               if order_num = order.exec_id then
+                 Some (Execution_view_model.of_domain exec)
+               else None))
+
+(* --- Legacy venue-keyed methods, kept for /api/orders HTTP routes. --- *)
+
+let place_order t ~instrument ~side ~quantity ~kind ~tif:_ ~client_order_id =
+  let q_int = int_of_float (Decimal.to_float quantity) in
+  Rest.create_order t.rest ~instrument ~side ~quantity:q_int ~kind ~client_order_id ()
+
+let get_orders t = Rest.get_orders t.rest
+let get_order t ~client_order_id = Rest.get_order t.rest ~client_order_id
+let cancel_order t ~client_order_id = Rest.cancel_order t.rest ~client_order_id
+
+let get_executions t ~client_order_id =
+  let order = Rest.get_order t.rest ~client_order_id in
+  if order.exec_id = "" then []
+  else
+    Rest.get_deals t.rest
+    |> List.filter_map (fun (order_num, exec) ->
+           if order_num = order.exec_id then Some exec else None)
+
+let generate_client_order_id _ = mint_client_order_id ()
+
 let as_broker (rest : Rest.t) : Broker.client =
+  let t = make rest in
   Broker.make
     (module struct
       type nonrec t = t
+
       let name = name
       let bars = bars
       let venues = venues
+      let place_order_by_placement_id = place_order_by_placement_id
+      let cancel_order_by_placement_id = cancel_order_by_placement_id
+      let get_order_by_placement_id = get_order_by_placement_id
+      let get_executions_by_placement_id = get_executions_by_placement_id
       let place_order = place_order
       let get_orders = get_orders
       let get_order = get_order
@@ -72,4 +138,4 @@ let as_broker (rest : Rest.t) : Broker.client =
       let get_executions = get_executions
       let generate_client_order_id = generate_client_order_id
     end)
-    rest
+    t

@@ -7,14 +7,19 @@
       variant, tif) via parallel applicative branches. Multiple
       bad fields surface as a non-empty error list in one pass.
     - {b Place}: on validation success, call the injected
-      {!Broker.client}'s [place_order], wrapping any transport
-      exception. The outcome is a tri-state {!broker_outcome}:
-      [Accepted] / [Rejected] (venue refused) / [Unreachable]
-      (transport / adapter raised).
+      {!Broker.client}'s placement-keyed [place_order], wrapping
+      any transport exception. The ACL adapter mints whatever
+      native handle the venue requires and records the
+      [placement_id ↦ handle] linkage privately. The outcome is
+      a tri-state {!broker_outcome}: [Accepted] / [Rejected]
+      (venue refused) / [Unreachable] (transport / adapter
+      raised).
 
-    Publishing the corresponding integration event and projecting
-    the [Order.t] into the wire view model is the enclosing
-    {!Submit_order_command_workflow.execute} pipeline's job. *)
+    Publishing the corresponding integration event is the
+    enclosing {!Submit_order_command_workflow.execute}
+    pipeline's job; the workflow also records the originating
+    saga's [correlation_id] in the {!Order_command_log} for
+    later audit / fill-event stamping. *)
 
 (** {1 Validation errors} *)
 
@@ -47,14 +52,17 @@ type validated_submit_order_command = {
 (** {1 Outcome} *)
 
 type broker_outcome =
-  | Accepted of Order.t
-  | Rejected of { order : Order.t; reason : string }
+  | Accepted
+  | Rejected of { reason : string }
   | Unreachable of { reason : string }
-      (** Tri-state result of the [Broker.place_order] call. [Accepted]
-    when the broker returned an order with any non-[Rejected]
-    status; [Rejected] when it returned [status = Rejected]
-    (venue refusal); [Unreachable] when the adapter raised
-    (transport, parse, anything else). *)
+      (** Tri-state result of
+          [Broker.place_order_by_placement_id]. [Accepted] when
+          the projected view model's status is anything other
+          than ["REJECTED"]; [Rejected] when the venue explicitly
+          refused; [Unreachable] when the adapter raised
+          (transport, parse, anything else). The view model is
+          not carried on the outcome — the IE schema doesn't
+          surface it and no current consumer reads it. *)
 
 type handle_error = Validation of validation_error
 

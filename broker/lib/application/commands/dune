@@ -8,6 +8,7 @@
   core broker_domain decimal rop
   broker_view_models
   broker
+  broker_store
   broker_integration_events)
  (preprocess
   (pps ppx_yojson_conv))

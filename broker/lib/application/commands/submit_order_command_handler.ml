@@ -31,8 +31,8 @@ type validated_submit_order_command = {
 }
 
 type broker_outcome =
-  | Accepted of Order.t
-  | Rejected of { order : Order.t; reason : string }
+  | Accepted
+  | Rejected of { reason : string }
   | Unreachable of { reason : string }
 
 type handle_error = Validation of validation_error
@@ -118,19 +118,24 @@ let validate (cmd : Submit_order_command.t) :
 
 let place ~(broker : Broker.client) (v : validated_submit_order_command) : broker_outcome
     =
-  let client_order_id = Broker.generate_client_order_id broker in
   match
     try
       Ok
-        (Broker.place_order broker ~instrument:v.instrument ~side:v.side
-           ~quantity:v.quantity ~kind:v.kind ~tif:v.tif ~client_order_id)
+        (Broker.place_order_by_placement_id broker ~placement_id:v.placement_id
+           ~instrument:v.instrument ~side:v.side ~quantity:v.quantity ~kind:v.kind
+           ~tif:v.tif)
     with e -> Error (Printexc.to_string e)
   with
   | Error reason -> Unreachable { reason }
-  | Ok order -> (
-      match order.status with
-      | Rejected -> Rejected { order; reason = Order.status_to_string order.status }
-      | _ -> Accepted order)
+  | Ok (vm : Order_view_model.t) ->
+      (* The view model surfaces venue status as a string; the
+         ACL adapter has already projected from whatever the
+         venue spoke into our wire vocabulary. Anything other
+         than "REJECTED" counts as accepted at submission time —
+         a partial fill on an aggressive IOC, a [PENDING_NEW]
+         under high venue latency, etc. all flow through the
+         saga the same way. *)
+      if vm.status = "REJECTED" then Rejected { reason = vm.status } else Accepted
 
 let handle ~(broker : Broker.client) (cmd : Submit_order_command.t) :
     (broker_outcome, handle_error) Rop.t =

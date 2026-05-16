@@ -18,3 +18,10 @@ include module type of Order_view_model_j with type t := t
 
 val yojson_of_t : t -> Yojson.Safe.t
 val t_of_yojson : Yojson.Safe.t -> t
+
+val of_domain : placement_id:int -> Order.t -> t
+(** Project broker's ACL-internal intermediate {!Order.t} onto
+    the wire view model. [placement_id] is threaded from the
+    caller (the saga key), since the intermediate has no notion
+    of it — it only carries the venue-side identity, which the
+    projection drops. *)

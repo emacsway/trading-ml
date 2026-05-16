@@ -125,18 +125,32 @@ let build ~bus ~env ~source_client ~rest ~paper_mode : t =
     produce ~uri:"in-memory://broker.bar-updated"
       ~yojson_of:Broker_integration_events.Bar_updated_integration_event.yojson_of_t
   in
+  (* Process-correlation log: [placement_id ↦ submit/cancel
+     correlation_id]. Recorded by Submit on Accepted (and, when
+     wired, Cancel); future fill-from-WS events that arrive
+     outside command-in-scope will read it back to stamp the
+     outbound IE with the originating saga. In-memory for now. *)
+  let command_log : Broker_persistence.In_memory_order_command_log.t =
+    Broker_persistence.In_memory_order_command_log.create ()
+  in
+  let command_log_module =
+    (module Broker_persistence.In_memory_order_command_log
+    : Broker_store.Order_command_log.S
+      with type t = Broker_persistence.In_memory_order_command_log.t)
+  in
   (* In paper_mode the [paper_broker] BC handles the saga's
      submit_order traffic via its own subscription to
      [broker.submit-order-command]. Broker's submit-order subscriber
      would otherwise also accept the same wire format and route it
-     through [Broker.place_order] on the live source client, which
-     for synthetic/finam/bcs does not really place an order. To
-     avoid double-handling, we skip the subscription here when
-     paper_mode is on. *)
+     through [Broker.place_order_by_placement_id] on the live source
+     client, which for synthetic/finam/bcs does not really place an
+     order. To avoid double-handling, we skip the subscription here
+     when paper_mode is on. *)
   (if not paper_mode then
      let dispatch_submit_order (cmd : Broker_commands.Submit_order_command.t) =
        match
          Broker_commands.Submit_order_command_workflow.execute ~broker:client
+           ~command_log:command_log_module ~command_log_handle:command_log
            ~publish_accepted:publish_order_accepted
            ~publish_rejected:publish_order_rejected
            ~publish_unreachable:publish_order_unreachable cmd
@@ -160,12 +174,16 @@ let build ~bus ~env ~source_client ~rest ~paper_mode : t =
      in
      ()
    else
-     (* Held in scope so the unused-binding warning doesn't fire when
-        all three publishers are only consumed by the gated branch.
-        Their bus producers remain registered (and thus reachable for
-        any future direct caller) regardless of [paper_mode]. *)
+     (* Held in scope so the unused-binding warnings don't fire when
+        the publishers and the command log are only consumed by the
+        gated branch. Their bus producers remain registered (and
+        thus reachable for any future direct caller) regardless of
+        [paper_mode]. *)
      let _ =
-       (publish_order_accepted, publish_order_rejected, publish_order_unreachable)
+       ( publish_order_accepted,
+         publish_order_rejected,
+         publish_order_unreachable,
+         command_log )
      in
      ());
   let ws_setup =

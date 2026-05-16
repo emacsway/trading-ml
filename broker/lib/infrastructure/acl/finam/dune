@@ -1,8 +1,8 @@
 (library
  (name finam)
  (public_name trading.finam)
- (libraries core broker_domain decimal broker http_transport websocket log acl_common datetime
+ (libraries core broker_domain decimal broker broker_view_models http_transport websocket log acl_common datetime
             eio eio.unix yojson uri uuidm
             tls tls-eio x509
             base64 digestif digestif.c)
- (flags (:standard -open Broker_domain)))
+ (flags (:standard -open Broker_domain -open Broker_view_models)))
