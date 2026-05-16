@@ -1,6 +1,37 @@
 (library
  (name pre_trade_risk_view_models)
  (public_name trading.pre_trade_risk.view_models)
- (libraries yojson ppx_yojson_conv_lib core decimal pre_trade_risk)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core decimal pre_trade_risk)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/view_models/instrument_view_model.atd))
+ (targets instrument_view_model_t.ml instrument_view_model_t.mli
+          instrument_view_model_j.ml instrument_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o instrument_view_model %{atd})
+   (run atdgen -j -o instrument_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/view_models/position_snapshot_view_model.atd))
+ (targets position_snapshot_view_model_t.ml position_snapshot_view_model_t.mli
+          position_snapshot_view_model_j.ml position_snapshot_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o position_snapshot_view_model %{atd})
+   (run atdgen -j -o position_snapshot_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/view_models/risk_view_view_model.atd))
+ (targets risk_view_view_model_t.ml risk_view_view_model_t.mli
+          risk_view_view_model_j.ml risk_view_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o risk_view_view_model %{atd})
+   (run atdgen -j -o risk_view_view_model %{atd}))))

@@ -1,16 +1,15 @@
-(** Read-model DTO for {!Account.Portfolio.Reservation.t}. *)
+(** Read-model DTO for {!Account.Portfolio.Reservation.t}.
 
-type t = {
-  id : int;
-  side : string;
-  instrument : Instrument_view_model.t;
-  cover_qty : string;
-      (** Decimal string accepted by {!Decimal.of_string}. Closes the
-          opposite-side existing position. *)
-  open_qty : string;  (** Opens or grows the same-side position. *)
-  per_unit_collateral : string;  (** Per-unit cash blocked on the open portion. *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/account/view_models/reservation_view_model.atd]
+    via atdgen. *)
+
+include module type of Reservation_view_model_t
+
+include module type of Reservation_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Account.Portfolio.Reservation.t
 

@@ -1,14 +1,9 @@
 (* Wire contract: account/lib/application/view_models/reservation_view_model.ml
 
-   Embedded types:
+   Cross-referenced types (resolved at code-generation time):
    - instrument_view_model — see view_models/instrument_view_model.atd *)
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
   id : int;

@@ -1,20 +1,9 @@
 (* Wire contract: pre_trade_risk/lib/application/view_models/risk_view_view_model.ml
 
-   Embedded types:
+   Cross-referenced types (resolved at code-generation time):
    - position_snapshot_view_model — see view_models/position_snapshot_view_model.atd *)
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
-
-type position_snapshot_view_model = {
-  instrument : instrument_view_model;
-  quantity : string;
-  avg_price : string;
-}
+type position_snapshot_view_model <ocaml from="Position_snapshot_view_model" t="t"> = abstract
 
 type t = {
   book_id : string;

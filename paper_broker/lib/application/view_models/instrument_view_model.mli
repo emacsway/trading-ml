@@ -1,8 +1,16 @@
 (** Outbound view-model mirror of {!Core.Instrument.t}. Used by the
-    BC's outbound queries / integration events. *)
+    BC's outbound view models / integration events.
 
-type t = { ticker : string; venue : string; isin : string option; board : string option }
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/paper_broker/view_models/instrument_view_model.atd]
+    via atdgen. *)
+
+include module type of Instrument_view_model_t
+
+include module type of Instrument_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Core.Instrument.t
 

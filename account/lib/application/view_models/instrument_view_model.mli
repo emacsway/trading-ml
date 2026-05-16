@@ -5,13 +5,21 @@
     projection only; reconstructing a valid {!Core.Instrument.t}
     from a DTO is the concern of the future [commands/] layer.
 
-    Duplicate of the same VM in the strategy BC's queries: kept
+    Duplicate of the same VM in the strategy BC's view_models: kept
     independent so that [account_view_models] doesn't depend on the
     strategy library and the BC graph stays acyclic. The on-wire
-    JSON shape is identical between the two. *)
+    JSON shape is identical between the two.
 
-type t = { ticker : string; venue : string; isin : string option; board : string option }
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/account/view_models/instrument_view_model.atd]
+    via atdgen. *)
+
+include module type of Instrument_view_model_t
+
+include module type of Instrument_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Core.Instrument.t
 

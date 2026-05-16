@@ -3,15 +3,18 @@
     Positions are projected as a flat list. The domain stores
     them keyed by instrument for O(log n) lookup, but the
     instrument identity is inside each entry, so the list form
-    loses nothing across the wire. *)
+    loses nothing across the wire.
 
-type t = {
-  cash : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-  realized_pnl : string;
-  positions : Position_view_model.t list;
-  reservations : Reservation_view_model.t list;
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/account/view_models/portfolio_view_model.atd]
+    via atdgen. *)
+
+include module type of Portfolio_view_model_t
+
+include module type of Portfolio_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Account.Portfolio.t
 
