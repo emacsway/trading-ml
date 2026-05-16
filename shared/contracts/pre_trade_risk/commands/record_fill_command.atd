@@ -2,9 +2,14 @@
 
 type t = {
   book_id : string;
-  symbol : string;
-  new_position_quantity : string;
-  new_avg_price : string;
-  new_cash : string;
-  occurred_at : string;
+
+  symbol <doc text="Qualified instrument: TICKER@MIC[/BOARD]."> : string;
+
+  new_position_quantity <doc text="Signed Decimal string; '0' denotes a closed position."> : string;
+
+  new_avg_price <doc text="Non-negative Decimal string; '0' when [new_position_quantity] is '0'."> : string;
+
+  new_cash <doc text="Signed Decimal string; may be negative under margin."> : string;
+
+  occurred_at <doc text="ISO-8601."> : string;
 }

@@ -13,11 +13,17 @@
 type order_kind_view_model <ocaml from="Order_kind_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
+  correlation_id <doc text="Saga-instance identifier propagated by Place_order_pm from Account_commands.Reserve_command.t. Echoed verbatim by every outbound IE (Order_accepted_integration_event.t, Order_rejected_integration_event.t, Order_unreachable_integration_event.t) so the saga can route the venue's response back to the originating instance."> : string;
+
   placement_id : int;
-  symbol : string;
-  side : string;
-  quantity : string;
+
+  symbol <doc text="Qualified instrument: TICKER@MIC[/BOARD] — Core.Instrument.of_qualified round-trips it."> : string;
+
+  side <doc text="'BUY' | 'SELL'."> : string;
+
+  quantity <doc text="Decimal string accepted by Decimal.of_string."> : string;
+
   kind : order_kind_view_model;
-  tif : string;
+
+  tif <doc text="'GTC' | 'DAY' | 'IOC' | 'FOK'."> : string;
 }

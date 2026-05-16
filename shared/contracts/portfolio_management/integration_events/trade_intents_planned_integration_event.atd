@@ -9,12 +9,13 @@
 type trade_intent_view_model <ocaml from="Trade_intent_view_model" t="t"> = abstract
 
 type leg = {
-  correlation_id : string;
+  correlation_id <doc text="Saga-instance identifier minted per trade leg at IE construction time. Each leg of a multi-trade plan starts an independent Place_order_pm saga; downstream BCs (pre_trade_risk, execution_management, Account, Broker) echo this id verbatim through their commands and IEs so the Process Manager can route the eventual venue acks back to the originating leg. UUID v4."> : string;
+
   intent : trade_intent_view_model;
 }
 
 type t = {
   book_id : string;
   trades : leg list;
-  computed_at : string;
+  computed_at <doc text="ISO-8601"> : string;
 }

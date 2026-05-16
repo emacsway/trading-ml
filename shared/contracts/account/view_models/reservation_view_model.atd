@@ -1,5 +1,7 @@
 (* Wire contract: account/lib/application/view_models/reservation_view_model.ml
 
+   Read-model DTO for Account.Portfolio.Reservation.t.
+
    Cross-referenced types (resolved at code-generation time):
    - instrument_view_model — see view_models/instrument_view_model.atd *)
 
@@ -9,7 +11,10 @@ type t = {
   id : int;
   side : string;
   instrument : instrument_view_model;
-  cover_qty : string;
-  open_qty : string;
-  per_unit_collateral : string;
+
+  cover_qty <doc text="Decimal string accepted by Decimal.of_string. Closes the opposite-side existing position."> : string;
+
+  open_qty <doc text="Opens or grows the same-side position."> : string;
+
+  per_unit_collateral <doc text="Per-unit cash blocked on the open portion."> : string;
 }

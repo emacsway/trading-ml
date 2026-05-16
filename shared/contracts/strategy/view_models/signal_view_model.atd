@@ -12,8 +12,12 @@ type t = {
   ts : int <ocaml repr="int64">;
   instrument : instrument_view_model;
   action : string;
-  strength : float;
-  ?stop_loss : string option;
+
+  strength <doc text="Domain float — strategy confidence in [0.0; 1.0], not a Decimal-derived value."> : float;
+
+  ?stop_loss <doc text="Decimal string accepted by Decimal.of_string."> : string option;
+
   ?take_profit : string option;
+
   reason : string;
 }

@@ -9,11 +9,17 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  strategy_id : string;
+  strategy_id <doc text="Identifier of the strategy instance that emitted the signal. Consumed by Portfolio Management's alpha-driven policy to route the signal to the matching policy state (multiple strategies may run on the same instrument). Not present in Signal.t; supplied by the publishing layer."> : string;
+
   instrument : instrument_view_model;
-  direction : string;
-  strength : float;
-  price : string;
-  reason : string;
-  occurred_at : string;
+
+  direction <doc text="Projected from Common.Signal.action: Enter_long -> 'UP', Enter_short -> 'DOWN', Exit_long / Exit_short -> 'FLAT' (alpha-expiry; outcome carried in reason), Hold -> 'FLAT'. For 'FLAT' originating from a bracket exit, [reason] carries the outcome label ('SL hit' / 'TP hit' / 'timeout') for downstream telemetry; consumers MUST NOT switch on [reason] for trading decisions."> : string;
+
+  strength <doc text="Strategy confidence, [0.0; 1.0]."> : float;
+
+  price <doc text="Close of the bar that produced the signal, as a Decimal string. Carried in the event itself so the consumer (alpha-driven portfolio construction) sizes against the *exact* price the strategy was looking at when it decided — eliminates the timing-join class of bugs that an external marks-cache would introduce."> : string;
+
+  reason <doc text="Free-form audit context from Signal.reason."> : string;
+
+  occurred_at <doc text="ISO-8601 datetime (YYYY-MM-DDTHH:MM:SSZ) of the bar close that triggered the signal."> : string;
 }

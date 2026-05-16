@@ -1,9 +1,28 @@
-(* Wire contract: account/lib/application/commands/reserve_command.ml *)
+(* Wire contract: account/lib/application/commands/reserve_command.ml
+
+   [quantity] / [price] are decimal strings (e.g. "100.10") parsed
+   by the handler with Decimal.of_string — bit-exact round-trip.
+   Float on the wire would round-trip through Decimal.of_float,
+   defeating the formal Why3-verified Decimal semantics.
+
+   [price] is the market-price reference used to compute the cash
+   earmark (slippage buffer + fee estimate added by the handler
+   from its config). For a limit order it is typically the limit
+   price; for a market order it is the latest mark. Account does
+   not query upstream for it — the inbound HTTP layer supplies it.
+
+   No reservation_id field: Account creates the id internally (own
+   counter) on success and surfaces it in Amount_reserved.t and in
+   the handler's response. *)
 
 type t = {
-  correlation_id : string;
-  side : string;
-  symbol : string;
-  quantity : string;
-  price : string;
+  correlation_id <doc text="Saga-instance identifier. Echoed verbatim by Account into every outbound IE produced from this command (Amount_reserved_integration_event.t on success, Reservation_rejected_integration_event.t on failure) so the Place_order_pm Process Manager in execution_management can route the ack back to the originating instance. UUID v4 minted by the saga starter."> : string;
+
+  side <doc text="'BUY' | 'SELL' (case-insensitive accepted by handler)."> : string;
+
+  symbol <doc text="Qualified instrument: TICKER@MIC[/BOARD] — Core.Instrument.of_qualified round-trips it."> : string;
+
+  quantity <doc text="Decimal string accepted by Decimal.of_string."> : string;
+
+  price <doc text="Decimal string accepted by Decimal.of_string."> : string;
 }

@@ -9,8 +9,10 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
-  placement_id : int;
+  correlation_id <doc text="Saga-instance identifier of the cancel command."> : string;
+
+  placement_id <doc text="Client's identifier of the order, sourced from the Domain event. Account releases the remaining reservation on this event."> : int;
+
   id : string;
   instrument : instrument_view_model;
   cancelled_ts : string;

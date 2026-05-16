@@ -15,7 +15,9 @@
 type order_view_model <ocaml from="Order_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
+  correlation_id <doc text="Saga-instance identifier echoed verbatim from the originating Submit_order_command.t.correlation_id."> : string;
+
   placement_id : int;
+
   broker_order : order_view_model;
 }

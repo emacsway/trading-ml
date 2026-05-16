@@ -2,6 +2,8 @@
 
 type t = {
   correlation_id : string;
-  placement_id : int;
+
+  placement_id <doc text="Opaque correlation token from the originating submit_order_command. Account releases the reservation on this event."> : int;
+
   reason : string;
 }

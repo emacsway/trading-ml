@@ -9,14 +9,22 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
+  correlation_id <doc text="Saga-instance identifier echoed from the upstream Commit_fill_command.t."> : string;
+
   reservation_id : int;
+
   instrument : instrument_view_model;
-  side : string;
-  filled_quantity : string;
+
+  side <doc text="'BUY' | 'SELL'."> : string;
+
+  filled_quantity <doc text="Actual fill quantity, decimal string. Always positive — sign is carried by [side]."> : string;
+
   fill_price : string;
   fee : string;
-  new_position_quantity : string;
-  new_avg_price : string;
-  new_cash : string;
+
+  new_position_quantity <doc text="Signed post-fill quantity, decimal string. Negative denotes a short, '0' denotes a closed position."> : string;
+
+  new_avg_price <doc text="Post-fill VWAP of the surviving position. '0' when [new_position_quantity] is '0'."> : string;
+
+  new_cash <doc text="Post-fill cash balance, decimal string."> : string;
 }

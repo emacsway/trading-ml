@@ -4,6 +4,9 @@
    targets either broker uniformly. Keep both in lock-step;
    shared/tests/contract/ verifies wire equivalence.
 
+   paper_broker treats placement_id as an opaque round-trip token;
+   it never reads or interprets it.
+
    Cross-referenced types resolved via atdgen at code-generation
    time; the consumer library opens Paper_broker_view_models so
    the bare `Order_kind_view_model_t` name binds across libraries:
@@ -14,10 +17,16 @@ type order_kind_view_model <ocaml from="Order_kind_view_model" t="t"> = abstract
 
 type t = {
   correlation_id : string;
+
   placement_id : int;
-  symbol : string;
-  side : string;
-  quantity : string;
+
+  symbol <doc text="Qualified symbol TICKER@MIC (with optional /BOARD suffix), parsed by the receiver."> : string;
+
+  side <doc text="'BUY' | 'SELL'."> : string;
+
+  quantity <doc text="Decimal string; receiver enforces > 0."> : string;
+
   kind : order_kind_view_model;
-  tif : string;
+
+  tif <doc text="'GTC' | 'DAY' | 'IOC' | 'FOK'."> : string;
 }

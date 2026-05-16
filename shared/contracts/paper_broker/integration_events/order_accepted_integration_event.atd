@@ -15,11 +15,17 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
-  placement_id : int;
-  id : string;
+  correlation_id <doc text="Saga-instance identifier echoed from the inbound submit_order_command. Process metadata, not aggregate state."> : string;
+
+  placement_id <doc text="Client's identifier of the order (FIX clOrdID role), sourced from the Domain Paper_broker.Order.Events.Order_accepted.placement_id."> : int;
+
+  id <doc text="paper_broker-assigned order id (surrogate)."> : string;
+
   instrument : instrument_view_model;
-  side : string;
-  quantity : string;
-  created_ts : string;
+
+  side <doc text="'BUY' | 'SELL'."> : string;
+
+  quantity <doc text="Decimal string."> : string;
+
+  created_ts <doc text="ISO-8601."> : string;
 }

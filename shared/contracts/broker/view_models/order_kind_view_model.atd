@@ -1,10 +1,18 @@
 (* Wire contract: broker/lib/application/view_models/order_kind_view_model.ml
 
+   Read-model DTO for Broker_domain.Order.kind. Flattened
+   discriminated union: type_ is the tag (MARKET / LIMIT / STOP /
+   STOP_LIMIT) and the kind-specific price fields are optional —
+   present only for the kinds that need them.
+
    Mirror of paper_broker/view_models/order_kind_view_model.atd. *)
 
 type t = {
   type_ <json name="type"> : string;
-  ?price : string option;
-  ?stop_price : string option;
-  ?limit_price : string option;
+
+  ?price <doc text="Decimal string accepted by Decimal.of_string. Some for LIMIT / STOP, None for MARKET / STOP_LIMIT."> : string option;
+
+  ?stop_price <doc text="Some for STOP_LIMIT, None otherwise."> : string option;
+
+  ?limit_price <doc text="Some for STOP_LIMIT, None otherwise."> : string option;
 }

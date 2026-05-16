@@ -9,8 +9,10 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
-  placement_id : int;
+  correlation_id <doc text="Saga-instance identifier of the originating submit_order_command (process metadata, recovered from the application correlation log since the bar that produced this fill carries no correlation_id of its own)."> : string;
+
+  placement_id <doc text="Client's identifier of the order, sourced from the Domain Paper_broker.Order.Events.Order_filled.placement_id. Account uses it to locate the matching ledger state on commit_fill_command."> : int;
+
   id : string;
   exec_id : string;
   instrument : instrument_view_model;
@@ -19,5 +21,6 @@ type t = {
   fill_price : string;
   fee : string;
   new_total_filled : string;
-  fill_ts : string;
+
+  fill_ts <doc text="ISO-8601."> : string;
 }

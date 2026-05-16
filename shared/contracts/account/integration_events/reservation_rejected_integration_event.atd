@@ -9,9 +9,13 @@
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
 type t = {
-  correlation_id : string;
+  correlation_id <doc text="Saga-instance identifier echoed verbatim from Reserve_command.t.correlation_id."> : string;
+
   side : string;
+
   instrument : instrument_view_model;
-  quantity : string;
+
+  quantity <doc text="Decimal string — see Reserve_command.t."> : string;
+
   reason : string;
 }
