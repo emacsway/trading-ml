@@ -1,22 +1,16 @@
 (* Wire contract: broker/lib/application/view_models/order_view_model.ml
 
-   Embedded types:
+   Cross-referenced types resolved via atdgen at code-generation
+   time; both producers (this view model's _j codec and the IE
+   envelopes that embed it) and consumers share a single typed
+   record across the library:
+
    - instrument_view_model — see view_models/instrument_view_model.atd
    - order_kind_view_model — see view_models/order_kind_view_model.atd *)
 
-type instrument_view_model = {
-  ticker : string;
-  venue : string;
-  ?isin : string option;
-  ?board : string option;
-}
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
 
-type order_kind_view_model = {
-  type_ <json name="type"> : string;
-  ?price : string option;
-  ?stop_price : string option;
-  ?limit_price : string option;
-}
+type order_kind_view_model <ocaml from="Order_kind_view_model" t="t"> = abstract
 
 type t = {
   id : string;
@@ -30,5 +24,5 @@ type t = {
   kind : order_kind_view_model;
   tif : string;
   status : string;
-  created_ts : int;
+  created_ts : int <ocaml repr="int64">;
 }

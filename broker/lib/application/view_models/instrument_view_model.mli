@@ -3,10 +3,18 @@
     Primitive-typed: the four identity fields projected as plain
     strings. Carries no domain invariants — this is an outbound
     projection only; reconstructing a valid {!Core.Instrument.t}
-    from a DTO is the concern of the future [commands/] layer. *)
+    from a DTO is the concern of the future [commands/] layer.
 
-type t = { ticker : string; venue : string; isin : string option; board : string option }
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/broker/view_models/instrument_view_model.atd]
+    via atdgen. *)
+
+include module type of Instrument_view_model_t
+
+include module type of Instrument_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Core.Instrument.t
 

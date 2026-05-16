@@ -1,20 +1,18 @@
-(** Read-model DTO for {!Broker_domain.Order.t}. *)
+(** Read-model DTO for {!Broker_domain.Order.t}.
 
-type t = {
-  id : string;
-  exec_id : string;
-  client_order_id : string;
-  instrument : Instrument_view_model.t;
-  side : string;
-  quantity : string;  (** Decimal string accepted by {!Decimal.of_string}. *)
-  filled : string;
-  remaining : string;
-  kind : Order_kind_view_model.t;
-  tif : string;
-  status : string;
-  created_ts : int64;
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/broker/view_models/order_view_model.atd]
+    via atdgen; the embedded [instrument_view_model] and
+    [order_kind_view_model] fields cross-reference their respective
+    .atd files in the same library, sharing the typed record
+    across producers and consumers within [broker_view_models]. *)
+
+include module type of Order_view_model_t
+
+include module type of Order_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Broker_domain.Order.t
 

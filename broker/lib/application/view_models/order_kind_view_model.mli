@@ -3,17 +3,18 @@
     Flattened discriminated union: [type_] is the tag
     ([MARKET] / [LIMIT] / [STOP] / [STOP_LIMIT]) and the
     kind-specific price fields are optional — present only for
-    the kinds that need them. *)
+    the kinds that need them.
 
-type t = {
-  type_ : string; [@key "type"]
-  price : string option;
-      (** Decimal string accepted by {!Decimal.of_string}.
-          [Some] for [LIMIT] / [STOP], [None] for [MARKET] / [STOP_LIMIT]. *)
-  stop_price : string option;  (** [Some] for [STOP_LIMIT], [None] otherwise. *)
-  limit_price : string option;  (** [Some] for [STOP_LIMIT], [None] otherwise. *)
-}
-[@@deriving yojson]
+    The wire shape is generated from
+    [shared/contracts/broker/view_models/order_kind_view_model.atd]
+    via atdgen. *)
+
+include module type of Order_kind_view_model_t
+
+include module type of Order_kind_view_model_j with type t := t
+
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t
 
 type domain = Broker_domain.Order.kind
 
