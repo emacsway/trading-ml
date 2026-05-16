@@ -20,9 +20,13 @@
    -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open Paper_broker_view_models)))
 
+; cancel_pending_order_command — wire contract owned by broker BC.
+; paper_broker generates a handler from it today; broker will
+; follow once HTTP DELETE /api/orders/<cid> is retired in favour
+; of an async bus command sharing this contract.
 (rule
  (deps
-  (:atd %{project_root}/shared/contracts/paper_broker/commands/cancel_pending_order_command.atd))
+  (:atd %{project_root}/shared/contracts/broker/commands/cancel_pending_order_command.atd))
  (targets cancel_pending_order_command_t.ml
           cancel_pending_order_command_t.mli
           cancel_pending_order_command_j.ml

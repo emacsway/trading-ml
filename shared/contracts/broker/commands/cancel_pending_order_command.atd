@@ -1,0 +1,16 @@
+(* Wire contract: paper_broker/lib/application/commands/cancel_pending_order_command.ml
+   (and broker/lib/application/commands/cancel_pending_order_command.ml — pending).
+
+   Owned by broker BC as the natural vocabulary owner of order-
+   cancel semantics. Today only paper_broker generates a handler
+   from this contract; broker still cancels through a synchronous
+   HTTP path (DELETE /api/orders/<cid>) that will be retired in
+   favour of an async bus command sharing this contract — at which
+   point broker_commands will gain its own atdgen rule pointing
+   here and the wire shape becomes substitutable between the two
+   backends. *)
+
+type t = {
+  correlation_id : string;
+  id : string;
+}
