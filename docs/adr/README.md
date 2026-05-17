@@ -34,6 +34,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0019](0019-execution-directive-provenance.md) | execution_directive provenance: PM authors, PTR passes through, EMS consumes | Accepted | 2026-05-17 |
 | [0020](0020-order-management-bounded-context.md) | Order_management as a separate Bounded Context | Accepted | 2026-05-17 |
 | [0021](0021-intake-gates-belong-to-pre-trade-risk.md) | Intake gates (kill_switch, rate_limit) belong to pre_trade_risk | Accepted | 2026-05-17 |
+| [0022](0022-saga-owns-account-commit-and-release.md) | Order_process_manager owns Account commit and release | Accepted | 2026-05-17 |
 
 ## Template
 

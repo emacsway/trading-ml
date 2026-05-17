@@ -1,8 +1,9 @@
 (* Wire contract: execution_management/lib/application/integration_events/order_ticket_cancelled_integration_event.ml
 
    Terminal: all outstanding placements settled after a cancel
-   request. The [progress] carries whatever cumulative fill
-   landed before the cancel fully settled.
+   request. order_management's saga subscribes and dispatches
+   Release_command to free the unused portion of the reservation
+   at Account.
 
    Cross-referenced types (resolved at code-generation time):
    - progress_view_model — see view_models/progress_view_model.atd *)
@@ -12,6 +13,7 @@ type progress_view_model <ocaml from="Progress_view_model" t="t"> = abstract
 type t = {
   correlation_id : string;
   ticket_id : int;
+  reservation_id : int;
   reason <doc text="operator | kill_switch | risk_limit_breach."> : string;
   progress : progress_view_model;
   occurred_at : string;

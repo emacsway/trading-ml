@@ -57,3 +57,15 @@
   (progn
    (run atdgen -t -o order_ticket_failed_integration_event %{atd})
    (run atdgen -j -o order_ticket_failed_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_fill_recorded_integration_event.atd))
+ (targets order_ticket_fill_recorded_integration_event_t.ml
+          order_ticket_fill_recorded_integration_event_t.mli
+          order_ticket_fill_recorded_integration_event_j.ml
+          order_ticket_fill_recorded_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_fill_recorded_integration_event %{atd})
+   (run atdgen -j -o order_ticket_fill_recorded_integration_event %{atd}))))

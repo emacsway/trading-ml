@@ -29,3 +29,15 @@
   (progn
    (run atdgen -t -o execution_directive_view_model %{atd})
    (run atdgen -j -o execution_directive_view_model %{atd}))))
+
+; Mirror of EM's progress view model — referenced by the
+; ticket-lifecycle IEs (completed / cancelled / failed).
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/progress_view_model.atd))
+ (targets progress_view_model_t.ml progress_view_model_t.mli
+          progress_view_model_j.ml progress_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o progress_view_model %{atd})
+   (run atdgen -j -o progress_view_model %{atd}))))

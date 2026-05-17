@@ -4,6 +4,7 @@
 
 type t = {
   ticket_id : Values.Ticket_id.t;
+  reservation_id : Values.Reservation_id.t;
   reason : string;
   progress : Values.Progress.t;
   occurred_at : int64;
@@ -11,6 +12,7 @@ type t = {
 
 val make :
   ticket_id:Values.Ticket_id.t ->
+  reservation_id:Values.Reservation_id.t ->
   reason:string ->
   progress:Values.Progress.t ->
   occurred_at:int64 ->

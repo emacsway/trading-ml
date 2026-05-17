@@ -17,6 +17,18 @@ type wire_reserve = {
 }
 [@@deriving yojson]
 
+type wire_release = { correlation_id : string; reservation_id : int }
+[@@deriving yojson]
+
+type wire_commit_fill = {
+  correlation_id : string;
+  reservation_id : int;
+  quantity : string;
+  price : string;
+  fee : string;
+}
+[@@deriving yojson]
+
 type wire_directive = {
   kind : string;
   params : string option;
@@ -53,13 +65,21 @@ let build ~bus : t =
     produce ~uri:"in-memory://account.reserve-command"
       ~yojson_of:yojson_of_wire_reserve
   in
+  let publish_release =
+    produce ~uri:"in-memory://account.release-command"
+      ~yojson_of:yojson_of_wire_release
+  in
+  let publish_commit_fill =
+    produce ~uri:"in-memory://account.commit-fill-command"
+      ~yojson_of:yojson_of_wire_commit_fill
+  in
   let publish_open_order_ticket =
     produce ~uri:"in-memory://execution-management.open-order-ticket-command"
       ~yojson_of:yojson_of_wire_open_order_ticket
   in
 
-  (** Saga command dispatcher. Both variants leave the BC over the
-      bus (cross-BC commands per ADR 0020). *)
+  (** Saga command dispatcher. All four variants leave the BC over
+      the bus (cross-BC commands per ADR 0020). *)
   let dispatch (cmd : Pm.command) : unit =
     match cmd with
     | Dispatch_reserve { correlation_id; side; symbol; quantity; price } ->
@@ -90,6 +110,11 @@ let build ~bus : t =
             quantity;
             execution_directive;
           }
+    | Dispatch_commit_fill { correlation_id; reservation_id; quantity; price; fee } ->
+        publish_commit_fill
+          { correlation_id; reservation_id; quantity; price; fee }
+    | Dispatch_release { correlation_id; reservation_id } ->
+        publish_release { correlation_id; reservation_id }
   in
   let saga_store = Workflow_engine.In_memory_store.create () in
   let engine = Pm.Engine.create ~store:saga_store ~dispatch in
@@ -137,6 +162,39 @@ let build ~bus : t =
          ~group:"order-management-saga"
          ~t_of_yojson:Inbound.Reservation_rejected_integration_event.t_of_yojson)
       (fun ev -> Pm.Engine.on_event engine (Pm.Reservation_rejected ev))
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume
+         ~uri:"in-memory://execution-management.order-ticket-fill-recorded"
+         ~group:"order-management-saga"
+         ~t_of_yojson:
+           Inbound.Order_ticket_fill_recorded_integration_event.t_of_yojson)
+      (fun ev -> Pm.Engine.on_event engine (Pm.Ticket_fill_recorded ev))
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://execution-management.order-ticket-completed"
+         ~group:"order-management-saga"
+         ~t_of_yojson:
+           Inbound.Order_ticket_completed_integration_event.t_of_yojson)
+      (fun ev -> Pm.Engine.on_event engine (Pm.Ticket_completed ev))
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://execution-management.order-ticket-cancelled"
+         ~group:"order-management-saga"
+         ~t_of_yojson:
+           Inbound.Order_ticket_cancelled_integration_event.t_of_yojson)
+      (fun ev -> Pm.Engine.on_event engine (Pm.Ticket_cancelled ev))
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://execution-management.order-ticket-failed"
+         ~group:"order-management-saga"
+         ~t_of_yojson:
+           Inbound.Order_ticket_failed_integration_event.t_of_yojson)
+      (fun ev -> Pm.Engine.on_event engine (Pm.Ticket_failed ev))
   in
   let http_handler : Inbound_http.Route.handler =
    fun _request _body -> None

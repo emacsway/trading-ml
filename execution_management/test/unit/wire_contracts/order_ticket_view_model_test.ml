@@ -18,10 +18,11 @@ let intent_buy_100 () =
     ~total_quantity:(qty "100")
 
 let ticket_id_42 = Values.Ticket_id.of_int 42
+let reservation_id_42 = Values.Reservation_id.of_int 42
 
 let test_immediate_open_projects_working_lifecycle () =
   let t, _ =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
   in
   let vm = Vm.of_domain t in
@@ -45,7 +46,7 @@ let test_twap_directive_carries_params_blob () =
     Values.Twap_params.make ~n_slices:4 ~window_seconds:60 ~start_at:1_000L
   in
   let t, _ =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:(Values.Execution_directive.Twap params) ~now:0L
   in
   let vm = Vm.of_domain t in
@@ -61,7 +62,7 @@ let test_twap_directive_carries_params_blob () =
 
 let test_round_trip_json () =
   let t, _ =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
   in
   let vm = Vm.of_domain t in

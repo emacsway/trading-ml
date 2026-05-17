@@ -14,9 +14,6 @@ type t = { http_handler : Inbound_http.Route.handler }
     command libraries (per ADR-0001's BC-independence rule); each
     wire shape is fixed by the consumer-side .atd. *)
 
-type wire_release = { correlation_id : string; reservation_id : int }
-[@@deriving yojson]
-
 type wire_order_kind = {
   type_ : string; [@key "type"]
   price : string option;
@@ -97,8 +94,10 @@ let build ~bus ~now : t =
     produce ~uri:"in-memory://execution-management.order-ticket-failed"
       ~yojson_of:Outbound_ie.Order_ticket_failed_integration_event.yojson_of_t
   in
-  let publish_release =
-    produce ~uri:"in-memory://account.release-command" ~yojson_of:yojson_of_wire_release
+  let publish_ticket_fill_recorded =
+    produce ~uri:"in-memory://execution-management.order-ticket-fill-recorded"
+      ~yojson_of:
+        Outbound_ie.Order_ticket_fill_recorded_integration_event.yojson_of_t
   in
   let publish_submit =
     produce ~uri:"in-memory://broker.submit-order-command"
@@ -123,6 +122,9 @@ let build ~bus ~now : t =
   let ticket_intent : (int, Ot.Values.Trade_intent.t) Hashtbl.t =
     Hashtbl.create 64
   in
+  let reservation_by_ticket : (int, Ot.Values.Reservation_id.t) Hashtbl.t =
+    Hashtbl.create 64
+  in
   let correlation_for tid =
     Option.value (Hashtbl.find_opt correlation_by_ticket tid) ~default:""
   in
@@ -132,6 +134,7 @@ let build ~bus ~now : t =
     | Ev_ticket_opened e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
         Hashtbl.replace ticket_intent tid e.intent;
+        Hashtbl.replace reservation_by_ticket tid e.reservation_id;
         publish_ticket_opened
           (Outbound_ie.Order_ticket_opened_integration_event.of_domain
              ~correlation_id:(correlation_for tid) e)
@@ -181,18 +184,18 @@ let build ~bus ~now : t =
         publish_ticket_failed
           (Outbound_ie.Order_ticket_failed_integration_event.of_domain
              ~correlation_id e);
-        publish_release { correlation_id; reservation_id = tid };
         Hashtbl.remove correlation_by_ticket tid;
-        Hashtbl.remove ticket_intent tid
+        Hashtbl.remove ticket_intent tid;
+        Hashtbl.remove reservation_by_ticket tid
     | Ev_ticket_cancelled e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
         let correlation_id = correlation_for tid in
         publish_ticket_cancelled
           (Outbound_ie.Order_ticket_cancelled_integration_event.of_domain
              ~correlation_id e);
-        publish_release { correlation_id; reservation_id = tid };
         Hashtbl.remove correlation_by_ticket tid;
-        Hashtbl.remove ticket_intent tid
+        Hashtbl.remove ticket_intent tid;
+        Hashtbl.remove reservation_by_ticket tid
     | Ev_ticket_completed e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
         let correlation_id = correlation_for tid in
@@ -200,10 +203,22 @@ let build ~bus ~now : t =
           (Outbound_ie.Order_ticket_completed_integration_event.of_domain
              ~correlation_id e);
         Hashtbl.remove correlation_by_ticket tid;
-        Hashtbl.remove ticket_intent tid
-    | Ev_placement_acknowledged _ | Ev_placement_filled _
-    | Ev_placement_rejected _ | Ev_placement_unreachable _
-    | Ev_placement_cancelled _ ->
+        Hashtbl.remove ticket_intent tid;
+        Hashtbl.remove reservation_by_ticket tid
+    | Ev_placement_filled e -> (
+        let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
+        let correlation_id = correlation_for tid in
+        match Hashtbl.find_opt reservation_by_ticket tid with
+        | None -> ()
+            (* Should never happen: Ev_ticket_opened populates the map
+               before any Placement_filled can land. Silent drop is safer
+               than a crash on a future ordering edge case. *)
+        | Some reservation_id ->
+            publish_ticket_fill_recorded
+              (Outbound_ie.Order_ticket_fill_recorded_integration_event.of_domain
+                 ~correlation_id ~reservation_id e))
+    | Ev_placement_acknowledged _ | Ev_placement_rejected _
+    | Ev_placement_unreachable _ | Ev_placement_cancelled _ ->
         ()
   in
 

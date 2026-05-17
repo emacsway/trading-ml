@@ -12,6 +12,9 @@ let of_domain ~correlation_id (e : Cancelled.t) : t =
     correlation_id;
     ticket_id =
       Execution_management.Order_ticket.Values.Ticket_id.to_int e.ticket_id;
+    reservation_id =
+      Execution_management.Order_ticket.Values.Reservation_id.to_int
+        e.reservation_id;
     reason = Cancel_reason.to_string e.reason;
     progress = Progress_view_model.of_domain e.progress;
     occurred_at = Datetime.Iso8601.format e.occurred_at;

@@ -1,31 +1,38 @@
-(** Open_order_ticket process — the cross-BC saga that opens an
-    order ticket: turns an approved trade intent into a reserved
-    cash earmark and hands off to the OrderTicket aggregate, which
-    will then drive execution per the chosen strategy.
+(** Order_process_manager — the cross-BC saga that owns the
+    full reservation-cycle lifecycle of an approved trader intent.
 
-    Scope of this process_manager: cash reservation only. Once the
-    reservation lands, the saga reaches its terminal {!Done} state
-    and the OrderTicket takes over orchestration (slicing into
-    Placements, dispatching Submit to broker, tracking fills /
-    rejections, compensating on failure). This file deliberately
-    knows nothing about the broker — broker-side IEs and commands
-    are handled by the OrderTicket aggregate, not by this saga.
+    Inbound events the saga reacts to:
 
-    Coordinates the upstream choreography:
+    - PTR: [Trade_intent_approved]                 (saga start)
+    - Account: [Amount_reserved]                   (Working entry)
+    - Account: [Reservation_rejected]              (compensation)
+    - EM: [Order_ticket_fill_recorded]             (per-fill commit)
+    - EM: [Order_ticket_completed]                 (terminal: settled)
+    - EM: [Order_ticket_cancelled]                 (terminal: release)
+    - EM: [Order_ticket_failed]                    (terminal: release)
+
+    Outbound commands the saga dispatches:
+
+    - Account: [Reserve_command]                   (at start)
+    - EM: [Open_order_ticket_command]              (cross-BC wire)
+    - Account: [Commit_fill_command]               (per fill recorded)
+    - Account: [Release_command]                   (at cancel / fail)
+
+    State machine:
 
     {v
-      Trade_intent_approved   →  Reserve_command  (Account)
-              ↓                          ↓
-              ⤷ Awaiting_reservation     ⤷ Amount_reserved        → Done
-                                         ⤷ Reservation_rejected  → Compensated
+      Awaiting_reservation
+        ├─ Amount_reserved          → Working           (+ Dispatch_open_ticket)
+        └─ Reservation_rejected     → Compensated      (terminal)
+
+      Working
+        ├─ Ticket_fill_recorded     → Working          (+ Dispatch_commit_fill)
+        ├─ Ticket_completed         → Settled          (terminal, no command)
+        ├─ Ticket_cancelled         → Released         (+ Dispatch_release)
+        └─ Ticket_failed            → Released         (+ Dispatch_release)
     v}
 
-    Built on top of {!Workflow_engine}: the {!Definition} module is
-    a pure state machine, the {!Engine} module wraps it with a
-    persistent store and a [dispatch] callback that bridges the
-    saga's [command] union onto the workflow_engine's command bus.
-
-    State is keyed by the saga-instance [correlation_id], minted by
+    State keyed by the saga-instance [correlation_id], minted by
     the saga initiator (today PM's reconciler in
     {!Trade_intents_planned_integration_event.leg.correlation_id})
     and echoed verbatim by every downstream BC. *)
@@ -35,12 +42,7 @@ type directive_payload = {
   directive_params : string option;
 }
 (** Wire-shape execution directive carried alongside the saga
-    payload: [directive_kind] is the strategy tag (IMMEDIATE,
-    TWAP, ...) and [directive_params] is the opaque per-strategy
-    JSON-object string (None for IMMEDIATE). The handler at the
-    EMS-side command boundary parses this into the typed
-    {!Order_ticket.Values.Execution_directive.t}; absent means
-    "use the internal fallback policy". *)
+    payload (kind tag + optional per-strategy JSON params blob). *)
 
 type payload = {
   book_id : string;
@@ -54,17 +56,17 @@ type payload = {
   tif : string;
   directive : directive_payload option;
 }
-(** Trade payload captured at saga start; preserved while
-    [Awaiting_reservation] so the data is available when the
-    OrderTicket is created on transition to {!Done}. The defaults
-    for [kind] / [tif] are chosen by the saga at start time — the
-    upstream Trade_intent_approved IE does not carry venue-routing
-    metadata today (rationale: alpha/PM/Pre_trade_risk operate on
-    direction + quantity, not order shape). *)
+
+type working_state = {
+  reservation_id : int;
+  correlation_id : string;
+}
 
 type state =
   | Awaiting_reservation of { payload : payload }
-  | Done of { reservation_id : int }
+  | Working of working_state
+  | Settled of { reservation_id : int }
+  | Released of { reservation_id : int; reason : string }
   | Compensated of { reason : string }
 
 type event =
@@ -74,14 +76,23 @@ type event =
       Order_management_external_integration_events
       .Reservation_rejected_integration_event
       .t
+  | Ticket_fill_recorded of
+      Order_management_external_integration_events
+      .Order_ticket_fill_recorded_integration_event
+      .t
+  | Ticket_completed of
+      Order_management_external_integration_events
+      .Order_ticket_completed_integration_event
+      .t
+  | Ticket_cancelled of
+      Order_management_external_integration_events
+      .Order_ticket_cancelled_integration_event
+      .t
+  | Ticket_failed of
+      Order_management_external_integration_events
+      .Order_ticket_failed_integration_event
+      .t
 
-(** Saga-local command union. The factory's [dispatch] closure
-    routes each variant — [Dispatch_reserve] goes out over the
-    bus to Account; [Dispatch_open_ticket] is invoked
-    in-process against
-    {!Open_order_ticket_command_workflow.execute} (per ADR-0017's
-    OMS→EMS hand-off rule — a model inside a BC cannot send a
-    Command to itself over its own bus). *)
 type command =
   | Dispatch_reserve of {
       correlation_id : string;
@@ -99,10 +110,17 @@ type command =
       quantity : string;
       directive : directive_payload option;
     }
-      (** Emitted on transition from [Awaiting_reservation] to
-          [Done] when the reservation lands. The factory routes
-          this in-process to the OrderTicket-opening command
-          workflow; the saga itself does not invoke domain code. *)
+  | Dispatch_commit_fill of {
+      correlation_id : string;
+      reservation_id : int;
+      quantity : string;
+      price : string;
+      fee : string;
+    }
+  | Dispatch_release of {
+      correlation_id : string;
+      reservation_id : int;
+    }
 
 module Definition :
   Workflow_engine.WORKFLOW
@@ -121,16 +139,6 @@ val initial_payload :
   quantity:string ->
   unit ->
   payload
-(** Build the initial saga state from an inbound trade-approved
-    payload. The defaults for [kind_type] / [tif] are
-    ["MARKET"] and ["DAY"]. The optional [directive] is the
-    wire-shape strategy directive captured from the inbound IE;
-    absent means execution_management will fall back to its
-    internal policy default. *)
 
 val reserve_for_start :
   correlation_id:string -> payload:payload -> price:string -> command
-(** Compute the [Reserve] command that is dispatched alongside
-    [Engine.start]. Saga-internal contract — the [transition] does
-    not see this command because [start] is not a runtime event in
-    the workflow_engine API. *)

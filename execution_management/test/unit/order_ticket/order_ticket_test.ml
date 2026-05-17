@@ -19,6 +19,7 @@ let intent_buy_100 () =
     ~total_quantity:(qty "100")
 
 let ticket_id_42 = Values.Ticket_id.of_int 42
+let reservation_id_42 = Values.Reservation_id.of_int 42
 
 let full_fill quantity_s =
   Placement.Values.Fill_record.make ~quantity:(qty quantity_s)
@@ -32,7 +33,7 @@ let count_kind events filter =
 
 let test_open_immediate_emits_opened_plus_one_dispatched () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
   in
   Alcotest.(check int)
@@ -53,7 +54,7 @@ let test_open_twap_emits_no_immediate_placement () =
     Values.Twap_params.make ~n_slices:4 ~window_seconds:60 ~start_at:1_000L
   in
   let _t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:(Values.Execution_directive.Twap params) ~now:0L
   in
   Alcotest.(check int) "no placements at TWAP open" 0
@@ -65,7 +66,7 @@ let test_open_twap_emits_no_immediate_placement () =
 
 let test_immediate_full_fill_completes_ticket () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
   in
   let pid =
@@ -102,7 +103,7 @@ let test_immediate_full_fill_completes_ticket () =
 
 let test_partial_then_full_fill_completes_only_at_end () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:0L
   in
   let pid =
@@ -123,7 +124,7 @@ let test_partial_then_full_fill_completes_only_at_end () =
 
 let test_immediate_rejection_terminates_failed () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:0L
   in
   let pid =
@@ -146,7 +147,7 @@ let test_twap_tick_emits_slice () =
     Values.Twap_params.make ~n_slices:4 ~window_seconds:60 ~start_at:1_000L
   in
   let t, _ =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:(Values.Execution_directive.Twap params) ~now:0L
   in
   let _t, events = Ot.on_clock_tick t ~now:1_000L in
@@ -157,7 +158,7 @@ let test_twap_tick_emits_slice () =
 
 let test_cancel_emits_cancelling_started () =
   let t, _ =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:0L
   in
   let _t, events = Ot.cancel t ~reason:Values.Cancel_reason.Operator ~now:1L in
@@ -168,7 +169,7 @@ let test_cancel_emits_cancelling_started () =
 
 let test_cancel_then_placement_cancelled_completes_to_cancelled () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:0L
   in
   let pid =
@@ -187,7 +188,7 @@ let test_cancel_then_placement_cancelled_completes_to_cancelled () =
 
 let test_late_event_in_filled_is_noop () =
   let t, events =
-    Ot.open_ticket ~ticket_id:ticket_id_42 ~intent:(intent_buy_100 ())
+    Ot.open_ticket ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:0L
   in
   let pid =

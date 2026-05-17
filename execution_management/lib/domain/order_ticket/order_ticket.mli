@@ -57,6 +57,7 @@ type event =
 
 (** Inspection. *)
 val ticket_id : t -> Values.Ticket_id.t
+val reservation_id : t -> Values.Reservation_id.t
 val intent : t -> Values.Trade_intent.t
 val directive : t -> Values.Execution_directive.t
 val lifecycle : t -> lifecycle
@@ -69,6 +70,7 @@ val is_terminal : t -> bool
 
 val open_ticket :
   ticket_id:Values.Ticket_id.t ->
+  reservation_id:Values.Reservation_id.t ->
   intent:Values.Trade_intent.t ->
   directive:Values.Execution_directive.t ->
   now:int64 ->

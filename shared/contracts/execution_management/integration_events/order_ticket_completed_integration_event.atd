@@ -1,9 +1,10 @@
 (* Wire contract: execution_management/lib/application/integration_events/order_ticket_completed_integration_event.ml
 
    Terminal: Σ filled = total. The EMS layer publishes this once
-   per ticket. Telemetry consumers (audit, operator UI); the
-   reservation release that follows is the factory's own
-   downstream effect, not a reaction to this IE.
+   per ticket. order_management's saga consumes it as the
+   "normal completion" terminal — no release command is needed
+   because the per-fill Commit_fill_command commits have already
+   accounted for the full quantity at Account.
 
    Cross-referenced types (resolved at code-generation time):
    - progress_view_model — see view_models/progress_view_model.atd *)
@@ -13,6 +14,7 @@ type progress_view_model <ocaml from="Progress_view_model" t="t"> = abstract
 type t = {
   correlation_id : string;
   ticket_id : int;
+  reservation_id : int;
   progress : progress_view_model;
   occurred_at : string;
 }

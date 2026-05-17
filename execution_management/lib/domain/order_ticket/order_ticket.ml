@@ -15,6 +15,10 @@ type lifecycle =
 
 type t = {
   ticket_id : Values.Ticket_id.t;
+  reservation_id : Values.Reservation_id.t;
+      (** Account-side identity of the cash earmark backing this
+          ticket. Carried on every outbound IE so order_management's
+          saga can address its Commit_fill / Release commands. *)
   intent : Values.Trade_intent.t;
   directive : Values.Execution_directive.t;
   lifecycle : lifecycle;
@@ -42,6 +46,7 @@ type event =
 (* ---------- Inspection ---------- *)
 
 let ticket_id t = t.ticket_id
+let reservation_id t = t.reservation_id
 let intent t = t.intent
 let directive t = t.directive
 let lifecycle t = t.lifecycle
@@ -117,16 +122,17 @@ let apply_strategy_terminal t (terminal : Strategies.Decision.terminal) ~now =
       (t.lifecycle, None)
   | Strategies.Decision.Failed reason ->
       let ev =
-        Events.Ticket_failed.make ~ticket_id:t.ticket_id ~reason
-          ~progress:t.progress ~occurred_at:now
+        Events.Ticket_failed.make ~ticket_id:t.ticket_id
+          ~reservation_id:t.reservation_id ~reason ~progress:t.progress
+          ~occurred_at:now
       in
       (Failed reason, Some (Ev_ticket_failed ev))
 
 let check_full_fill t ~now =
   if Values.Progress.is_fully_filled t.progress && not (is_terminal t) then
     let ev =
-      Events.Ticket_completed.make ~ticket_id:t.ticket_id ~progress:t.progress
-        ~occurred_at:now
+      Events.Ticket_completed.make ~ticket_id:t.ticket_id
+        ~reservation_id:t.reservation_id ~progress:t.progress ~occurred_at:now
     in
     let t' = { t with lifecycle = Filled } in
     (t', Some (Ev_ticket_completed ev))
@@ -138,20 +144,22 @@ let check_cancellation_settled t ~now =
       if Values.Progress.is_fully_filled t.progress then
         let ev =
           Events.Ticket_completed.make ~ticket_id:t.ticket_id
-            ~progress:t.progress ~occurred_at:now
+            ~reservation_id:t.reservation_id ~progress:t.progress
+            ~occurred_at:now
         in
         ({ t with lifecycle = Filled }, Some (Ev_ticket_completed ev))
       else
         let ev =
-          Events.Ticket_cancelled.make ~ticket_id:t.ticket_id ~reason
-            ~progress:t.progress ~occurred_at:now
+          Events.Ticket_cancelled.make ~ticket_id:t.ticket_id
+            ~reservation_id:t.reservation_id ~reason ~progress:t.progress
+            ~occurred_at:now
         in
         ({ t with lifecycle = Cancelled reason }, Some (Ev_ticket_cancelled ev))
   | _ -> (t, None)
 
 (* ---------- open_ticket ---------- *)
 
-let open_ticket ~ticket_id ~intent ~directive ~now =
+let open_ticket ~ticket_id ~reservation_id ~intent ~directive ~now =
   let strategy, decision =
     Strategies.Strategy.init ~intent ~directive ~now
   in
@@ -159,6 +167,7 @@ let open_ticket ~ticket_id ~intent ~directive ~now =
   let initial =
     {
       ticket_id;
+      reservation_id;
       intent;
       directive;
       lifecycle = Working strategy;
@@ -171,7 +180,8 @@ let open_ticket ~ticket_id ~intent ~directive ~now =
     materialise_submits initial decision.submit ~now
   in
   let opened =
-    Events.Ticket_opened.make ~ticket_id ~intent ~directive ~occurred_at:now
+    Events.Ticket_opened.make ~ticket_id ~reservation_id ~intent ~directive
+      ~occurred_at:now
   in
   let events = Ev_ticket_opened opened :: placement_events in
   let lifecycle', terminal_event =

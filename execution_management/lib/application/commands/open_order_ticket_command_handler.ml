@@ -19,6 +19,11 @@ let parse_instrument s =
 let parse_ticket_id n =
   try Ok (Values.Ticket_id.of_int n)
   with Invalid_argument m ->
+    Error (Command_error.Invalid_payload ("reservation_id (as ticket_id): " ^ m))
+
+let parse_reservation_id n =
+  try Ok (Values.Reservation_id.of_int n)
+  with Invalid_argument m ->
     Error (Command_error.Invalid_payload ("reservation_id: " ^ m))
 
 (** Wire directive parser.
@@ -163,12 +168,15 @@ let handle ~now (cmd : Open_order_ticket_command.t) =
     let* quantity = parse_quantity cmd.quantity in
     let* instrument = parse_instrument cmd.symbol in
     let* ticket_id = parse_ticket_id cmd.reservation_id in
+    let* reservation_id = parse_reservation_id cmd.reservation_id in
     let* directive = resolve_directive cmd.execution_directive in
     let intent =
       Values.Trade_intent.make ~book_id:cmd.book_id ~instrument ~side
         ~total_quantity:quantity
     in
-    let t, events = Ot.open_ticket ~ticket_id ~intent ~directive ~now in
+    let t, events =
+      Ot.open_ticket ~ticket_id ~reservation_id ~intent ~directive ~now
+    in
     Ok (t, events)
   in
   match result with

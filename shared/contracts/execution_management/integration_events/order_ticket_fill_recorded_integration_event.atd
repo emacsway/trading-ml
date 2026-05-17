@@ -1,0 +1,24 @@
+(* Wire contract: execution_management/lib/application/integration_events/order_ticket_fill_recorded_integration_event.ml
+
+   The OrderTicket aggregate observed a fill from one of its
+   placements. Published once per Ev_placement_filled. Carries
+   the per-fill payload that order_management's saga translates
+   into Account's Commit_fill_command — Account is the owner of
+   the cash / position book and is the only consumer of this
+   payload's mutation effect (audit and analytics consumers may
+   subscribe too).
+
+   The wire ties together the EMS-side aggregate identity
+   ([ticket_id]) with the Account-side reservation identity
+   ([reservation_id]) so consumers can choose which key to route
+   on. *)
+
+type t = {
+  correlation_id <doc text="Saga-instance identifier echoed verbatim from the upstream Trade_intent_approved."> : string;
+  ticket_id : int;
+  reservation_id : int;
+  fill_quantity <doc text="Decimal string accepted by Decimal.of_string."> : string;
+  fill_price : string;
+  fee : string;
+  occurred_at <doc text="ISO-8601 timestamp at which the EMS aggregate observed the fill (sourced from the inbound broker IE's fill_ts via the application clock)."> : string;
+}

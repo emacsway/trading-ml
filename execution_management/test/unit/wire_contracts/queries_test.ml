@@ -24,6 +24,7 @@ let open_ticket_and_store tid =
   let store = Store.create () in
   let t, _ =
     Ot.open_ticket ~ticket_id:(Values.Ticket_id.of_int tid)
+      ~reservation_id:(Values.Reservation_id.of_int tid)
       ~intent:(intent_buy_100 ())
       ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
   in
@@ -62,6 +63,7 @@ let test_list_open_returns_all_non_terminal () =
       let t, _ =
         Ot.open_ticket
           ~ticket_id:(Values.Ticket_id.of_int tid)
+          ~reservation_id:(Values.Reservation_id.of_int tid)
           ~intent:(intent_buy_100 ())
           ~directive:Values.Execution_directive.Immediate ~now:1_700_000_000L
       in

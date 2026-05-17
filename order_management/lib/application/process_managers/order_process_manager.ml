@@ -16,21 +16,38 @@ type payload = {
   kind_limit_price : string option;
   tif : string;
   directive : directive_payload option;
-      (** Wire-shape execution directive captured at saga start
-          (kind tag + optional per-strategy JSON params blob).
-          [None] when the originating trader intent omitted it;
-          the EMS-side command handler then falls back to the
-          internal Execution_policy default. *)
+}
+
+type working_state = {
+  reservation_id : int;
+  correlation_id : string;
 }
 
 type state =
   | Awaiting_reservation of { payload : payload }
-  | Done of { reservation_id : int }
+  | Working of working_state
+      (** Reservation confirmed, ticket dispatched to EM. Stays here
+          while fills land and the OrderTicket progresses; transitions
+          to Settled on Ticket_completed (no command) or Released on
+          Ticket_cancelled / Ticket_failed (emits Release_command). *)
+  | Settled of { reservation_id : int }
+      (** Terminal: ticket completed normally. All fills have been
+          committed at Account via the per-fill Commit_fill_command
+          chain; nothing left to release. *)
+  | Released of { reservation_id : int; reason : string }
+      (** Terminal: ticket cancelled or failed. Release_command
+          dispatched. *)
   | Compensated of { reason : string }
+      (** Terminal: reservation never created (Account refused). *)
 
 type event =
   | Amount_reserved of Inbound.Amount_reserved_integration_event.t
   | Reservation_rejected of Inbound.Reservation_rejected_integration_event.t
+  | Ticket_fill_recorded of
+      Inbound.Order_ticket_fill_recorded_integration_event.t
+  | Ticket_completed of Inbound.Order_ticket_completed_integration_event.t
+  | Ticket_cancelled of Inbound.Order_ticket_cancelled_integration_event.t
+  | Ticket_failed of Inbound.Order_ticket_failed_integration_event.t
 
 type command =
   | Dispatch_reserve of {
@@ -48,6 +65,17 @@ type command =
       side : string;
       quantity : string;
       directive : directive_payload option;
+    }
+  | Dispatch_commit_fill of {
+      correlation_id : string;
+      reservation_id : int;
+      quantity : string;
+      price : string;
+      fee : string;
+    }
+  | Dispatch_release of {
+      correlation_id : string;
+      reservation_id : int;
     }
 
 let initial_payload ?directive ~book_id ~symbol ~side ~quantity () =
@@ -84,9 +112,14 @@ module Definition = struct
   let correlation_of_event = function
     | Amount_reserved e -> e.correlation_id
     | Reservation_rejected e -> e.correlation_id
+    | Ticket_fill_recorded e -> e.correlation_id
+    | Ticket_completed e -> e.correlation_id
+    | Ticket_cancelled e -> e.correlation_id
+    | Ticket_failed e -> e.correlation_id
 
   let transition (s : state) (e : event) : state * command list =
     match (s, e) with
+    (* ---------- Awaiting_reservation ---------- *)
     | Awaiting_reservation { payload }, Amount_reserved ev ->
         let open_cmd =
           Dispatch_open_ticket
@@ -100,16 +133,51 @@ module Definition = struct
               directive = payload.directive;
             }
         in
-        (Done { reservation_id = ev.reservation_id }, [ open_cmd ])
+        ( Working
+            {
+              reservation_id = ev.reservation_id;
+              correlation_id = ev.correlation_id;
+            },
+          [ open_cmd ] )
     | Awaiting_reservation _, Reservation_rejected ev ->
         (Compensated { reason = "rejected_by_account: " ^ ev.reason }, [])
+    (* ---------- Working ---------- *)
+    | Working _, Ticket_fill_recorded ev ->
+        let cmd =
+          Dispatch_commit_fill
+            {
+              correlation_id = ev.correlation_id;
+              reservation_id = ev.reservation_id;
+              quantity = ev.fill_quantity;
+              price = ev.fill_price;
+              fee = ev.fee;
+            }
+        in
+        (s, [ cmd ])
+    | Working { reservation_id; _ }, Ticket_completed _ ->
+        (* All per-fill commits already dispatched along the way;
+           the reservation has been drawn down by the cumulative
+           commits. Nothing further. *)
+        (Settled { reservation_id }, [])
+    | Working { reservation_id; correlation_id }, Ticket_cancelled ev ->
+        let cmd =
+          Dispatch_release { correlation_id; reservation_id = ev.reservation_id }
+        in
+        ( Released { reservation_id; reason = "cancelled: " ^ ev.reason },
+          [ cmd ] )
+    | Working { reservation_id; correlation_id }, Ticket_failed ev ->
+        let cmd =
+          Dispatch_release { correlation_id; reservation_id = ev.reservation_id }
+        in
+        ( Released { reservation_id; reason = "failed: " ^ ev.reason },
+          [ cmd ] )
     (* Late / duplicate events for already-terminated states: silently
        absorbed (idempotent fall-through). *)
     | _, _ -> (s, [])
 
   let is_terminal = function
-    | Done _ | Compensated _ -> true
-    | Awaiting_reservation _ -> false
+    | Settled _ | Released _ | Compensated _ -> true
+    | Awaiting_reservation _ | Working _ -> false
 end
 
 module Engine = Workflow_engine.Make (Definition) (Workflow_engine.In_memory_store)

@@ -1,4 +1,5 @@
 module Ticket_id = Ticket_id
+module Reservation_id = Reservation_id
 module Trade_intent = Trade_intent
 module Volume_bar = Volume_bar
 module Market_data_quote = Market_data_quote

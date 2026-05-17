@@ -14,6 +14,7 @@ type execution_directive_view_model <ocaml from="Execution_directive_view_model"
 type t = {
   correlation_id <doc text="Saga-instance identifier echoed verbatim from Trade_intent_approved."> : string;
   ticket_id : int;
+  reservation_id <doc text="Account-side reservation identity that backs this ticket. Carried so order_management's saga can address its Commit_fill_command / Release_command at Account without needing to maintain a private mapping."> : int;
   book_id : string;
   instrument : instrument_view_model;
   side : string;

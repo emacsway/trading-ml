@@ -3,6 +3,7 @@
 
 type t = {
   ticket_id : Values.Ticket_id.t;
+  reservation_id : Values.Reservation_id.t;
   intent : Values.Trade_intent.t;
   directive : Values.Execution_directive.t;
   occurred_at : int64;
@@ -10,6 +11,7 @@ type t = {
 
 val make :
   ticket_id:Values.Ticket_id.t ->
+  reservation_id:Values.Reservation_id.t ->
   intent:Values.Trade_intent.t ->
   directive:Values.Execution_directive.t ->
   occurred_at:int64 ->

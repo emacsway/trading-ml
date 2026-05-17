@@ -17,11 +17,12 @@ let intent_buy_100 () =
     ~total_quantity:(qty "100")
 
 let ticket_id_42 = Values.Ticket_id.of_int 42
+let reservation_id_42 = Values.Reservation_id.of_int 42
 
 let test_opened_carries_correlation_intent_directive () =
   let intent = intent_buy_100 () in
   let domain_ev =
-    Events.Ticket_opened.make ~ticket_id:ticket_id_42 ~intent
+    Events.Ticket_opened.make ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~intent
       ~directive:Values.Execution_directive.Immediate
       ~occurred_at:1_700_000_000L
   in
@@ -45,7 +46,7 @@ let test_completed_carries_progress () =
            ~price:(qty "250") ~fee:(qty "0.5") ~ts:1_700_000_000L)
   in
   let domain_ev =
-    Events.Ticket_completed.make ~ticket_id:ticket_id_42 ~progress
+    Events.Ticket_completed.make ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42 ~progress
       ~occurred_at:1_700_000_001L
   in
   let ie =
@@ -61,7 +62,7 @@ let test_completed_carries_progress () =
 let test_cancelled_carries_reason_string () =
   let progress = Values.Progress.empty ~total_quantity:(qty "100") in
   let domain_ev =
-    Events.Ticket_cancelled.make ~ticket_id:ticket_id_42
+    Events.Ticket_cancelled.make ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42
       ~reason:Values.Cancel_reason.Operator ~progress
       ~occurred_at:1_700_000_002L
   in
@@ -75,7 +76,7 @@ let test_cancelled_carries_reason_string () =
 let test_failed_carries_free_form_reason () =
   let progress = Values.Progress.empty ~total_quantity:(qty "100") in
   let domain_ev =
-    Events.Ticket_failed.make ~ticket_id:ticket_id_42
+    Events.Ticket_failed.make ~ticket_id:ticket_id_42 ~reservation_id:reservation_id_42
       ~reason:"venue rejected: instrument suspended" ~progress
       ~occurred_at:1_700_000_003L
   in

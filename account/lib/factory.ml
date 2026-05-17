@@ -88,39 +88,13 @@ let build ~bus ~initial_cash ~market_price : t =
     Bus.consumer bus ~uri ~group ~deserialize:(fun s ->
         t_of_yojson (Yojson.Safe.from_string s))
   in
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://broker.order-rejected" ~group:"account-compensation"
-         ~t_of_yojson:
-           Account_external_integration_events.Order_rejected_integration_event
-           .t_of_yojson)
-      (Account_external_integration_events.Order_rejected_integration_event_handler.handle
-         ~dispatch_release)
-  in
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://broker.order-unreachable" ~group:"account-compensation"
-         ~t_of_yojson:
-           Account_external_integration_events.Order_unreachable_integration_event
-           .t_of_yojson)
-      (Account_external_integration_events.Order_unreachable_integration_event_handler
-       .handle ~dispatch_release)
-  in
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://broker.order-filled" ~group:"account-commit"
-         ~t_of_yojson:
-           Account_external_integration_events.Order_filled_integration_event.t_of_yojson)
-      (Account_external_integration_events.Order_filled_integration_event_handler.handle
-         ~dispatch_commit_fill)
-  in
-  (* Saga-driven Reserve/Release: the place-order PM in the
-     execution_management BC publishes wire-format commands on these
-     topics. Both shapes are byte-equivalent to
-     [Account_commands.Reserve_command.t] and
-     [Account_commands.Release_command.t], so we deserialise straight
-     into the existing command types and route through the same
-     dispatch closures used by the HTTP path. *)
+  (* All cross-BC interactions with Account go through the
+     order_management saga (per ADR 0022). Account subscribes to:
+     - account.reserve-command       — Reserve (saga start)
+     - account.release-command       — Release (saga terminal cancel/fail)
+     - account.commit-fill-command   — Commit_fill (per ticket fill)
+     Broker IEs are EM-internal and Account no longer subscribes to
+     them directly. *)
   let _ : Bus.subscription =
     Bus.subscribe
       (consume ~uri:"in-memory://account.reserve-command" ~group:"account-saga"
@@ -132,6 +106,13 @@ let build ~bus ~initial_cash ~market_price : t =
       (consume ~uri:"in-memory://account.release-command" ~group:"account-saga"
          ~t_of_yojson:Account_commands.Release_command.t_of_yojson)
       dispatch_release
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://account.commit-fill-command"
+         ~group:"account-saga"
+         ~t_of_yojson:Account_commands.Commit_fill_command.t_of_yojson)
+      dispatch_commit_fill
   in
   let http_handler =
     Account_inbound_http.Http.make_handler ~dispatch_reserve ~market_price
