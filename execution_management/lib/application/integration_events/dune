@@ -12,30 +12,6 @@
 
 (rule
  (deps
-  (:atd %{project_root}/shared/contracts/execution_management/integration_events/kill_switch_tripped_integration_event.atd))
- (targets kill_switch_tripped_integration_event_t.ml
-          kill_switch_tripped_integration_event_t.mli
-          kill_switch_tripped_integration_event_j.ml
-          kill_switch_tripped_integration_event_j.mli)
- (action
-  (progn
-   (run atdgen -t -o kill_switch_tripped_integration_event %{atd})
-   (run atdgen -j -o kill_switch_tripped_integration_event %{atd}))))
-
-(rule
- (deps
-  (:atd %{project_root}/shared/contracts/execution_management/integration_events/trade_submission_blocked_integration_event.atd))
- (targets trade_submission_blocked_integration_event_t.ml
-          trade_submission_blocked_integration_event_t.mli
-          trade_submission_blocked_integration_event_j.ml
-          trade_submission_blocked_integration_event_j.mli)
- (action
-  (progn
-   (run atdgen -t -o trade_submission_blocked_integration_event %{atd})
-   (run atdgen -j -o trade_submission_blocked_integration_event %{atd}))))
-
-(rule
- (deps
   (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_opened_integration_event.atd))
  (targets order_ticket_opened_integration_event_t.ml
           order_ticket_opened_integration_event_t.mli

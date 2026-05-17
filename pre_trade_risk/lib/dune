@@ -6,6 +6,7 @@
   bus
   core
   decimal
+  datetime
   pre_trade_risk
   pre_trade_risk_commands
   pre_trade_risk_integration_events

@@ -211,17 +211,16 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
   let _pm = Portfolio_management_factory.Factory.build ~bus ~now in
   let _pre_trade_risk =
     Pre_trade_risk_factory.Factory.build ~bus ~now
-      ~initial_equity:(Decimal.of_int 1_000_000)
-  in
-  let _order_management = Order_management_factory.Factory.build ~bus in
-  let _execution_management =
-    Execution_management_factory.Factory.build ~bus ~now
       ~config:
         {
           initial_equity = Decimal.of_int 1_000_000;
           max_drawdown_pct = 0.15;
           rate_limit = None;
         }
+  in
+  let _order_management = Order_management_factory.Factory.build ~bus in
+  let _execution_management =
+    Execution_management_factory.Factory.build ~bus ~now
   in
   let _strategy =
     Strategy_factory.Factory.build ~bus ~sw ~strategy:(Some strategy)
@@ -272,7 +271,7 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
     count "in-memory://broker.order-unreachable" (fun _ -> incr orders_unreachable)
   in
   let _ : Bus.subscription =
-    count "in-memory://execution-management.trade-submission-blocked" (fun _ ->
+    count "in-memory://pre-trade-risk.trade-submission-blocked" (fun _ ->
         incr submissions_blocked)
   in
   let candles_list =
@@ -586,17 +585,16 @@ let cmd_serve args =
   let pm = Portfolio_management_factory.Factory.build ~bus ~now in
   let pre_trade_risk =
     Pre_trade_risk_factory.Factory.build ~bus ~now
-      ~initial_equity:(Decimal.of_int 1_000_000)
-  in
-  let order_management = Order_management_factory.Factory.build ~bus in
-  let execution_management =
-    Execution_management_factory.Factory.build ~bus ~now
       ~config:
         {
           initial_equity = Decimal.of_int 1_000_000;
           max_drawdown_pct = 0.15;
           rate_limit = None;
         }
+  in
+  let order_management = Order_management_factory.Factory.build ~bus in
+  let execution_management =
+    Execution_management_factory.Factory.build ~bus ~now
   in
   let bc_handlers =
     [

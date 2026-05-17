@@ -33,6 +33,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0018](0018-in-memory-ticket-store-transitional-persistence.md) | In-memory ticket store as transitional persistence | Accepted | 2026-05-17 |
 | [0019](0019-execution-directive-provenance.md) | execution_directive provenance: PM authors, PTR passes through, EMS consumes | Accepted | 2026-05-17 |
 | [0020](0020-order-management-bounded-context.md) | Order_management as a separate Bounded Context | Accepted | 2026-05-17 |
+| [0021](0021-intake-gates-belong-to-pre-trade-risk.md) | Intake gates (kill_switch, rate_limit) belong to pre_trade_risk | Accepted | 2026-05-17 |
 
 ## Template
 

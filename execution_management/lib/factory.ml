@@ -9,12 +9,6 @@ module Ot = Execution_management.Order_ticket
 
 type t = { http_handler : Inbound_http.Route.handler }
 
-type config = {
-  initial_equity : Decimal.t;
-  max_drawdown_pct : float;
-  rate_limit : (int * float) option;
-}
-
 (** Wire-format DTOs for cross-BC commands EMS dispatches over the
     bus. Kept factory-local to avoid importing the receiving BCs'
     command libraries (per ADR-0001's BC-independence rule); each
@@ -75,45 +69,18 @@ let to_wire_kind (k : Ot.Placement.Values.Order_kind.t) : wire_order_kind =
 let to_wire_tif (t : Ot.Placement.Values.Tif.t) : string =
   match t with Gtc -> "GTC" | Day -> "DAY" | Ioc -> "IOC" | Fok -> "FOK"
 
-let build ~bus ~now ~(config : config) : t =
+let build ~bus ~now : t =
   let mu = Mutex.create () in
-  let kill_switch =
-    ref
-      (Execution_management.Kill_switch.make ~initial_equity:config.initial_equity
-         ~max_drawdown_pct:
-           (Execution_management.Kill_switch.Values.Max_drawdown_pct.of_float
-              config.max_drawdown_pct))
-  in
-  let rate_limit =
-    ref
-      (match config.rate_limit with
-      | Some (max_orders, window_seconds) ->
-          Some
-            (Execution_management.Rate_limit.make
-               ~config:
-                 (Execution_management.Rate_limit.Values.Rate_limit_config.make
-                    ~max_orders ~window_seconds))
-      | None -> None)
-  in
   let with_lock f =
     Mutex.lock mu;
     Fun.protect ~finally:(fun () -> Mutex.unlock mu) f
   in
-  let now_iso8601 () = Datetime.Iso8601.format (now ()) in
 
   let produce (type a) ~uri ~(yojson_of : a -> Yojson.Safe.t) : a -> unit =
     Bus.publish
       (Bus.producer bus ~uri ~serialize:(fun v -> Yojson.Safe.to_string (yojson_of v)))
   in
 
-  let publish_blocked =
-    produce ~uri:"in-memory://execution-management.trade-submission-blocked"
-      ~yojson_of:Outbound_ie.Trade_submission_blocked_integration_event.yojson_of_t
-  in
-  let publish_kill_switch_tripped =
-    produce ~uri:"in-memory://execution-management.kill-switch-tripped"
-      ~yojson_of:Outbound_ie.Kill_switch_tripped_integration_event.yojson_of_t
-  in
   let publish_ticket_opened =
     produce ~uri:"in-memory://execution-management.order-ticket-opened"
       ~yojson_of:Outbound_ie.Order_ticket_opened_integration_event.yojson_of_t
@@ -245,12 +212,10 @@ let build ~bus ~now ~(config : config) : t =
         t_of_yojson (Yojson.Safe.from_string s))
   in
 
-  (** Inbound cross-BC command from order_management. Gate
-      enforcement lives here (transitional, until kill_switch /
-      rate_limit move to pre_trade_risk in step 2.5): if the
-      gate trips, EM publishes Trade_submission_blocked AND
-      Release_command to undo the upstream reservation; if the
-      gate passes, EM opens the OrderTicket. *)
+  (** Inbound cross-BC command from order_management. The intake
+      gate now lives in pre_trade_risk (ADR 0020 + step 2.5
+      follow-up); EM unconditionally opens the OrderTicket on every
+      command it receives. *)
   let _ : Bus.subscription =
     Bus.subscribe
       (consume ~uri:"in-memory://execution-management.open-order-ticket-command"
@@ -258,46 +223,14 @@ let build ~bus ~now ~(config : config) : t =
          ~t_of_yojson:Cmds.Open_order_ticket_command.t_of_yojson)
       (fun (cmd : Cmds.Open_order_ticket_command.t) ->
         with_lock (fun () ->
-            let halted = Execution_management.Kill_switch.is_halted !kill_switch in
-            let allowed =
-              if halted then false
-              else
-                match !rate_limit with
-                | None -> true
-                | Some rl -> (
-                    let now_secs = Int64.to_float (now ()) in
-                    match
-                      Execution_management.Rate_limit.try_acquire rl ~now:now_secs
-                    with
-                    | `Allow rl' ->
-                        rate_limit := Some rl';
-                        true
-                    | `Throttle -> false)
+            Hashtbl.replace correlation_by_ticket cmd.reservation_id
+              cmd.correlation_id;
+            let _ =
+              Cmds.Open_order_ticket_command_workflow.execute
+                ~store:ticket_store_module ~store_handle:ticket_store
+                ~publish:publish_aggregate_event ~now cmd
             in
-            if not allowed then (
-              let reason = if halted then "kill_switch" else "rate_limit" in
-              publish_blocked
-                {
-                  correlation_id = cmd.correlation_id;
-                  reason;
-                  occurred_at = now_iso8601 ();
-                };
-              (* Undo the reservation that Account already created
-                 for this saga instance. *)
-              publish_release
-                {
-                  correlation_id = cmd.correlation_id;
-                  reservation_id = cmd.reservation_id;
-                })
-            else (
-              Hashtbl.replace correlation_by_ticket cmd.reservation_id
-                cmd.correlation_id;
-              let _ =
-                Cmds.Open_order_ticket_command_workflow.execute
-                  ~store:ticket_store_module ~store_handle:ticket_store
-                  ~publish:publish_aggregate_event ~now cmd
-              in
-              ())))
+            ()))
   in
 
   (* Broker-IE → OrderTicket apply_* commands via ACL handlers.
@@ -350,32 +283,6 @@ let build ~bus ~now ~(config : config) : t =
         Inbound.Order_cancelled_integration_event_handler.handle
           ~store:ticket_store_module ~store_handle:ticket_store
           ~publish:publish_aggregate_event ~now ~ticket_id_of_placement_id ev)
-  in
-  (* Reservation_filled feeds the kill-switch peak / drawdown tracking. *)
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://account.reservation-filled"
-         ~group:"execution-management-kill-switch"
-         ~t_of_yojson:Inbound.Reservation_filled_integration_event.t_of_yojson)
-      (fun (ev : Inbound.Reservation_filled_integration_event.t) ->
-        with_lock (fun () ->
-            let equity = try Decimal.of_string ev.new_cash with _ -> Decimal.zero in
-            let occurred_at = now () in
-            let ks', tripped =
-              Execution_management.Kill_switch.update_equity !kill_switch ~equity
-                ~occurred_at
-            in
-            kill_switch := ks';
-            match tripped with
-            | None -> ()
-            | Some ev_t ->
-                publish_kill_switch_tripped
-                  {
-                    peak_equity = Decimal.to_string ev_t.peak_equity;
-                    current_equity = Decimal.to_string ev_t.current_equity;
-                    drawdown = ev_t.drawdown;
-                    occurred_at = Datetime.Iso8601.format ev_t.occurred_at;
-                  }))
   in
   let get_order_ticket ticket_id : Yojson.Safe.t option =
     let q : Queries.Get_order_ticket_query.t = { ticket_id } in

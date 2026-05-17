@@ -198,8 +198,8 @@ equity proxy until a mark-to-market feed lands).
 `broker.submit-order-command` (saga-driven commands published as
 wire JSON; Account / Broker subscribe and deserialise straight
 into their existing command types);
-`execution-management.trade-submission-blocked` (telemetry on a
-gate halt); `execution-management.kill-switch-tripped`.
+`pre-trade-risk.trade-submission-blocked` (telemetry on a
+gate halt); `pre-trade-risk.kill-switch-tripped`.
 
 The naming choice `execution_management` over `execution` is
 covered in ADR 0011's BC-name section (symmetry with PM, EMS as
@@ -344,8 +344,8 @@ Topic conventions per BC:
 | `in-memory://broker.order-filled`              | paper_broker          | Cid + reservation_id echoed    |
 | `in-memory://broker.order-cancelled`           | paper_broker          | Cid + reservation_id echoed    |
 | `in-memory://broker.bar-updated`               | broker                | Upstream candles               |
-| `in-memory://execution-management.trade-submission-blocked` | execution_management | Telemetry only      |
-| `in-memory://execution-management.kill-switch-tripped` | execution_management |                              |
+| `in-memory://pre-trade-risk.trade-submission-blocked` | pre_trade_risk | Telemetry on a gate halt    |
+| `in-memory://pre-trade-risk.kill-switch-tripped` | pre_trade_risk | First trip of the drawdown circuit |
 
 ## The dependency rule
 
@@ -394,7 +394,7 @@ through fills, with `cid` denoting the saga `correlation_id`:
    → pre-trade-risk.trade-intent-{approved,rejected}  [cid_n]
 6. execution_management ← pre-trade-risk.trade-intent-approved
    Kill_switch + Rate_limit gate
-   if blocked → execution-management.trade-submission-blocked
+   if blocked → pre-trade-risk.trade-submission-blocked
    else       → Order_process_manager.start                  [cid_n]
                 → account.reserve-command              [cid_n]
 7. account            ← account.reserve-command
