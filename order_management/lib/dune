@@ -1,0 +1,18 @@
+(library
+ (name order_management_factory)
+ (public_name trading.order_management.factory)
+ (modules factory)
+ (libraries
+  bus
+  core
+  decimal
+  workflow_engine
+  order_management_external_integration_events
+  order_management_external_view_models
+  order_management_process_managers
+  inbound_http
+  yojson
+  ppx_yojson_conv_lib)
+ (preprocess (pps ppx_yojson_conv))
+ (flags
+  (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))

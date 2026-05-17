@@ -8,7 +8,9 @@
   decimal
   rop
   execution_management
-  execution_management_ports))
+  execution_management_ports
+  execution_management_view_models)
+ (flags (:standard -open Execution_management_view_models)))
 
 (rule
  (deps
@@ -21,3 +23,15 @@
   (progn
    (run atdgen -t -o cancel_order_ticket_command %{atd})
    (run atdgen -j -o cancel_order_ticket_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/commands/open_order_ticket_command.atd))
+ (targets open_order_ticket_command_t.ml
+          open_order_ticket_command_t.mli
+          open_order_ticket_command_j.ml
+          open_order_ticket_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o open_order_ticket_command %{atd})
+   (run atdgen -j -o open_order_ticket_command %{atd}))))

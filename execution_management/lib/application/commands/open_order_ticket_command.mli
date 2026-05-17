@@ -1,34 +1,28 @@
-(** Open-OrderTicket command. Invoked in-process by the
-    {!Order_process_manager} saga on its terminal [Done]
-    transition (the OMS→EMS hand-off per ADR-0017).
+(** Open-OrderTicket command.
 
-    Carries the saga's payload verbatim plus the
-    Account-supplied [reservation_id] (used as the ticket
-    identity). The optional [directive] is the wire-shape
-    strategy directive captured from the upstream trader intent
-    (kind tag + per-strategy params JSON-object string); absent
-    means the handler falls back to {!Values.Execution_directive.Immediate}
-    via the internal Execution_policy default. *)
+    Cross-BC: dispatched on the bus by order_management's saga
+    after Account confirms the reservation (per ADR 0017 / ADR
+    0020). EM subscribes and routes into the
+    {!Open_order_ticket_command_workflow}.
 
-type directive = {
+    Generated wire shape from
+    [shared/contracts/execution_management/commands/open_order_ticket_command.atd]
+    via atdgen. The optional [execution_directive] carries the
+    trader-intent strategy choice end-to-end (ADR 0019). Absent
+    means the handler falls back to
+    {!Execution_management.Order_ticket.Values.Execution_policy.default}. *)
+
+include module type of Open_order_ticket_command_t
+
+include module type of Open_order_ticket_command_j with type t := t
+
+type directive = Execution_directive_view_model.t = {
   kind : string;
-      (** Strategy tag: IMMEDIATE | TWAP | VWAP | POV | ICEBERG | IMPLEMENTATION_SHORTFALL. *)
   params : string option;
-      (** JSON-object string carrying the per-strategy parameters.
-          [None] is the only valid shape for [IMMEDIATE]; required
-          for every other strategy. *)
 }
+(** Alias for the cross-referenced wire directive — the handler's
+    pattern-match keeps the short name [directive] while the wire
+    field is [execution_directive]. *)
 
-type t = {
-  reservation_id : int;
-      (** Account-minted; becomes the ticket_id. *)
-  correlation_id : string;
-      (** Saga-instance id; echoed verbatim on every emitted
-          IE so the saga's downstream readers can correlate. *)
-  book_id : string;
-  symbol : string;
-      (** Qualified instrument: TICKER@MIC[/BOARD]. *)
-  side : string;  (** "BUY" | "SELL". *)
-  quantity : string;  (** Decimal string. *)
-  directive : directive option;
-}
+val yojson_of_t : t -> Yojson.Safe.t
+val t_of_yojson : Yojson.Safe.t -> t

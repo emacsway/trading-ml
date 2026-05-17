@@ -10,6 +10,7 @@
             account_factory
             portfolio_management_factory
             pre_trade_risk_factory
+            order_management_factory
             execution_management_factory
             strategy_factory
             broker_factory

@@ -32,6 +32,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0017](0017-order-ticket-aggregate-and-oms-ems-layering.md) | OrderTicket aggregate + OMS/EMS layering inside execution_management | Accepted | 2026-05-17 |
 | [0018](0018-in-memory-ticket-store-transitional-persistence.md) | In-memory ticket store as transitional persistence | Accepted | 2026-05-17 |
 | [0019](0019-execution-directive-provenance.md) | execution_directive provenance: PM authors, PTR passes through, EMS consumes | Accepted | 2026-05-17 |
+| [0020](0020-order-management-bounded-context.md) | Order_management as a separate Bounded Context | Accepted | 2026-05-17 |
 
 ## Template
 

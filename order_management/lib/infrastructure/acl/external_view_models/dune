@@ -1,0 +1,31 @@
+(library
+ (name order_management_external_view_models)
+ (public_name trading.order_management.acl.external_view_models)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime)
+ (preprocess (pps ppx_yojson_conv))
+ (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+; Mirror of Account's instrument view model — needed by inbound
+; Account IEs (Amount_reserved / Reservation_rejected carry it).
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/view_models/instrument_view_model.atd))
+ (targets instrument_view_model_t.ml instrument_view_model_t.mli
+          instrument_view_model_j.ml instrument_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o instrument_view_model %{atd})
+   (run atdgen -j -o instrument_view_model %{atd}))))
+
+; Mirror of PTR's execution directive view model — carried verbatim
+; on PTR's Trade_intent_approved IE and threaded to EM via
+; Open_order_ticket_command.
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/view_models/execution_directive_view_model.atd))
+ (targets execution_directive_view_model_t.ml execution_directive_view_model_t.mli
+          execution_directive_view_model_j.ml execution_directive_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o execution_directive_view_model %{atd})
+   (run atdgen -j -o execution_directive_view_model %{atd}))))

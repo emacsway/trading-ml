@@ -69,9 +69,9 @@ type state =
 
 type event =
   | Amount_reserved of
-      Execution_management_external_integration_events.Amount_reserved_integration_event.t
+      Order_management_external_integration_events.Amount_reserved_integration_event.t
   | Reservation_rejected of
-      Execution_management_external_integration_events
+      Order_management_external_integration_events
       .Reservation_rejected_integration_event
       .t
 

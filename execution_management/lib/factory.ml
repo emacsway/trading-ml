@@ -1,4 +1,3 @@
-module Pm = Execution_management_process_managers.Order_process_manager
 module Inbound = Execution_management_external_integration_events
 module Outbound_ie = Execution_management_integration_events
 module Cmds = Execution_management_commands
@@ -17,18 +16,9 @@ type config = {
 }
 
 (** Wire-format DTOs for cross-BC commands EMS dispatches over the
-    bus. Kept saga-local to avoid importing the receiving BCs'
-    command libraries (per ADR-0001's BC-independence rule); the
-    wire shape is fixed by the consumer-side schema. *)
-
-type wire_reserve = {
-  correlation_id : string;
-  side : string;
-  symbol : string;
-  quantity : string;
-  price : string;
-}
-[@@deriving yojson]
+    bus. Kept factory-local to avoid importing the receiving BCs'
+    command libraries (per ADR-0001's BC-independence rule); each
+    wire shape is fixed by the consumer-side .atd. *)
 
 type wire_release = { correlation_id : string; reservation_id : int }
 [@@deriving yojson]
@@ -58,19 +48,14 @@ type wire_cancel = { correlation_id : string; placement_id : int }
 (** Wire-format placement_id encoding: the OrderTicket aggregate
     mints local sequence ids (1, 2, 3, ...) per ticket; the
     factory translates to a globally-unique wire id for broker
-    correlation. The encoding is reversible so inbound broker IEs
-    can be decoded back to (ticket_id, local_id) at the ACL
-    boundary. *)
+    correlation. Reversible so inbound broker IEs decode back to
+    ticket_id at the ACL boundary. *)
 let placement_id_seq_capacity = 1_000_000
 
 let encode_wire_placement_id ~ticket_id ~local_seq =
   (ticket_id * placement_id_seq_capacity) + local_seq
 
 let decode_wire_to_ticket_id wire_pid = wire_pid / placement_id_seq_capacity
-
-let qualify_instrument (i : Inbound.Trade_intent_approved_integration_event.t) :
-    string =
-  i.symbol
 
 let to_wire_kind (k : Ot.Placement.Values.Order_kind.t) : wire_order_kind =
   match k with
@@ -145,9 +130,6 @@ let build ~bus ~now ~(config : config) : t =
     produce ~uri:"in-memory://execution-management.order-ticket-failed"
       ~yojson_of:Outbound_ie.Order_ticket_failed_integration_event.yojson_of_t
   in
-  let publish_reserve =
-    produce ~uri:"in-memory://account.reserve-command" ~yojson_of:yojson_of_wire_reserve
-  in
   let publish_release =
     produce ~uri:"in-memory://account.release-command" ~yojson_of:yojson_of_wire_release
   in
@@ -161,11 +143,9 @@ let build ~bus ~now ~(config : config) : t =
   in
 
   (* OrderTicket persistence + per-ticket correlation_id store.
-     The aggregate is pure; the factory threads the saga-minted
-     correlation_id through the outbound broker dispatches via a
-     side table keyed on ticket_id. The correlation_id is set on
-     Dispatch_open_ticket and read on every subsequent
-     Placement_dispatched / Ticket_cancelling_started event. *)
+     correlation_by_ticket is populated when Open_order_ticket_command
+     arrives from order_management; downstream broker dispatches and
+     outbound IEs read from it. *)
   let ticket_store = Persistence.In_memory_ticket_store.create () in
   let ticket_store_module
       : (module Ports.Ticket_store.S with type t = Persistence.In_memory_ticket_store.t)
@@ -176,16 +156,10 @@ let build ~bus ~now ~(config : config) : t =
   let ticket_intent : (int, Ot.Values.Trade_intent.t) Hashtbl.t =
     Hashtbl.create 64
   in
-
-  (* Aggregate event → outbound side-effect dispatcher. Called by
-     every command_workflow after the aggregate produces events.
-     Pattern-matches exhaustively (closed Order_ticket.event
-     variant); silent on events that have no outbound effect yet
-     (Ev_ticket_opened / Ev_placement_acknowledged / etc — those
-     surface as outbound IEs in PR5). *)
   let correlation_for tid =
     Option.value (Hashtbl.find_opt correlation_by_ticket tid) ~default:""
   in
+
   let publish_aggregate_event (ev : Ot.event) : unit =
     match ev with
     | Ev_ticket_opened e ->
@@ -266,61 +240,23 @@ let build ~bus ~now ~(config : config) : t =
         ()
   in
 
-  (* Saga command dispatcher. [Dispatch_reserve] goes over the bus
-     to Account; [Dispatch_open_ticket] invokes the EMS-internal
-     command workflow in-process (per ADR-0017's OMS→EMS rule). *)
-  let dispatch (cmd : Pm.command) : unit =
-    match cmd with
-    | Dispatch_reserve { correlation_id; side; symbol; quantity; price } ->
-        publish_reserve { correlation_id; side; symbol; quantity; price }
-    | Dispatch_open_ticket
-        {
-          reservation_id;
-          correlation_id;
-          book_id;
-          symbol;
-          side;
-          quantity;
-          directive;
-        } ->
-        Hashtbl.replace correlation_by_ticket reservation_id correlation_id;
-        let cmd_directive =
-          Option.map
-            (fun (d : Pm.directive_payload) :
-                 Cmds.Open_order_ticket_command.directive ->
-              { kind = d.directive_kind; params = d.directive_params })
-            directive
-        in
-        let open_cmd : Cmds.Open_order_ticket_command.t =
-          {
-            reservation_id;
-            correlation_id;
-            book_id;
-            symbol;
-            side;
-            quantity;
-            directive = cmd_directive;
-          }
-        in
-        let _ =
-          Cmds.Open_order_ticket_command_workflow.execute
-            ~store:ticket_store_module ~store_handle:ticket_store
-            ~publish:publish_aggregate_event ~now open_cmd
-        in
-        ()
-  in
-  let saga_store = Workflow_engine.In_memory_store.create () in
-  let engine = Pm.Engine.create ~store:saga_store ~dispatch in
   let consume (type a) ~uri ~group ~(t_of_yojson : Yojson.Safe.t -> a) : a Bus.consumer =
     Bus.consumer bus ~uri ~group ~deserialize:(fun s ->
         t_of_yojson (Yojson.Safe.from_string s))
   in
+
+  (** Inbound cross-BC command from order_management. Gate
+      enforcement lives here (transitional, until kill_switch /
+      rate_limit move to pre_trade_risk in step 2.5): if the
+      gate trips, EM publishes Trade_submission_blocked AND
+      Release_command to undo the upstream reservation; if the
+      gate passes, EM opens the OrderTicket. *)
   let _ : Bus.subscription =
     Bus.subscribe
-      (consume ~uri:"in-memory://pre-trade-risk.trade-intent-approved"
-         ~group:"execution-management-saga"
-         ~t_of_yojson:Inbound.Trade_intent_approved_integration_event.t_of_yojson)
-      (fun (ev : Inbound.Trade_intent_approved_integration_event.t) ->
+      (consume ~uri:"in-memory://execution-management.open-order-ticket-command"
+         ~group:"execution-management-open-ticket"
+         ~t_of_yojson:Cmds.Open_order_ticket_command.t_of_yojson)
+      (fun (cmd : Cmds.Open_order_ticket_command.t) ->
         with_lock (fun () ->
             let halted = Execution_management.Kill_switch.is_halted !kill_switch in
             let allowed =
@@ -338,48 +274,30 @@ let build ~bus ~now ~(config : config) : t =
                         true
                     | `Throttle -> false)
             in
-            if not allowed then
+            if not allowed then (
               let reason = if halted then "kill_switch" else "rate_limit" in
               publish_blocked
                 {
-                  correlation_id = ev.correlation_id;
+                  correlation_id = cmd.correlation_id;
                   reason;
                   occurred_at = now_iso8601 ();
-                }
-            else
-              let directive =
-                Option.map
-                  (fun (d :
-                         Execution_management_external_view_models
-                         .Execution_directive_view_model
-                         .t) : Pm.directive_payload ->
-                    { directive_kind = d.kind; directive_params = d.params })
-                  ev.execution_directive
+                };
+              (* Undo the reservation that Account already created
+                 for this saga instance. *)
+              publish_release
+                {
+                  correlation_id = cmd.correlation_id;
+                  reservation_id = cmd.reservation_id;
+                })
+            else (
+              Hashtbl.replace correlation_by_ticket cmd.reservation_id
+                cmd.correlation_id;
+              let _ =
+                Cmds.Open_order_ticket_command_workflow.execute
+                  ~store:ticket_store_module ~store_handle:ticket_store
+                  ~publish:publish_aggregate_event ~now cmd
               in
-              let payload =
-                Pm.initial_payload ?directive ~book_id:ev.book_id
-                  ~symbol:(qualify_instrument ev) ~side:ev.side
-                  ~quantity:ev.quantity ()
-              in
-              Pm.Engine.start engine ~correlation_id:ev.correlation_id
-                (Pm.Awaiting_reservation { payload });
-              dispatch
-                (Pm.reserve_for_start ~correlation_id:ev.correlation_id ~payload
-                   ~price:ev.quantity)))
-  in
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://account.amount-reserved"
-         ~group:"execution-management-saga"
-         ~t_of_yojson:Inbound.Amount_reserved_integration_event.t_of_yojson) (fun ev ->
-        Pm.Engine.on_event engine (Pm.Amount_reserved ev))
-  in
-  let _ : Bus.subscription =
-    Bus.subscribe
-      (consume ~uri:"in-memory://account.reservation-rejected"
-         ~group:"execution-management-saga"
-         ~t_of_yojson:Inbound.Reservation_rejected_integration_event.t_of_yojson)
-      (fun ev -> Pm.Engine.on_event engine (Pm.Reservation_rejected ev))
+              ())))
   in
 
   (* Broker-IE → OrderTicket apply_* commands via ACL handlers.
@@ -478,7 +396,6 @@ let build ~bus ~now ~(config : config) : t =
       Execution_management_inbound_http.Http.cancel_result =
     let parsed =
       if body = "" then
-        (* Body omitted: default reason "operator". *)
         Some
           ({ ticket_id; reason = "operator" }
             : Cmds.Cancel_order_ticket_command.t)

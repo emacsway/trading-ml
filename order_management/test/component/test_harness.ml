@@ -1,4 +1,4 @@
-(** In-process test harness for the Execution_management BC's
+(** In-process test harness for the Order_management BC's
     Open_order_ticket saga.
 
     Boots the saga {!Engine} on top of an {!In_memory_store} and
@@ -9,9 +9,9 @@
     own responsibility (Reserve hand-off, Amount_reserved → Done,
     Reservation_rejected → Compensated). *)
 
-module Pm = Execution_management_process_managers.Order_process_manager
-module Inbound = Execution_management_external_integration_events
-module Iqr = Execution_management_external_view_models
+module Pm = Order_management_process_managers.Order_process_manager
+module Inbound = Order_management_external_integration_events
+module Iqr = Order_management_external_view_models
 
 type ctx = { engine : Pm.Engine.t; dispatched : Pm.command list ref }
 

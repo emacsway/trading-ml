@@ -1,0 +1,8 @@
+(library
+ (name order_management_process_managers)
+ (public_name trading.order_management.process_managers)
+ (libraries
+  core
+  decimal
+  workflow_engine
+  order_management_external_integration_events))

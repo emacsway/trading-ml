@@ -163,7 +163,7 @@ let handle ~now (cmd : Open_order_ticket_command.t) =
     let* quantity = parse_quantity cmd.quantity in
     let* instrument = parse_instrument cmd.symbol in
     let* ticket_id = parse_ticket_id cmd.reservation_id in
-    let* directive = resolve_directive cmd.directive in
+    let* directive = resolve_directive cmd.execution_directive in
     let intent =
       Values.Trade_intent.make ~book_id:cmd.book_id ~instrument ~side
         ~total_quantity:quantity

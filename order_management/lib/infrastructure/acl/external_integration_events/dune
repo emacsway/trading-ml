@@ -1,0 +1,47 @@
+(library
+ (name order_management_external_integration_events)
+ (public_name trading.order_management.acl.external_integration_events)
+ (libraries
+  yojson
+  ppx_yojson_conv_lib
+  atdgen-runtime
+  core
+  decimal
+  order_management_external_view_models)
+ (preprocess (pps ppx_yojson_conv))
+ (flags
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Order_management_external_view_models)))
+
+; Inbound: PTR's outbound Trade_intent_approved (saga starter).
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/pre_trade_risk/integration_events/trade_intent_approved_integration_event.atd))
+ (targets trade_intent_approved_integration_event_t.ml trade_intent_approved_integration_event_t.mli
+          trade_intent_approved_integration_event_j.ml trade_intent_approved_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o trade_intent_approved_integration_event %{atd})
+   (run atdgen -j -o trade_intent_approved_integration_event %{atd}))))
+
+; Inbound: Account's reservation acks (saga's Awaiting_reservation transition).
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/amount_reserved_integration_event.atd))
+ (targets amount_reserved_integration_event_t.ml amount_reserved_integration_event_t.mli
+          amount_reserved_integration_event_j.ml amount_reserved_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o amount_reserved_integration_event %{atd})
+   (run atdgen -j -o amount_reserved_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/account/integration_events/reservation_rejected_integration_event.atd))
+ (targets reservation_rejected_integration_event_t.ml reservation_rejected_integration_event_t.mli
+          reservation_rejected_integration_event_j.ml reservation_rejected_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o reservation_rejected_integration_event %{atd})
+   (run atdgen -j -o reservation_rejected_integration_event %{atd}))))

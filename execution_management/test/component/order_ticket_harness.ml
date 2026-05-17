@@ -41,7 +41,7 @@ let open_immediate_ticket ?directive ctx ~ticket_id ~correlation_id =
       symbol = "SBER@MISX";
       side = "BUY";
       quantity = "100";
-      directive;
+      execution_directive = directive;
     }
   in
   match

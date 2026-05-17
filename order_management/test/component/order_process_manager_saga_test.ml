@@ -9,7 +9,7 @@
     is OrderTicket's concern — see order_ticket_e2e_test.ml. *)
 
 module Gherkin = Gherkin_edsl
-module Pm = Execution_management_process_managers.Order_process_manager
+module Pm = Order_management_process_managers.Order_process_manager
 open Test_harness
 
 let cid = "saga-component-A"

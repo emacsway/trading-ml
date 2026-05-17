@@ -213,6 +213,7 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
     Pre_trade_risk_factory.Factory.build ~bus ~now
       ~initial_equity:(Decimal.of_int 1_000_000)
   in
+  let _order_management = Order_management_factory.Factory.build ~bus in
   let _execution_management =
     Execution_management_factory.Factory.build ~bus ~now
       ~config:
@@ -587,6 +588,7 @@ let cmd_serve args =
     Pre_trade_risk_factory.Factory.build ~bus ~now
       ~initial_equity:(Decimal.of_int 1_000_000)
   in
+  let order_management = Order_management_factory.Factory.build ~bus in
   let execution_management =
     Execution_management_factory.Factory.build ~bus ~now
       ~config:
@@ -602,6 +604,7 @@ let cmd_serve args =
       broker.http_handler;
       pm.http_handler;
       pre_trade_risk.http_handler;
+      order_management.http_handler;
       execution_management.http_handler;
       strategy.http_handler;
       make_backtest_handler ~env;

@@ -1,0 +1,11 @@
+(test
+ (name order_management_component_runner)
+ (libraries
+  core
+  decimal
+  workflow_engine
+  order_management_external_integration_events
+  order_management_external_view_models
+  order_management_process_managers
+  gherkin_edsl
+  alcotest))

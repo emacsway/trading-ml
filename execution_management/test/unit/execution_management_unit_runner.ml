@@ -3,7 +3,6 @@ let () =
     [
       ("kill_switch", Kill_switch_test.tests);
       ("rate_limit", Rate_limit_test.tests);
-      ("order_process_manager", Order_process_manager_test.tests);
       ("immediate", Immediate_test.tests);
       ("twap", Twap_test.tests);
       ("vwap", Vwap_test.tests);

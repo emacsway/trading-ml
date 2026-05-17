@@ -1,0 +1,9 @@
+(test
+ (name order_management_unit_runner)
+ (libraries
+  core
+  decimal
+  order_management_external_integration_events
+  order_management_external_view_models
+  order_management_process_managers
+  alcotest))

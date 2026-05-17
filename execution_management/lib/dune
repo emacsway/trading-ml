@@ -11,7 +11,6 @@
   execution_management
   execution_management_integration_events
   execution_management_external_integration_events
-  execution_management_process_managers
   execution_management_commands
   execution_management_ports
   execution_management_persistence

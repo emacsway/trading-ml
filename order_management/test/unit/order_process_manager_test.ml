@@ -1,4 +1,4 @@
-(** Unit tests for {!Execution_management_process_managers.Order_process_manager.Definition}.
+(** Unit tests for {!Order_management_process_managers.Order_process_manager.Definition}.
     Drives the pure transition function across reservation
     happy + compensation paths. The saga's responsibility is
     narrow: reserve cash and hand off to the OrderTicket
@@ -6,8 +6,8 @@
     and is exercised in [order_ticket_test.ml] and the BDD
     scenarios. *)
 
-module Pm = Execution_management_process_managers.Order_process_manager
-module Inbound = Execution_management_external_integration_events
+module Pm = Order_management_process_managers.Order_process_manager
+module Inbound = Order_management_external_integration_events
 
 let cid = "saga-A"
 
@@ -15,7 +15,7 @@ let payload =
   Pm.initial_payload ~book_id:"alpha" ~symbol:"SBER@MISX" ~side:"BUY"
     ~quantity:"10" ()
 
-let instrument_vm : Execution_management_external_view_models.Instrument_view_model.t
+let instrument_vm : Order_management_external_view_models.Instrument_view_model.t
     =
   { ticker = "SBER"; venue = "MISX"; isin = None; board = None }
 

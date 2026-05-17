@@ -1,4 +1,4 @@
-module Inbound = Execution_management_external_integration_events
+module Inbound = Order_management_external_integration_events
 
 type directive_payload = {
   directive_kind : string;
