@@ -390,6 +390,16 @@ let build ~bus ~now ~(config : config) : t =
           ~store:ticket_store_module ~store_handle:ticket_store
           ~publish:publish_aggregate_event ~now ~ticket_id_of_placement_id ev)
   in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume ~uri:"in-memory://broker.order-cancelled"
+         ~group:"execution-management-order-ticket"
+         ~t_of_yojson:Inbound.Order_cancelled_integration_event.t_of_yojson)
+      (fun ev ->
+        Inbound.Order_cancelled_integration_event_handler.handle
+          ~store:ticket_store_module ~store_handle:ticket_store
+          ~publish:publish_aggregate_event ~now ~ticket_id_of_placement_id ev)
+  in
   (* Reservation_filled feeds the kill-switch peak / drawdown tracking. *)
   let _ : Bus.subscription =
     Bus.subscribe
@@ -431,8 +441,49 @@ let build ~bus ~now ~(config : config) : t =
       ~store_handle:ticket_store q
     |> List.map View_models.Order_ticket_view_model.yojson_of_t
   in
+  let cancel_order_ticket ~ticket_id ~body :
+      Execution_management_inbound_http.Http.cancel_result =
+    let parsed =
+      if body = "" then
+        (* Body omitted: default reason "operator". *)
+        Some
+          ({ ticket_id; reason = "operator" }
+            : Cmds.Cancel_order_ticket_command.t)
+      else
+        try
+          let cmd = Cmds.Cancel_order_ticket_command.t_of_string body in
+          Some { cmd with ticket_id }
+        with _ -> None
+    in
+    match parsed with
+    | None -> Cancel_invalid_payload "malformed JSON body"
+    | Some cmd -> (
+        with_lock (fun () ->
+            match
+              Cmds.Cancel_order_ticket_command_workflow.execute
+                ~store:ticket_store_module ~store_handle:ticket_store
+                ~publish:publish_aggregate_event ~now cmd
+            with
+            | Ok () -> Execution_management_inbound_http.Http.Cancel_ok
+            | Error errs ->
+                let not_found =
+                  List.exists
+                    (function
+                      | Cmds.Command_error.Ticket_not_found _ -> true
+                      | _ -> false)
+                    errs
+                in
+                if not_found then Cancel_not_found
+                else
+                  let msg =
+                    match errs with
+                    | Cmds.Command_error.Invalid_payload m :: _ -> m
+                    | _ -> "cancel rejected"
+                  in
+                  Cancel_invalid_payload msg))
+  in
   let http_handler =
     Execution_management_inbound_http.Http.make_handler ~get_order_ticket
-      ~list_open_order_tickets ()
+      ~list_open_order_tickets ~cancel_order_ticket ()
   in
   { http_handler }

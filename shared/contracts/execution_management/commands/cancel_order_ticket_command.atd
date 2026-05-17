@@ -1,0 +1,16 @@
+(* Wire contract: execution_management/lib/application/commands/cancel_order_ticket_command.ml
+
+   Operator-initiated cancel of an in-flight OrderTicket. The
+   command crosses the BC boundary via the inbound HTTP surface
+   (the operator UI) and is translated into the internal
+   [Cancel_order_ticket_command.t] by the inbound ACL.
+
+   The [reason] field is a controlled vocabulary mirroring the
+   internal [Cancel_reason.t] discriminator: "operator" |
+   "kill_switch" | "risk_limit_breach". Unknown values are rejected
+   by the handler. *)
+
+type t = {
+  ticket_id : int;
+  reason : string;
+}

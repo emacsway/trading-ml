@@ -2,4 +2,7 @@
 
 let () =
   Alcotest.run "trading-execution-management-component"
-    [ Open_order_ticket_saga_test.feature ]
+    [
+      Open_order_ticket_saga_test.feature;
+      Order_ticket_cancel_test.feature;
+    ]

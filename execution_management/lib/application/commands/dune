@@ -2,8 +2,22 @@
  (name execution_management_commands)
  (public_name trading.execution_management.commands)
  (libraries
+  yojson
+  atdgen-runtime
   core
   decimal
   rop
   execution_management
   execution_management_ports))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/commands/cancel_order_ticket_command.atd))
+ (targets cancel_order_ticket_command_t.ml
+          cancel_order_ticket_command_t.mli
+          cancel_order_ticket_command_j.ml
+          cancel_order_ticket_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o cancel_order_ticket_command %{atd})
+   (run atdgen -j -o cancel_order_ticket_command %{atd}))))

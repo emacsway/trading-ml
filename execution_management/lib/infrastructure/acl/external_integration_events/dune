@@ -60,6 +60,16 @@
    (run atdgen -t -o order_unreachable_integration_event %{atd})
    (run atdgen -j -o order_unreachable_integration_event %{atd}))))
 
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/integration_events/order_cancelled_integration_event.atd))
+ (targets order_cancelled_integration_event_t.ml order_cancelled_integration_event_t.mli
+          order_cancelled_integration_event_j.ml order_cancelled_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_cancelled_integration_event %{atd})
+   (run atdgen -j -o order_cancelled_integration_event %{atd}))))
+
 ; Account-sourced mirrors (reservation_id wire field).
 (rule
  (deps
