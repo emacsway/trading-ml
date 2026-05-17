@@ -13,5 +13,6 @@ module Pov_params = Pov_params
 module Iceberg_params = Iceberg_params
 module Implementation_shortfall_params = Implementation_shortfall_params
 module Execution_directive = Execution_directive
+module Execution_policy = Execution_policy
 module Cancel_reason = Cancel_reason
 module Progress = Progress

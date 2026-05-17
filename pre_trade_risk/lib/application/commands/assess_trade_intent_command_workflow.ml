@@ -23,6 +23,7 @@ let execute
             symbol = Core.Instrument.to_qualified v.instrument;
             side = Core.Side.to_string v.side;
             quantity = Decimal.to_string approved_qty;
+            execution_directive = cmd.execution_directive;
           };
       Rop.succeed ()
   | Ok (v, Pre_trade_risk.Assessment.Reject reason) ->

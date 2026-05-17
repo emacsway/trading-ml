@@ -16,4 +16,5 @@ let () =
       ( "order_ticket_integration_events",
         Order_ticket_opened_integration_event_test.tests );
       ("queries", Queries_test.tests);
+      ("execution_directive_parse", Execution_directive_parse_test.tests);
     ]

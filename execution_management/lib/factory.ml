@@ -274,10 +274,33 @@ let build ~bus ~now ~(config : config) : t =
     | Dispatch_reserve { correlation_id; side; symbol; quantity; price } ->
         publish_reserve { correlation_id; side; symbol; quantity; price }
     | Dispatch_open_ticket
-        { reservation_id; correlation_id; book_id; symbol; side; quantity } ->
+        {
+          reservation_id;
+          correlation_id;
+          book_id;
+          symbol;
+          side;
+          quantity;
+          directive;
+        } ->
         Hashtbl.replace correlation_by_ticket reservation_id correlation_id;
+        let cmd_directive =
+          Option.map
+            (fun (d : Pm.directive_payload) :
+                 Cmds.Open_order_ticket_command.directive ->
+              { kind = d.directive_kind; params = d.directive_params })
+            directive
+        in
         let open_cmd : Cmds.Open_order_ticket_command.t =
-          { reservation_id; correlation_id; book_id; symbol; side; quantity }
+          {
+            reservation_id;
+            correlation_id;
+            book_id;
+            symbol;
+            side;
+            quantity;
+            directive = cmd_directive;
+          }
         in
         let _ =
           Cmds.Open_order_ticket_command_workflow.execute
@@ -324,9 +347,19 @@ let build ~bus ~now ~(config : config) : t =
                   occurred_at = now_iso8601 ();
                 }
             else
+              let directive =
+                Option.map
+                  (fun (d :
+                         Execution_management_external_view_models
+                         .Execution_directive_view_model
+                         .t) : Pm.directive_payload ->
+                    { directive_kind = d.kind; directive_params = d.params })
+                  ev.execution_directive
+              in
               let payload =
-                Pm.initial_payload ~book_id:ev.book_id ~symbol:(qualify_instrument ev)
-                  ~side:ev.side ~quantity:ev.quantity
+                Pm.initial_payload ?directive ~book_id:ev.book_id
+                  ~symbol:(qualify_instrument ev) ~side:ev.side
+                  ~quantity:ev.quantity ()
               in
               Pm.Engine.start engine ~correlation_id:ev.correlation_id
                 (Pm.Awaiting_reservation { payload });

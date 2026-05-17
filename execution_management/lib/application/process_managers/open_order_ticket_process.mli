@@ -30,6 +30,18 @@
     {!Trade_intents_planned_integration_event.leg.correlation_id})
     and echoed verbatim by every downstream BC. *)
 
+type directive_payload = {
+  directive_kind : string;
+  directive_params : string option;
+}
+(** Wire-shape execution directive carried alongside the saga
+    payload: [directive_kind] is the strategy tag (IMMEDIATE,
+    TWAP, ...) and [directive_params] is the opaque per-strategy
+    JSON-object string (None for IMMEDIATE). The handler at the
+    EMS-side command boundary parses this into the typed
+    {!Order_ticket.Values.Execution_directive.t}; absent means
+    "use the internal fallback policy". *)
+
 type payload = {
   book_id : string;
   symbol : string;
@@ -40,6 +52,7 @@ type payload = {
   kind_stop_price : string option;
   kind_limit_price : string option;
   tif : string;
+  directive : directive_payload option;
 }
 (** Trade payload captured at saga start; preserved while
     [Awaiting_reservation] so the data is available when the
@@ -84,6 +97,7 @@ type command =
       symbol : string;
       side : string;
       quantity : string;
+      directive : directive_payload option;
     }
       (** Emitted on transition from [Awaiting_reservation] to
           [Done] when the reservation lands. The factory routes
@@ -100,10 +114,19 @@ module Engine :
     module type of Workflow_engine.Make (Definition) (Workflow_engine.In_memory_store)
 
 val initial_payload :
-  book_id:string -> symbol:string -> side:string -> quantity:string -> payload
+  ?directive:directive_payload ->
+  book_id:string ->
+  symbol:string ->
+  side:string ->
+  quantity:string ->
+  unit ->
+  payload
 (** Build the initial saga state from an inbound trade-approved
     payload. The defaults for [kind_type] / [tif] are
-    ["MARKET"] and ["DAY"]. *)
+    ["MARKET"] and ["DAY"]. The optional [directive] is the
+    wire-shape strategy directive captured from the inbound IE;
+    absent means execution_management will fall back to its
+    internal policy default. *)
 
 val reserve_for_start :
   correlation_id:string -> payload:payload -> price:string -> command

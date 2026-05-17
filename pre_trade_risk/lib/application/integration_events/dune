@@ -13,7 +13,9 @@
  (preprocess
   (pps ppx_yojson_conv))
  (flags
-  (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Pre_trade_risk_view_models)))
 
 (rule
  (deps

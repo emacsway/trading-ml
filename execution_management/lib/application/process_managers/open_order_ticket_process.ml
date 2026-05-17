@@ -1,5 +1,10 @@
 module Inbound = Execution_management_external_integration_events
 
+type directive_payload = {
+  directive_kind : string;
+  directive_params : string option;
+}
+
 type payload = {
   book_id : string;
   symbol : string;
@@ -10,6 +15,12 @@ type payload = {
   kind_stop_price : string option;
   kind_limit_price : string option;
   tif : string;
+  directive : directive_payload option;
+      (** Wire-shape execution directive captured at saga start
+          (kind tag + optional per-strategy JSON params blob).
+          [None] when the originating trader intent omitted it;
+          the EMS-side command handler then falls back to the
+          internal Execution_policy default. *)
 }
 
 type state =
@@ -36,9 +47,10 @@ type command =
       symbol : string;
       side : string;
       quantity : string;
+      directive : directive_payload option;
     }
 
-let initial_payload ~book_id ~symbol ~side ~quantity =
+let initial_payload ?directive ~book_id ~symbol ~side ~quantity () =
   {
     book_id;
     symbol;
@@ -49,6 +61,7 @@ let initial_payload ~book_id ~symbol ~side ~quantity =
     kind_stop_price = None;
     kind_limit_price = None;
     tif = "DAY";
+    directive;
   }
 
 let reserve_for_start ~correlation_id ~(payload : payload) ~price =
@@ -84,6 +97,7 @@ module Definition = struct
               symbol = payload.symbol;
               side = payload.side;
               quantity = payload.quantity;
+              directive = payload.directive;
             }
         in
         (Done { reservation_id = ev.reservation_id }, [ open_cmd ])

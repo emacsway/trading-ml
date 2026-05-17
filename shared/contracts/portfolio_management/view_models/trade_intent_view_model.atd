@@ -1,13 +1,22 @@
 (* Wire contract: portfolio_management/lib/application/view_models/trade_intent_view_model.ml
 
    Cross-referenced types (resolved at code-generation time):
-   - instrument_view_model — see view_models/instrument_view_model.atd *)
+   - instrument_view_model — see view_models/instrument_view_model.atd
+   - execution_directive_view_model — see view_models/execution_directive_view_model.atd
+
+   The optional [execution_directive] field is the HOW of the
+   trader intent — the WHAT (instrument, side, quantity) and HOW
+   live side-by-side. Originates here at PM; pre_trade_risk
+   echoes through unchanged; execution_management consumes it
+   (with an internal Execution_policy fallback when absent). *)
 
 type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
+type execution_directive_view_model <ocaml from="Execution_directive_view_model" t="t"> = abstract
 
 type t = {
   book_id : string;
   instrument : instrument_view_model;
   side : string;
   quantity : string;
+  ?execution_directive : execution_directive_view_model option;
 }

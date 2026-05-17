@@ -1,3 +1,5 @@
+type directive = { kind : string; params : string option }
+
 type t = {
   reservation_id : int;
   correlation_id : string;
@@ -5,4 +7,5 @@ type t = {
   symbol : string;
   side : string;
   quantity : string;
+  directive : directive option;
 }

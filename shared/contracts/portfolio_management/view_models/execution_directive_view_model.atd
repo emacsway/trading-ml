@@ -1,0 +1,17 @@
+(* Wire contract: portfolio_management/lib/application/view_models/execution_directive_view_model.ml
+
+   How to execute a trader intent. Originates at portfolio_management
+   (the alpha / strategy layer that authors trade intents); flows
+   through pre_trade_risk unchanged (PTR is an approver, not an
+   enricher); consumed by execution_management — which falls back
+   to its internal Execution_policy default when the field is
+   absent.
+
+   Tag + opaque per-strategy JSON params blob. The same wire shape
+   is mirrored in pre_trade_risk and execution_management; each BC
+   owns its own typed copy. *)
+
+type t = {
+  kind <doc text="Strategy tag: IMMEDIATE | TWAP | VWAP | POV | ICEBERG | IMPLEMENTATION_SHORTFALL."> : string;
+  ?params <doc text="Per-strategy parameters as a JSON-object string. None for IMMEDIATE."> : string option;
+}

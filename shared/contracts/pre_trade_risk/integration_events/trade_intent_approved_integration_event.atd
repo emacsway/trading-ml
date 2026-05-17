@@ -1,4 +1,9 @@
-(* Wire contract: pre_trade_risk/lib/application/integration_events/trade_intent_approved_integration_event.ml *)
+(* Wire contract: pre_trade_risk/lib/application/integration_events/trade_intent_approved_integration_event.ml
+
+   Cross-referenced types (resolved at code-generation time):
+   - execution_directive_view_model — see view_models/execution_directive_view_model.atd *)
+
+type execution_directive_view_model <ocaml from="Execution_directive_view_model" t="t"> = abstract
 
 type t = {
   correlation_id : string;
@@ -6,4 +11,5 @@ type t = {
   symbol : string;
   side : string;
   quantity : string;
+  ?execution_directive <doc text="HOW to execute the trader intent. Echoed verbatim from the inbound Assess_trade_intent_command. None when the originating PM Trade_intent_view_model omitted the field; in that case execution_management falls back to its internal Execution_policy.default (Immediate)."> : execution_directive_view_model option;
 }

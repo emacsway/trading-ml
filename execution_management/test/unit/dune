@@ -11,6 +11,7 @@
   execution_management_queries
   execution_management_ports
   execution_management_persistence
+  execution_management_commands
   alcotest))
 
 (include_subdirs unqualified)

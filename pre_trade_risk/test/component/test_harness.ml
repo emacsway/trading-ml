@@ -126,6 +126,7 @@ let assess ctx ~book_id ~side ~symbol ~quantity ~price =
       side;
       quantity;
       price;
+      execution_directive = None;
     }
   in
   let publish_approved e = ctx.approved_pub := e :: !(ctx.approved_pub) in

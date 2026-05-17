@@ -13,4 +13,5 @@ let of_domain (i : domain) : t =
     instrument = Instrument_view_model.of_domain i.instrument;
     side = Side.to_string i.side;
     quantity = Decimal.to_string i.quantity;
+    execution_directive = None;
   }

@@ -22,8 +22,11 @@ let fresh_ctx () =
   let engine = Pm.Engine.create ~store ~dispatch in
   { engine; dispatched }
 
-let start_saga ctx ~correlation_id ~book_id ~symbol ~side ~quantity ~price =
-  let payload = Pm.initial_payload ~book_id ~symbol ~side ~quantity in
+let start_saga ?directive ctx ~correlation_id ~book_id ~symbol ~side ~quantity
+    ~price =
+  let payload =
+    Pm.initial_payload ?directive ~book_id ~symbol ~side ~quantity ()
+  in
   Pm.Engine.start ctx.engine ~correlation_id (Pm.Awaiting_reservation { payload });
   let dispatch_cb cmd = ctx.dispatched := cmd :: !(ctx.dispatched) in
   dispatch_cb (Pm.reserve_for_start ~correlation_id ~payload ~price);

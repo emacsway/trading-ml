@@ -1,0 +1,12 @@
+(* Wire contract: pre_trade_risk/lib/application/view_models/execution_directive_view_model.ml
+
+   Mirror of portfolio_management's view_models/execution_directive_view_model.atd.
+   PTR carries the directive verbatim from the inbound Trade_intents_planned
+   IE into the outbound Trade_intent_approved IE — the gate does not
+   author or modify it. Each BC owns its own generated copy of the
+   wire shape (per ADR-0001's BC-independence rule). *)
+
+type t = {
+  kind : string;
+  ?params : string option;
+}

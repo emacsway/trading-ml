@@ -5,6 +5,18 @@
     events. Does NOT touch the store — the workflow handles
     persistence. *)
 
+val resolve_directive :
+  Open_order_ticket_command.directive option ->
+  ( Execution_management.Order_ticket.Values.Execution_directive.t,
+    Command_error.t )
+  result
+(** Maps the optional wire-shape directive (kind + opaque JSON
+    params blob) to the typed
+    {!Order_ticket.Values.Execution_directive.t}. [None] falls
+    back to {!Order_ticket.Values.Execution_policy.default}
+    (Immediate). Exposed for unit tests covering the parser
+    branches; the workflow path goes through [handle]. *)
+
 val handle :
   now:int64 ->
   Open_order_ticket_command.t ->

@@ -24,3 +24,13 @@
   (progn
    (run atdgen -t -o trade_intent_view_model %{atd})
    (run atdgen -j -o trade_intent_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/portfolio_management/view_models/execution_directive_view_model.atd))
+ (targets execution_directive_view_model_t.ml execution_directive_view_model_t.mli
+          execution_directive_view_model_j.ml execution_directive_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o execution_directive_view_model %{atd})
+   (run atdgen -j -o execution_directive_view_model %{atd}))))

@@ -32,7 +32,7 @@ let publish ctx ev = ctx.events := ev :: !(ctx.events)
 let emitted ctx = List.rev !(ctx.events)
 let qty s = Decimal.of_string s
 
-let open_immediate_ticket ctx ~ticket_id ~correlation_id =
+let open_immediate_ticket ?directive ctx ~ticket_id ~correlation_id =
   let cmd : Cmds.Open_order_ticket_command.t =
     {
       reservation_id = ticket_id;
@@ -41,6 +41,7 @@ let open_immediate_ticket ctx ~ticket_id ~correlation_id =
       symbol = "SBER@MISX";
       side = "BUY";
       quantity = "100";
+      directive;
     }
   in
   match

@@ -13,7 +13,7 @@ let cid = "saga-A"
 
 let payload =
   Pm.initial_payload ~book_id:"alpha" ~symbol:"SBER@MISX" ~side:"BUY"
-    ~quantity:"10"
+    ~quantity:"10" ()
 
 let instrument_vm : Execution_management_external_view_models.Instrument_view_model.t
     =

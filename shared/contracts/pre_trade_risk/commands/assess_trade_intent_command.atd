@@ -1,4 +1,9 @@
-(* Wire contract: pre_trade_risk/lib/application/commands/assess_trade_intent_command.ml *)
+(* Wire contract: pre_trade_risk/lib/application/commands/assess_trade_intent_command.ml
+
+   Cross-referenced types (resolved at code-generation time):
+   - execution_directive_view_model — see view_models/execution_directive_view_model.atd *)
+
+type execution_directive_view_model <ocaml from="Execution_directive_view_model" t="t"> = abstract
 
 type t = {
   correlation_id <doc text="Saga-instance identifier — propagated verbatim from Trade_intents_planned_integration_event.leg.correlation_id. Echoed into the outbound IE so the saga routes the assessment back."> : string;
@@ -12,4 +17,6 @@ type t = {
   quantity <doc text="Decimal string accepted by Decimal.of_string."> : string;
 
   price <doc text="Mark used for notional / exposure calculations. Synthesised by the inbound ACL handler from the most recent Risk_view.Values.Position_snapshot.avg_price for the instrument, or Decimal.zero when the instrument is not currently held — in which case the gate rejects with 'zero price', matching the original Engine.Risk.check contract. A future milestone will route real marks via a Bar_updated subscription."> : string;
+
+  ?execution_directive <doc text="HOW to execute the trader intent. Carried verbatim from the PM Trade_intent_view_model and echoed unchanged into the outbound Trade_intent_approved IE. None preserves backwards compatibility with intents that omit the field."> : execution_directive_view_model option;
 }
