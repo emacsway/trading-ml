@@ -63,8 +63,9 @@ let on_event state (input : Input.t) ~now:_ : state * Decision.t =
           let new_state = fail_state state "cancelled" in
           ( new_state,
             { Decision.empty with terminal = Decision.Failed "cancelled" } )
-      | Input.Tick _ ->
-          (* Immediate is event-driven only; ticks are irrelevant. *)
+      | Input.Tick _ | Input.Volume_bar _ | Input.Price_quote _ ->
+          (* Immediate is event-driven only — clock / volume / price
+             feeds are irrelevant. *)
           (state, Decision.empty))
 
 let is_complete state =

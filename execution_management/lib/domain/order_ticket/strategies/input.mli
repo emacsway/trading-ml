@@ -1,15 +1,18 @@
 (** Strategy input event — the union of all stimuli a strategy
     can react to. The aggregate translates each domain event (clock
-    tick, broker IE, future volume bar / price quote) into the
+    tick, broker IE, volume bar, market-data quote) into the
     corresponding [Input.t] and feeds it to the embedded strategy.
 
-    PR1 lists the constructors needed by [Immediate] plus [Tick]
-    (which Immediate ignores but every time-driven strategy will
-    react to from PR2 onward). PR2 expands the union with
-    [Volume_bar] and [Price_quote] when VWAP / POV / Implementation
-    Shortfall land. The expansion point is deliberate — adding
-    constructors to this union is the abstraction's "load-bearing"
-    moment and is the exact spot the PR2 checkpoint inspects.
+    Eight constructors:
+    - [Tick]: scheduler-driven, consumed by TWAP / VWAP / IS;
+    - [Volume_bar]: volume-feed-driven, consumed by POV;
+    - [Price_quote]: market-data-driven, consumed by IS (adaptive
+      refinement on adverse price movement);
+    - [Placement_acknowledged]: broker accepted the submit;
+    - [Placement_filled]: broker reported a fill (full or partial);
+    - [Placement_rejected]: broker refused the slice;
+    - [Placement_unreachable]: transport failure on the slice;
+    - [Placement_cancelled]: broker confirmed the cancel.
 
     Strategies are not required to handle every constructor;
     irrelevant ones return [Decision.empty] with the state
@@ -17,6 +20,8 @@
 
 type t =
   | Tick of { now : int64 }
+  | Volume_bar of { bar : Values.Volume_bar.t }
+  | Price_quote of { quote : Values.Market_data_quote.t }
   | Placement_acknowledged of { placement_id : Placement.Values.Placement_id.t }
   | Placement_filled of {
       placement_id : Placement.Values.Placement_id.t;

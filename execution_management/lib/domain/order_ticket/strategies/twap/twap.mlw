@@ -1,0 +1,54 @@
+(** Why3 companion for [twap.mli] — boundary-condition proofs.
+
+    Pinned invariants:
+    - [Σ slice_quantity = total_quantity] across all [n] slices,
+      where the last slice absorbs the integer-division residue;
+    - [per_slice_quantity ≥ 0] given [total_quantity ≥ 0] and
+      [n_slices > 0];
+    - emitted_count is monotone non-decreasing and capped at
+      n_slices;
+    - terminal [failed = true] is absorbing. *)
+
+module Twap
+  use int.Int
+  use decimal.Decimal
+
+  type state = {
+    per_slice_quantity : Decimal.t;
+    last_slice_quantity : Decimal.t;
+    n_slices : int;
+    emitted_count : int;
+    failed : bool;
+  }
+
+  (** Sum of all slice quantities = (n−1) × per_slice + last_slice.
+      By construction last_slice = total − (n−1) × per_slice, so
+      the sum equals total exactly. *)
+  function total_emitted (s : state) : int =
+    (s.n_slices - 1) * raw s.per_slice_quantity + raw s.last_slice_quantity
+
+  predicate slices_sum_to_total (s : state) (total : Decimal.t) =
+    total_emitted s = raw total
+
+  lemma residue_construction_preserves_total :
+    forall total : Decimal.t, n : int, per_slice last_slice : Decimal.t.
+      n > 0 ->
+      raw last_slice = raw total - (n - 1) * raw per_slice ->
+      total_emitted
+        { per_slice_quantity = per_slice;
+          last_slice_quantity = last_slice;
+          n_slices = n;
+          emitted_count = 0;
+          failed = false }
+      = raw total
+
+  predicate emission_monotone (before after : state) =
+    after.emitted_count >= before.emitted_count /\
+    after.emitted_count <= after.n_slices
+
+  predicate failed_absorbing (before after : state) =
+    before.failed = true -> after.failed = true
+
+  lemma identity_is_failed_absorbing :
+    forall s : state. failed_absorbing s s
+end

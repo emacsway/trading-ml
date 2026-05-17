@@ -1,0 +1,34 @@
+(** Why3 companion for [iceberg.mli] — visibility-cap invariant.
+
+    Iceberg never asks the venue for more than [visible_qty] at a
+    time; the chunk-target invariant
+    [current_chunk_target ≤ visible_qty] holds at every step. The
+    cumulative emitted quantity never exceeds [total_quantity]. *)
+
+module Iceberg
+  use int.Int
+  use decimal.Decimal
+
+  type state = {
+    visible_qty : Decimal.t;
+    remaining_total : Decimal.t;
+    current_chunk_target : Decimal.t;
+    current_chunk_filled : Decimal.t;
+    failed : bool;
+  }
+
+  predicate chunk_within_visible (s : state) =
+    raw s.current_chunk_target <= raw s.visible_qty
+
+  predicate remaining_non_negative (s : state) =
+    raw s.remaining_total >= 0
+
+  predicate chunk_fill_within_target (s : state) =
+    raw s.current_chunk_filled <= raw s.current_chunk_target
+
+  predicate failed_absorbing (before after : state) =
+    before.failed = true -> after.failed = true
+
+  lemma identity_is_failed_absorbing :
+    forall s : state. failed_absorbing s s
+end

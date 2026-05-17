@@ -11,16 +11,22 @@
     and the {!Decision} output alphabet; per-strategy state types
     remain private to their own modules.
 
-    PR1: only [Immediate] populates the variant. PR2 adds Twap /
-    Vwap / Pov / Iceberg / Implementation_shortfall, each as
-    additional [type t = ... | Twap of Twap.state | ...] cases.
+    The directive variants ([Values.Execution_directive.t]) and
+    the strategy variants ({!t}) are isomorphic — the dispatcher
+    in {!init} translates one to the other.
 
     Strategy selection: the aggregate creates the initial [t] via
     {!init}, supplying the {!Values.Execution_directive.t} that
     came in from the trader intent (or the fallback [Immediate]
     from [Execution_policy]). *)
 
-type t = Immediate of Immediate.state
+type t =
+  | Immediate of Immediate.state
+  | Twap of Twap.state
+  | Vwap of Vwap.state
+  | Pov of Pov.state
+  | Iceberg of Iceberg.state
+  | Implementation_shortfall of Implementation_shortfall.state
 
 val init :
   intent:Values.Trade_intent.t ->

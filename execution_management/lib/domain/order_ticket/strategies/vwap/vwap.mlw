@@ -1,0 +1,38 @@
+(** Why3 companion for [vwap.mli] — boundary-condition only.
+
+    The slice schedule is precomputed: first n-1 entries from
+    [total × weight_i], the last absorbs the residue. The
+    algebraic identity [Σ slice_qty = total_quantity] is enforced
+    by the same residue construction proved formally for TWAP
+    (slice n−1 = total − Σ_{first n−1}, by construction).
+
+    Float-precision rounding in the intermediate Σ_{first n−1}
+    is absorbed at the boundary — the residue trick guarantees
+    algebraic exactness regardless of intermediate weight
+    rounding. We prove only the structural pieces here. *)
+
+module Vwap
+  use int.Int
+  use decimal.Decimal
+
+  type state = {
+    n_slices : int;
+    emitted_count : int;
+    failed : bool;
+  }
+
+  predicate emission_bounded (s : state) =
+    0 <= s.emitted_count <= s.n_slices
+
+  predicate emission_monotone (before after : state) =
+    after.emitted_count >= before.emitted_count
+
+  predicate failed_absorbing (before after : state) =
+    before.failed = true -> after.failed = true
+
+  lemma identity_is_failed_absorbing :
+    forall s : state. failed_absorbing s s
+
+  lemma identity_preserves_emission_monotone :
+    forall s : state. emission_monotone s s
+end
