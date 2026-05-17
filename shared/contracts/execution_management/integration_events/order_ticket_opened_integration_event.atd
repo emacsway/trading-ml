@@ -1,0 +1,23 @@
+(* Wire contract: execution_management/lib/application/integration_events/order_ticket_opened_integration_event.ml
+
+   The EMS layer announces that an OrderTicket has been opened
+   against an approved trader intent. Telemetry-only consumers
+   (SSE, audit, operator UI); other BCs do not react to it.
+
+   Cross-referenced types (resolved at code-generation time):
+   - instrument_view_model — see view_models/instrument_view_model.atd
+   - execution_directive_view_model — see view_models/execution_directive_view_model.atd *)
+
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
+type execution_directive_view_model <ocaml from="Execution_directive_view_model" t="t"> = abstract
+
+type t = {
+  correlation_id <doc text="Saga-instance identifier echoed verbatim from Trade_intent_approved."> : string;
+  ticket_id : int;
+  book_id : string;
+  instrument : instrument_view_model;
+  side : string;
+  total_quantity : string;
+  directive : execution_directive_view_model;
+  occurred_at : string;
+}

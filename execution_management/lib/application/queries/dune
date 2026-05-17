@@ -1,0 +1,36 @@
+(library
+ (name execution_management_queries)
+ (public_name trading.execution_management.queries)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core decimal execution_management
+            execution_management_ports
+            execution_management_view_models)
+ (preprocess (pps ppx_yojson_conv))
+ (flags
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Execution_management_view_models)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/queries/get_order_ticket_query.atd))
+ (targets get_order_ticket_query_t.ml
+          get_order_ticket_query_t.mli
+          get_order_ticket_query_j.ml
+          get_order_ticket_query_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o get_order_ticket_query %{atd})
+   (run atdgen -j -o get_order_ticket_query %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/queries/list_open_order_tickets_query.atd))
+ (targets list_open_order_tickets_query_t.ml
+          list_open_order_tickets_query_t.mli
+          list_open_order_tickets_query_j.ml
+          list_open_order_tickets_query_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o list_open_order_tickets_query %{atd})
+   (run atdgen -j -o list_open_order_tickets_query %{atd}))))

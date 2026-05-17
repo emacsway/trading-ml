@@ -1,0 +1,11 @@
+(* Wire contract: execution_management/lib/application/queries/list_open_order_tickets_query.ml
+
+   Operator inspection: list every non-terminal OrderTicket. The
+   request carries no parameters (placeholder record kept so the
+   wire shape is open for future filters: by book_id, by
+   instrument, etc.). Returns a list of
+   [Order_ticket_view_model.t]. *)
+
+type t = {
+  ?book_id <doc text="Reserved for a future per-book filter. Today ignored by the handler; lists everything."> : string option;
+}

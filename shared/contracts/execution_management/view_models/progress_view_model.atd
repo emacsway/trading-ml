@@ -1,0 +1,13 @@
+(* Wire contract: execution_management/lib/application/view_models/progress_view_model.ml
+
+   Read-model projection of {!Order_ticket.Values.Progress.t}. All
+   numeric fields are decimal strings accepted by [Decimal.of_string]
+   so the wire shape matches every other money-bearing payload in
+   the system. *)
+
+type t = {
+  total_quantity : string;
+  cumulative_filled : string;
+  remaining_quantity : string;
+  total_fees : string;
+}

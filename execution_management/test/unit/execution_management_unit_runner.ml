@@ -11,4 +11,9 @@ let () =
       ("iceberg", Iceberg_test.tests);
       ("implementation_shortfall", Implementation_shortfall_test.tests);
       ("order_ticket", Order_ticket_test.tests);
+      ( "order_ticket_view_model",
+        Order_ticket_view_model_test.tests );
+      ( "order_ticket_integration_events",
+        Order_ticket_opened_integration_event_test.tests );
+      ("queries", Queries_test.tests);
     ]

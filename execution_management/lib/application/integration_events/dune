@@ -2,9 +2,13 @@
  (name execution_management_integration_events)
  (public_name trading.execution_management.integration_events)
  (libraries yojson ppx_yojson_conv_lib atdgen-runtime
-            core decimal datetime execution_management)
+            core decimal datetime execution_management
+            execution_management_view_models)
  (preprocess (pps ppx_yojson_conv))
- (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+ (flags
+  (:standard
+   -open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+   -open Execution_management_view_models)))
 
 (rule
  (deps
@@ -29,3 +33,51 @@
   (progn
    (run atdgen -t -o trade_submission_blocked_integration_event %{atd})
    (run atdgen -j -o trade_submission_blocked_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_opened_integration_event.atd))
+ (targets order_ticket_opened_integration_event_t.ml
+          order_ticket_opened_integration_event_t.mli
+          order_ticket_opened_integration_event_j.ml
+          order_ticket_opened_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_opened_integration_event %{atd})
+   (run atdgen -j -o order_ticket_opened_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_completed_integration_event.atd))
+ (targets order_ticket_completed_integration_event_t.ml
+          order_ticket_completed_integration_event_t.mli
+          order_ticket_completed_integration_event_j.ml
+          order_ticket_completed_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_completed_integration_event %{atd})
+   (run atdgen -j -o order_ticket_completed_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_cancelled_integration_event.atd))
+ (targets order_ticket_cancelled_integration_event_t.ml
+          order_ticket_cancelled_integration_event_t.mli
+          order_ticket_cancelled_integration_event_j.ml
+          order_ticket_cancelled_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_cancelled_integration_event %{atd})
+   (run atdgen -j -o order_ticket_cancelled_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/integration_events/order_ticket_failed_integration_event.atd))
+ (targets order_ticket_failed_integration_event_t.ml
+          order_ticket_failed_integration_event_t.mli
+          order_ticket_failed_integration_event_j.ml
+          order_ticket_failed_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_failed_integration_event %{atd})
+   (run atdgen -j -o order_ticket_failed_integration_event %{atd}))))

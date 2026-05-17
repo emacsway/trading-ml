@@ -1,0 +1,25 @@
+(* Wire contract: execution_management/lib/application/view_models/placement_view_model.ml
+
+   Read-model projection of {!Order_ticket.Placement.t}. The
+   [placement_id] is the per-ticket local sequence id; the
+   broker-visible wire id is the factory's
+   [ticket_id * 1_000_000 + local_seq] encoding and is not
+   exposed here — operator surfaces think in ticket+local terms.
+
+   Per-placement avg fill price / fee totals are intentionally not
+   on the wire: the Placement entity tracks cumulative_filled only;
+   fee and price detail live on the individual {!Fill_record}s and
+   roll up at the ticket level via {!Progress.t}. *)
+
+type t = {
+  placement_id : int;
+  requested_quantity : string;
+  cumulative_filled : string;
+  remaining_quantity : string;
+  status <doc text="PENDING | WORKING | FILLED | REJECTED | UNREACHABLE | CANCELLED."> : string;
+  kind_type <json name="kind_type"> : string;
+  ?kind_price : string option;
+  ?kind_stop_price : string option;
+  ?kind_limit_price : string option;
+  tif : string;
+}

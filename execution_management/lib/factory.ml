@@ -4,6 +4,8 @@ module Outbound_ie = Execution_management_integration_events
 module Cmds = Execution_management_commands
 module Ports = Execution_management_ports
 module Persistence = Execution_management_persistence
+module View_models = Execution_management_view_models
+module Queries = Execution_management_queries
 module Ot = Execution_management.Order_ticket
 
 type t = { http_handler : Inbound_http.Route.handler }
@@ -127,6 +129,22 @@ let build ~bus ~now ~(config : config) : t =
     produce ~uri:"in-memory://execution-management.kill-switch-tripped"
       ~yojson_of:Outbound_ie.Kill_switch_tripped_integration_event.yojson_of_t
   in
+  let publish_ticket_opened =
+    produce ~uri:"in-memory://execution-management.order-ticket-opened"
+      ~yojson_of:Outbound_ie.Order_ticket_opened_integration_event.yojson_of_t
+  in
+  let publish_ticket_completed =
+    produce ~uri:"in-memory://execution-management.order-ticket-completed"
+      ~yojson_of:Outbound_ie.Order_ticket_completed_integration_event.yojson_of_t
+  in
+  let publish_ticket_cancelled =
+    produce ~uri:"in-memory://execution-management.order-ticket-cancelled"
+      ~yojson_of:Outbound_ie.Order_ticket_cancelled_integration_event.yojson_of_t
+  in
+  let publish_ticket_failed =
+    produce ~uri:"in-memory://execution-management.order-ticket-failed"
+      ~yojson_of:Outbound_ie.Order_ticket_failed_integration_event.yojson_of_t
+  in
   let publish_reserve =
     produce ~uri:"in-memory://account.reserve-command" ~yojson_of:yojson_of_wire_reserve
   in
@@ -165,19 +183,20 @@ let build ~bus ~now ~(config : config) : t =
      variant); silent on events that have no outbound effect yet
      (Ev_ticket_opened / Ev_placement_acknowledged / etc — those
      surface as outbound IEs in PR5). *)
+  let correlation_for tid =
+    Option.value (Hashtbl.find_opt correlation_by_ticket tid) ~default:""
+  in
   let publish_aggregate_event (ev : Ot.event) : unit =
     match ev with
     | Ev_ticket_opened e ->
-        Hashtbl.replace ticket_intent
-          (Ot.Values.Ticket_id.to_int e.ticket_id)
-          e.intent
+        let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
+        Hashtbl.replace ticket_intent tid e.intent;
+        publish_ticket_opened
+          (Outbound_ie.Order_ticket_opened_integration_event.of_domain
+             ~correlation_id:(correlation_for tid) e)
     | Ev_placement_dispatched e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
-        let correlation_id =
-          match Hashtbl.find_opt correlation_by_ticket tid with
-          | Some c -> c
-          | None -> "" (* should never happen — opened sets it *)
-        in
+        let correlation_id = correlation_for tid in
         let intent =
           match Hashtbl.find_opt ticket_intent tid with
           | Some i -> i
@@ -206,11 +225,7 @@ let build ~bus ~now ~(config : config) : t =
           }
     | Ev_ticket_cancelling_started e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
-        let correlation_id =
-          Option.value
-            (Hashtbl.find_opt correlation_by_ticket tid)
-            ~default:""
-        in
+        let correlation_id = correlation_for tid in
         List.iter
           (fun pid ->
             let wire_pid =
@@ -221,27 +236,30 @@ let build ~bus ~now ~(config : config) : t =
           e.outstanding_placements
     | Ev_ticket_failed e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
-        let correlation_id =
-          Option.value
-            (Hashtbl.find_opt correlation_by_ticket tid)
-            ~default:""
-        in
+        let correlation_id = correlation_for tid in
+        publish_ticket_failed
+          (Outbound_ie.Order_ticket_failed_integration_event.of_domain
+             ~correlation_id e);
         publish_release { correlation_id; reservation_id = tid };
         Hashtbl.remove correlation_by_ticket tid;
         Hashtbl.remove ticket_intent tid
     | Ev_ticket_cancelled e ->
         let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
-        let correlation_id =
-          Option.value
-            (Hashtbl.find_opt correlation_by_ticket tid)
-            ~default:""
-        in
+        let correlation_id = correlation_for tid in
+        publish_ticket_cancelled
+          (Outbound_ie.Order_ticket_cancelled_integration_event.of_domain
+             ~correlation_id e);
         publish_release { correlation_id; reservation_id = tid };
         Hashtbl.remove correlation_by_ticket tid;
         Hashtbl.remove ticket_intent tid
     | Ev_ticket_completed e ->
-        Hashtbl.remove correlation_by_ticket (Ot.Values.Ticket_id.to_int e.ticket_id);
-        Hashtbl.remove ticket_intent (Ot.Values.Ticket_id.to_int e.ticket_id)
+        let tid = Ot.Values.Ticket_id.to_int e.ticket_id in
+        let correlation_id = correlation_for tid in
+        publish_ticket_completed
+          (Outbound_ie.Order_ticket_completed_integration_event.of_domain
+             ~correlation_id e);
+        Hashtbl.remove correlation_by_ticket tid;
+        Hashtbl.remove ticket_intent tid
     | Ev_placement_acknowledged _ | Ev_placement_filled _
     | Ev_placement_rejected _ | Ev_placement_unreachable _
     | Ev_placement_cancelled _ ->
@@ -398,5 +416,23 @@ let build ~bus ~now ~(config : config) : t =
                     occurred_at = Datetime.Iso8601.format ev_t.occurred_at;
                   }))
   in
-  let http_handler = Execution_management_inbound_http.Http.make_handler () in
+  let get_order_ticket ticket_id : Yojson.Safe.t option =
+    let q : Queries.Get_order_ticket_query.t = { ticket_id } in
+    match
+      Queries.Get_order_ticket_query_handler.handle ticket_store_module
+        ~store_handle:ticket_store q
+    with
+    | None -> None
+    | Some vm -> Some (View_models.Order_ticket_view_model.yojson_of_t vm)
+  in
+  let list_open_order_tickets () : Yojson.Safe.t list =
+    let q : Queries.List_open_order_tickets_query.t = { book_id = None } in
+    Queries.List_open_order_tickets_query_handler.handle ticket_store_module
+      ~store_handle:ticket_store q
+    |> List.map View_models.Order_ticket_view_model.yojson_of_t
+  in
+  let http_handler =
+    Execution_management_inbound_http.Http.make_handler ~get_order_ticket
+      ~list_open_order_tickets ()
+  in
   { http_handler }

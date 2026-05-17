@@ -1,0 +1,13 @@
+(* Wire contract: execution_management/lib/application/view_models/strategy_status_view_model.ml
+
+   Read-model projection of the strategy state inside an
+   OrderTicket. Carries the strategy kind plus a boolean
+   completeness flag derived from the strategy's own
+   [is_complete]. Per-strategy progress detail (TWAP slice index,
+   POV participation ratio, etc.) is intentionally not on the
+   wire — that's a debug surface, not a contract. *)
+
+type t = {
+  kind : string;
+  is_complete : bool;
+}

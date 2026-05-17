@@ -1,0 +1,15 @@
+(* Wire contract: execution_management/lib/application/view_models/execution_directive_view_model.ml
+
+   Read-model projection of {!Order_ticket.Values.Execution_directive.t}.
+   Carries the strategy tag plus an opaque per-strategy params blob
+   (JSON object serialised to a string). Keeping the params as a
+   string makes the wire contract stable across future
+   strategy-parameter changes — every consumer that needs to read
+   the params owns its own typed schema. The same shape is mirrored
+   on the trader-intent surface in portfolio_management / pre_trade_risk
+   in PR7. *)
+
+type t = {
+  kind <doc text="Strategy tag: IMMEDIATE | TWAP | VWAP | POV | ICEBERG | IMPLEMENTATION_SHORTFALL."> : string;
+  ?params <doc text="Per-strategy parameters as a JSON-object string. None for IMMEDIATE."> : string option;
+}

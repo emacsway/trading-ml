@@ -1,6 +1,79 @@
 (library
  (name execution_management_view_models)
  (public_name trading.execution_management.view_models)
- (libraries yojson ppx_yojson_conv_lib core decimal execution_management)
+ (libraries yojson ppx_yojson_conv_lib atdgen-runtime
+            core decimal execution_management)
  (preprocess (pps ppx_yojson_conv))
  (flags (:standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives)))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/instrument_view_model.atd))
+ (targets instrument_view_model_t.ml
+          instrument_view_model_t.mli
+          instrument_view_model_j.ml
+          instrument_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o instrument_view_model %{atd})
+   (run atdgen -j -o instrument_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/progress_view_model.atd))
+ (targets progress_view_model_t.ml
+          progress_view_model_t.mli
+          progress_view_model_j.ml
+          progress_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o progress_view_model %{atd})
+   (run atdgen -j -o progress_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/execution_directive_view_model.atd))
+ (targets execution_directive_view_model_t.ml
+          execution_directive_view_model_t.mli
+          execution_directive_view_model_j.ml
+          execution_directive_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o execution_directive_view_model %{atd})
+   (run atdgen -j -o execution_directive_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/strategy_status_view_model.atd))
+ (targets strategy_status_view_model_t.ml
+          strategy_status_view_model_t.mli
+          strategy_status_view_model_j.ml
+          strategy_status_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o strategy_status_view_model %{atd})
+   (run atdgen -j -o strategy_status_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/placement_view_model.atd))
+ (targets placement_view_model_t.ml
+          placement_view_model_t.mli
+          placement_view_model_j.ml
+          placement_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o placement_view_model %{atd})
+   (run atdgen -j -o placement_view_model %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/execution_management/view_models/order_ticket_view_model.atd))
+ (targets order_ticket_view_model_t.ml
+          order_ticket_view_model_t.mli
+          order_ticket_view_model_j.ml
+          order_ticket_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o order_ticket_view_model %{atd})
+   (run atdgen -j -o order_ticket_view_model %{atd}))))

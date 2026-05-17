@@ -1,0 +1,34 @@
+(* Wire contract: execution_management/lib/application/view_models/order_ticket_view_model.ml
+
+   Read-model projection of {!Order_ticket.t}. The canonical
+   inspection surface — queries and the [Order_ticket_*_integration_event]
+   IEs both reference this shape for the ticket itself; the IEs
+   add their own envelope (correlation_id, occurred_at) on top.
+
+   Cross-referenced types resolved via atdgen at code-generation time:
+
+   - instrument_view_model — see view_models/instrument_view_model.atd
+   - execution_directive_view_model — see view_models/execution_directive_view_model.atd
+   - progress_view_model — see view_models/progress_view_model.atd
+   - strategy_status_view_model — see view_models/strategy_status_view_model.atd
+   - placement_view_model — see view_models/placement_view_model.atd *)
+
+type instrument_view_model <ocaml from="Instrument_view_model" t="t"> = abstract
+type execution_directive_view_model <ocaml from="Execution_directive_view_model" t="t"> = abstract
+type progress_view_model <ocaml from="Progress_view_model" t="t"> = abstract
+type strategy_status_view_model <ocaml from="Strategy_status_view_model" t="t"> = abstract
+type placement_view_model <ocaml from="Placement_view_model" t="t"> = abstract
+
+type t = {
+  ticket_id : int;
+  book_id : string;
+  instrument : instrument_view_model;
+  side : string;
+  total_quantity : string;
+  directive : execution_directive_view_model;
+  lifecycle <doc text="WORKING | CANCELLING | FILLED | CANCELLED | FAILED."> : string;
+  ?lifecycle_reason <doc text="Free-form. Present for CANCELLING / CANCELLED / FAILED."> : string option;
+  strategy : strategy_status_view_model;
+  progress : progress_view_model;
+  placements : placement_view_model list;
+}

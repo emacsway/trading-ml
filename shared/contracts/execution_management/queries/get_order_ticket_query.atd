@@ -1,0 +1,9 @@
+(* Wire contract: execution_management/lib/application/queries/get_order_ticket_query.ml
+
+   Operator inspection: fetch a single OrderTicket snapshot by its
+   identifier. Returns an [Order_ticket_view_model.t] on hit, None
+   on miss. *)
+
+type t = {
+  ticket_id : int;
+}
