@@ -95,7 +95,12 @@ let to_target_proposal (v : validated_set_target_command) : Common.Target_propos
   let positions =
     List.map
       (fun (vp : validated_position) ->
-        ({ book_id = v.book_id; instrument = vp.instrument; target_qty = vp.target_qty }
+        ({
+           book_id = v.book_id;
+           instrument = vp.instrument;
+           target_qty = vp.target_qty;
+           coupling = None;
+         }
           : Common.Target_position.t))
       v.positions
   in

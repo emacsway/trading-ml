@@ -10,4 +10,7 @@ let () =
       ("pair_mean_reversion", Pair_mean_reversion_test.tests);
       ("alpha_view", Alpha_view_test.tests);
       ("sizing", Sizing_test.tests);
+      ("construction_intent", Construction_intent_test.tests);
+      ("equity_proportional", Equity_proportional_test.tests);
+      ("risk_config", Risk_config_test.tests);
     ]

@@ -8,7 +8,7 @@ let book = Common.Book_id.of_string "alpha"
 let inst sym = Instrument.of_qualified sym
 
 let position ~book_id instrument target_qty : Common.Target_position.t =
-  { book_id; instrument; target_qty }
+  { book_id; instrument; target_qty; coupling = None }
 
 let proposal ~book_id positions : Common.Target_proposal.t =
   { book_id; positions; source = "test"; proposed_at = 1700000000L }

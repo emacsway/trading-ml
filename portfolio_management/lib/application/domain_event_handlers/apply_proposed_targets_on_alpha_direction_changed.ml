@@ -21,7 +21,9 @@ let proposal_for_book
     ~(instrument : Core.Instrument.t)
     ~(target_qty : Decimal.t)
     ~(occurred_at : int64) : Pm.Common.Target_proposal.t =
-  let position : Pm.Common.Target_position.t = { book_id; instrument; target_qty } in
+  let position : Pm.Common.Target_position.t =
+    { book_id; instrument; target_qty; coupling = None }
+  in
   { book_id; positions = [ position ]; source = "alpha_view"; proposed_at = occurred_at }
 
 let apply_for_book

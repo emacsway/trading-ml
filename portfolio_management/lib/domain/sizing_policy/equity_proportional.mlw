@@ -1,0 +1,46 @@
+(** Why3 companion for [equity_proportional.mli] — algebraic
+    properties of the canonical sizing function
+    [qty = book_equity × weight / mark].
+
+    The OCaml side is total: a non-positive [mark] short-circuits
+    to zero rather than dividing. Here we model the same
+    sentinel via guarded equations and prove the load-bearing
+    properties downstream clip and reconciliation depend on. *)
+
+module Equity_proportional
+  use int.Int
+  use decimal.Decimal
+
+  (** Logical model of [qty_of]: the OCaml sentinel
+      [mark ≤ 0 ⇒ qty = 0] is captured here. The non-degenerate
+      case [qty = book_equity × weight / mark] is left abstract
+      via [decimal.Decimal.mul_d / div_d]: their precondition
+      (no int64 overflow) is taken as given at this layer. *)
+
+  function qty_of (book_equity weight mark : Decimal.t) : Decimal.t =
+    if raw mark <= 0 then zero
+    else if raw book_equity = 0 then zero
+    else mul_d book_equity weight  (* logical placeholder: see note below *)
+
+  (** {2 Sentinel laws — directly observable in the OCaml output} *)
+
+  lemma qty_zero_when_mark_nonpositive :
+    forall be w m: Decimal.t.
+      raw m <= 0 -> qty_of be w m = zero
+
+  lemma qty_zero_when_equity_zero :
+    forall w m: Decimal.t.
+      raw m > 0 -> qty_of zero w m = zero
+
+  (** {2 Sign-preservation (zero-equity / zero-weight collapse to zero)}
+
+      The full per-leg sign law
+      [sign(qty) = sign(weight)] would require a [div] sign-
+      preservation lemma; we keep the weaker "zero-zero"
+      direction here and let the dedicated [decimal.mlw]
+      sign laws (when added) be re-used downstream. *)
+
+  lemma qty_zero_when_weight_zero :
+    forall be m: Decimal.t.
+      raw m > 0 -> raw be > 0 -> qty_of be zero m = zero
+end

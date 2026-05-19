@@ -1,0 +1,32 @@
+(** Why3 companion for [source.mli] — tagged origin of a
+    construction intent. The variants are kept abstract: the
+    parameters of [Alpha_view] and [Pair_mean_reversion] do not
+    participate in the algebraic properties downstream code
+    relies on, so the .mlw exposes only the tag-level
+    decomposition. *)
+
+module Source
+  use int.Int
+
+  type alpha_source_id
+  type pair
+
+  type t =
+    | Alpha_view alpha_source_id
+    | Pair_mean_reversion pair
+
+  predicate is_scalar (s: t) =
+    match s with
+    | Alpha_view _ -> true
+    | Pair_mean_reversion _ -> false
+    end
+
+  predicate is_coupled (s: t) =
+    match s with
+    | Alpha_view _ -> false
+    | Pair_mean_reversion _ -> true
+    end
+
+  lemma scalar_xor_coupled : forall s: t.
+    is_scalar s <-> not (is_coupled s)
+end

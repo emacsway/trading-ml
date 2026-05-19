@@ -1,0 +1,19 @@
+(** Why3 companion for [coupling.mli] — opaque identifier with an
+    injective key projection, same shape as [book_id.mlw]. The key
+    is the load-bearing object: equality of identifiers is defined
+    as equality of keys. *)
+
+module Coupling
+  use int.Int
+
+  type t
+  function key (x: t) : int
+
+  axiom key_inj : forall a b: t. key a = key b -> a = b
+
+  predicate eq (a b: t) = key a = key b
+
+  lemma eq_refl  : forall a: t. eq a a
+  lemma eq_sym   : forall a b: t. eq a b -> eq b a
+  lemma eq_trans : forall a b c: t. eq a b -> eq b c -> eq a c
+end

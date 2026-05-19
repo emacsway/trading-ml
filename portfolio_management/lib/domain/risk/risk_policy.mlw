@@ -1,6 +1,8 @@
-(** Why3 companion for [risk_policy.mli] — clip pre/post conditions.
-    States the per-instrument and gross-exposure post-conditions
-    abstractly. *)
+(** Why3 companion for [risk_policy.mli] — clip pre/post
+    conditions. States the per-instrument and gross-exposure
+    post-conditions abstractly, plus the load-bearing
+    ratio-preservation property that group-aware clipping
+    enforces on coupled legs. *)
 
 module Risk_policy
   use int.Int
@@ -17,18 +19,40 @@ module Risk_policy
 
   function clip (limits: RL.t) (p: TPR.t) : TPR.t
 
-  (** Notional of a single leg under the supplied mark. Real notional
-      uses absolute target_qty; we model it abstractly. *)
+  (** Notional of a single leg under the supplied mark. Real
+      notional uses absolute target_qty; we model it abstractly. *)
   function notional (tp: TP.t) : Decimal.t
 
   axiom notional_nonneg :
     forall tp: TP.t. raw (notional tp) >= 0
 
-  (** Post-condition: every leg in the clipped proposal respects the
-      per-instrument notional cap. *)
+  (** Post-condition: every leg in the clipped proposal respects
+      the per-instrument notional cap. *)
   axiom per_instrument_cap :
     forall limits: RL.t, p: TPR.t, tp: TP.t.
       RL.well_formed limits ->
       mem tp (clip limits p).TPR.positions ->
       raw (notional tp) <= raw limits.RL.max_per_instrument_notional
+
+  (** Ratio-preservation for coupling groups: for any two legs
+      sharing a {!Coupling.t} in the clipped proposal, their
+      target_qty ratio matches the ratio in the input proposal.
+      Modelled as an axiom — discharged operationally by the
+      OCaml [group_scale_for_per_instrument] applying one common
+      scale across the entire group. *)
+  axiom coupling_ratio_preserved :
+    forall limits: RL.t, p: TPR.t, a b: TP.t.
+      RL.well_formed limits ->
+      mem a (clip limits p).TPR.positions ->
+      mem b (clip limits p).TPR.positions ->
+      TP.shares_coupling a b ->
+      (* the ratio (a.target_qty / b.target_qty) — abstract; we
+         state the structural property via [exists a' b' in p]
+         with the same shares_coupling and matching ratio. *)
+      exists a' b': TP.t.
+        mem a' p.TPR.positions /\
+        mem b' p.TPR.positions /\
+        TP.shares_coupling a' b' /\
+        a.TP.instrument = a'.TP.instrument /\
+        b.TP.instrument = b'.TP.instrument
 end

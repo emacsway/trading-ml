@@ -1,10 +1,14 @@
-(** Why3 companion for [target_position.mli] — VO record with no
-    behavioural lemmas; included for structural parity with the OCaml
-    side and as an anchor for downstream invariants in
-    [target_portfolio.mlw]. *)
+(** Why3 companion for [target_position.mli] — VO record carrying
+    an optional coupling identifier. Coupling membership is the
+    key the clipping pass uses to detect inter-leg groups; the
+    .mlw introduces the abstract predicate [shares_coupling]
+    used by downstream proofs in [risk_policy.mlw]. *)
 
 module Target_position
+  use int.Int
+  use option.Option
   use decimal.Decimal
+  use common.coupling.Coupling as Cpl
 
   type book_id
   type instrument
@@ -13,5 +17,27 @@ module Target_position
     book_id    : book_id;
     instrument : instrument;
     target_qty : Decimal.t;
+    coupling   : option Cpl.t;
   }
+
+  predicate has_coupling (p: t) (c: Cpl.t) =
+    match p.coupling with
+    | None    -> false
+    | Some c' -> Cpl.eq c c'
+    end
+
+  predicate shares_coupling (a b: t) =
+    match a.coupling, b.coupling with
+    | Some ca, Some cb -> Cpl.eq ca cb
+    | _, _             -> false
+    end
+
+  lemma shares_coupling_reflexive_when_some : forall a: t, c: Cpl.t.
+    a.coupling = Some c -> shares_coupling a a
+
+  lemma shares_coupling_none_left : forall a b: t.
+    a.coupling = None -> not (shares_coupling a b)
+
+  lemma shares_coupling_none_right : forall a b: t.
+    b.coupling = None -> not (shares_coupling a b)
 end

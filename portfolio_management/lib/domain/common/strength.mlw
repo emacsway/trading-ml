@@ -1,0 +1,21 @@
+(** Why3 companion for [strength.mli] — dimensionless conviction
+    on [\[0, 1\]]. The interval is the load-bearing invariant;
+    downstream proof obligations that depend on "strength × x"
+    being a contraction of [x] discharge the bound via
+    [in_unit_interval]. *)
+
+module Strength
+  use int.Int
+  use decimal.Decimal
+
+  type t = Decimal.t
+
+  (** [unit_] is [10^8], the raw representation of 1.0 in
+      [decimal.mlw]; a [Strength.t] is in [\[0, 1\]] iff its raw
+      lies in [\[0, unit_\]]. *)
+  predicate in_unit_interval (s: t) =
+    0 <= raw s <= unit_
+
+  lemma zero_in_unit_interval :
+    in_unit_interval zero
+end

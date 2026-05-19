@@ -1,0 +1,72 @@
+(** Why3 companion for [construction_intent.mli] — dimensionless
+    decision of a portfolio-construction policy.
+
+    The leg invariant [|weight| ≤ 1] is stated per-leg; the
+    [Σ |w| ≤ 1] aggregate bound is the load-bearing invariant
+    of [Coupled] intents that sizing downstream relies on to
+    prove its post-conditions (e.g. that a coupled-leg-sized
+    [target_qty] cannot exceed [book_equity / mark]).
+
+    Why3 cannot prove a list-aggregation bound without inducting
+    over the list; the [sum_abs_weights_bounded] predicate is
+    declared and an [axiom] records that {!Construction_intent.coupled}
+    only constructs intents satisfying it — the OCaml smart
+    constructor discharges the obligation operationally. *)
+
+module Construction_intent
+  use int.Int
+  use list.List
+  use list.Mem
+  use decimal.Decimal
+  use common.book_id.Book_id as BI
+  use common.direction.Direction as Dir
+  use common.strength.Strength as Strength
+  use common.coupling.Coupling as Cpl
+  use common.source.Source as Src
+
+  type instrument
+
+  type leg = {
+    instrument : instrument;
+    weight     : Decimal.t;
+  }
+
+  predicate leg_in_unit_interval (l: leg) =
+    -unit_ <= raw l.weight <= unit_
+
+  function sum_abs_weights (xs: list leg) : int =
+    match xs with
+    | Nil -> 0
+    | Cons l rest ->
+        (if raw l.weight < 0 then - raw l.weight else raw l.weight)
+        + sum_abs_weights rest
+    end
+
+  predicate sum_abs_weights_bounded (xs: list leg) =
+    sum_abs_weights xs <= unit_
+
+  type t =
+    | Scalar    BI.t instrument Dir.t Strength.t Src.t int
+    | Coupled   BI.t (list leg) Cpl.t Src.t int
+
+  function book_id (i: t) : BI.t =
+    match i with
+    | Scalar  b _ _ _ _ _ -> b
+    | Coupled b _ _ _ _   -> b
+    end
+
+  function source (i: t) : Src.t =
+    match i with
+    | Scalar  _ _ _ _ s _ -> s
+    | Coupled _ _ _ s _   -> s
+    end
+
+  predicate well_formed (i: t) =
+    match i with
+    | Scalar _ _ _ s _ _ ->
+        Strength.in_unit_interval s
+    | Coupled _ legs _ _ _ ->
+        (forall l: leg. mem l legs -> leg_in_unit_interval l) /\
+        sum_abs_weights_bounded legs
+    end
+end

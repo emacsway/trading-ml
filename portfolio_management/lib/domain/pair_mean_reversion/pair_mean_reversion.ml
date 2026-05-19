@@ -52,10 +52,13 @@ let proposal_for_direction
   in
   let a = Common.Pair.a config.pair in
   let b = Common.Pair.b config.pair in
+  let coupling =
+    Some (Common.Coupling.make ~source:"pair_mean_reversion" proposed_at)
+  in
   let positions : Common.Target_position.t list =
     [
-      { book_id = config.book_id; instrument = a; target_qty = signed_a };
-      { book_id = config.book_id; instrument = b; target_qty = signed_b };
+      { book_id = config.book_id; instrument = a; target_qty = signed_a; coupling };
+      { book_id = config.book_id; instrument = b; target_qty = signed_b; coupling };
     ]
   in
   { book_id = config.book_id; positions; source = name; proposed_at }
