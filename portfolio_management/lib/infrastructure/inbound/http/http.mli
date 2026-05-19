@@ -7,6 +7,9 @@
       POST /api/portfolio_management/alpha_subscriptions
         — register a {!Common.Alpha_subscription.t} for an
           [(alpha_source_id, instrument, book_id)] triplet.
+      POST /api/portfolio_management/pair_mr_policies
+        — define a {!Pair_mean_reversion} policy state for a
+          book via {!Define_pair_mr_command.t}.
 
     Synchronous: 200 OK on success, 400 Bad Request with a
     structured error list on Rop validation failure.
@@ -29,5 +32,11 @@ val make_handler :
     ( unit,
       Portfolio_management_commands.Subscribe_book_to_alpha_command_handler
       .handle_error )
+    Rop.t) ->
+  define_pair_mr:
+    (Portfolio_management_commands.Define_pair_mr_command.t ->
+    ( unit,
+      Portfolio_management_commands.Define_pair_mr_command_handler.handle_error
+    )
     Rop.t) ->
   Inbound_http.Route.handler

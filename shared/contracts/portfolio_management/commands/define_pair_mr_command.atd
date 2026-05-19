@@ -1,0 +1,23 @@
+(* Wire contract: portfolio_management/lib/application/commands/define_pair_mr_command.ml
+
+   Defines (creates or replaces) a [Pair_mean_reversion] policy
+   state for a book. The book scopes the policy; the pair scopes
+   the instruments it acts on; the window + thresholds scope its
+   hysteresis behaviour. Sizing is governed by the book's
+   [Risk_config], not this command. *)
+
+type t = {
+  book_id <doc text="Identifier of the book the policy runs on. Direction flips emitted by this policy will produce a Coupled construction intent addressed to this book."> : string;
+
+  a <doc text="First leg's qualified instrument symbol (e.g. \"SBER@MISX\"); ordered."> : string;
+
+  b <doc text="Second leg's qualified instrument symbol; must differ from a."> : string;
+
+  hedge_ratio <doc text="β coefficient for sizing the b-leg against a, as a Decimal string. Must be strictly positive."> : string;
+
+  window <doc text="Rolling-window length (in bars) for the regression / z-score computation. Must be > 0."> : int;
+
+  z_entry <doc text="|z| threshold to open a spread position, as a Decimal string. Must be strictly greater than |z_exit| (hysteresis)."> : string;
+
+  z_exit <doc text="|z| threshold to close an open spread position, as a Decimal string."> : string;
+}

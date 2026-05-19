@@ -18,4 +18,6 @@ let () =
         Configure_risk_command_handler_test.tests );
       ( "subscribe_book_to_alpha_command_handler",
         Subscribe_book_to_alpha_command_handler_test.tests );
+      ( "define_pair_mr_command_handler",
+        Define_pair_mr_command_handler_test.tests );
     ]

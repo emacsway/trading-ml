@@ -269,6 +269,20 @@ let build ~bus ~now : t =
     Portfolio_management_commands.Subscribe_book_to_alpha_command_workflow.execute
       ~persist_subscription cmd
   in
+  let persist_pair_mr_state ~book_id ~pair ~state =
+    let key = (book_id, pair) in
+    match Hashtbl.find_opt pair_mr_states key with
+    | Some r -> r := state
+    | None -> Hashtbl.replace pair_mr_states key (ref state)
+  in
+  let dispatch_define_pair_mr cmd :
+      ( unit,
+        Portfolio_management_commands.Define_pair_mr_command_handler.handle_error
+      )
+      Rop.t =
+    Portfolio_management_commands.Define_pair_mr_command_workflow.execute
+      ~persist_pair_mr_state cmd
+  in
   (* [dispatch_set_target] is reserved scaffolding for future external
      entries (PM HTTP route / CLI override / cross-BC import). No
      internal pipeline routes through it today — pair-mr applies
@@ -330,5 +344,6 @@ let build ~bus ~now : t =
     Portfolio_management_inbound_http.Http.make_handler
       ~configure_risk:dispatch_configure_risk
       ~subscribe_book_to_alpha:dispatch_subscribe_book_to_alpha
+      ~define_pair_mr:dispatch_define_pair_mr
   in
   { http_handler }
