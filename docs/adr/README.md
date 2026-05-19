@@ -38,6 +38,7 @@ numbered, markdown, structured. Each ADR is immutable once merged
 | [0023](0023-broker-bar-feed-into-em-ports.md) | Broker bar feed into execution_management — one subscriber, two ports | Accepted | 2026-05-19 |
 | [0024](0024-equity-anchored-sizing-with-explicit-risk-config.md) | Equity-anchored sizing with explicit Risk_config | Accepted | 2026-05-19 |
 | [0025](0025-volatility-target-sizing.md) | Volatility-target sizing as the first vol-aware policy | Accepted | 2026-05-19 |
+| [0026](0026-bar-stream-multi-timeframe-routing.md) | Bar streams as first-class subscriptions; multi-timeframe routing through domain BCs | Proposed | 2026-05-20 |
 
 ## Template
 
