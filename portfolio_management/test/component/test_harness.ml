@@ -60,6 +60,12 @@ type ctx = {
       (** Keyed by [Instrument.to_qualified]; per-instrument, not
           per-book (matches production: a market price is a property
           of the instrument, not of the holder). *)
+  vol_states : (string, Pm.Common.Vol_state.t ref) Hashtbl.t;
+      (** Per-instrument rolling-stdev state; mirrors the factory's
+          production registry. Bars supplied via [feed_bar] populate
+          and update these entries. *)
+  vol_window : int;
+  vol_annualisation_factor : float;
   target_portfolio_updated_pub : Target_portfolio_updated_ie.t list ref;
   trade_intents_planned_pub : Trade_intents_planned_ie.t list ref;
   last_set_target_result : (unit, Set_target_h.handle_error) Rop.t option;
@@ -69,7 +75,13 @@ type ctx = {
   last_apply_bar_result : (unit, Apply_bar_h.handle_error) Rop.t option;
 }
 
-let fresh_ctx () =
+(* Default window/factor mirror the factory's; reasonable for
+   scenarios that exercise the vol-target path. Smaller-window
+   variants can be assembled via [fresh_ctx_with_vol]. *)
+let default_vol_window = 20
+let default_vol_annualisation_factor = 252.0
+
+let fresh_ctx_with_vol ~vol_window ~vol_annualisation_factor () =
   {
     target_portfolio = ref (Pm.Target_portfolio.empty book_alpha);
     actual_portfolio = ref (Pm.Actual_portfolio.empty book_alpha);
@@ -78,6 +90,9 @@ let fresh_ctx () =
     risk_configs = Hashtbl.create 4;
     total_equities = Hashtbl.create 4;
     marks = Hashtbl.create 16;
+    vol_states = Hashtbl.create 16;
+    vol_window;
+    vol_annualisation_factor;
     target_portfolio_updated_pub = ref [];
     trade_intents_planned_pub = ref [];
     last_set_target_result = None;
@@ -86,6 +101,10 @@ let fresh_ctx () =
     last_define_alpha_view_result = None;
     last_apply_bar_result = None;
   }
+
+let fresh_ctx () =
+  fresh_ctx_with_vol ~vol_window:default_vol_window
+    ~vol_annualisation_factor:default_vol_annualisation_factor ()
 
 let actual_portfolio_for ctx book =
   if Pm.Common.Book_id.equal book book_alpha then Some ctx.actual_portfolio else None
@@ -174,11 +193,54 @@ let mark_for ctx _book instrument =
   | Some p -> p
   | None -> Decimal.zero
 
-let volatility_for _instrument = None
+let volatility_for ctx (instrument : Core.Instrument.t) : Decimal.t option =
+  match
+    Hashtbl.find_opt ctx.vol_states (Core.Instrument.to_qualified instrument)
+  with
+  | None -> None
+  | Some r ->
+      Option.map Pm.Common.Volatility.to_decimal
+        (Pm.Common.Vol_state.current !r)
 
-let sizing_for _book_id : DEH.Build_target_on_construction_intent.sizing_fn =
+let make_update_vol ctx (instrument : Core.Instrument.t) ~(close : Decimal.t) :
+    unit =
+  if Decimal.is_positive close then
+    let key = Core.Instrument.to_qualified instrument in
+    let state_ref =
+      match Hashtbl.find_opt ctx.vol_states key with
+      | Some r -> r
+      | None ->
+          let r =
+            ref
+              (Pm.Common.Vol_state.init ~window:ctx.vol_window
+                 ~annualisation_factor:ctx.vol_annualisation_factor)
+          in
+          Hashtbl.replace ctx.vol_states key r;
+          r
+    in
+    state_ref := Pm.Common.Vol_state.update !state_ref ~close
+
+(* Per-book dispatch mirrors [Factory.sizing_for]: read the
+   book's [Risk_config.sizing_policy] and route to the matching
+   [Sizing_policy.S] implementation. Falls back to
+   [Equity_proportional] when no Risk_config is present (the
+   unified handler short-circuits on missing config anyway, so
+   the choice is observationally irrelevant). *)
+let sizing_for ctx book_id : DEH.Build_target_on_construction_intent.sizing_fn =
   fun ~book_equity ~mark ~volatility intent ->
-    Pm.Sizing_policy.Equity_proportional.size () ~book_equity ~mark ~volatility intent
+    let choice =
+      match risk_config_for ctx book_id with
+      | Some cfg -> Pm.Risk_config.sizing_policy cfg
+      | None -> Pm.Common.Sizing_policy_choice.Equity_proportional
+    in
+    match choice with
+    | Pm.Common.Sizing_policy_choice.Equity_proportional ->
+        Pm.Sizing_policy.Equity_proportional.size () ~book_equity ~mark
+          ~volatility intent
+    | Pm.Common.Sizing_policy_choice.Volatility_target { target_annual_vol }
+      ->
+        Pm.Sizing_policy.Volatility_target.size { target_annual_vol }
+          ~book_equity ~mark ~volatility intent
 
 let define_alpha_view
     ctx
@@ -221,7 +283,8 @@ let define_alpha_view
     Define_alpha_view_wf.execute ~alpha_view_for ~subscribers_for
       ~risk_config_for:(risk_config_for ctx)
       ~total_equity_for:(total_equity_for ctx)
-      ~mark_for:(mark_for ctx) ~volatility_for ~sizing_for
+      ~mark_for:(mark_for ctx) ~volatility_for:(volatility_for ctx)
+      ~sizing_for:(sizing_for ctx)
       ~target_portfolio_for ~publish_target_portfolio_updated cmd
   in
   { ctx with last_define_alpha_view_result = Some result }
@@ -262,12 +325,54 @@ let apply_bar ctx ~state_ref ~instrument ~ts ~close =
   let update_mark inst ~close =
     Hashtbl.replace ctx.marks (Core.Instrument.to_qualified inst) close
   in
-  let update_vol _inst ~close:_ = () in
+  let update_vol inst ~close = make_update_vol ctx inst ~close in
   let result =
     Apply_bar_wf.execute ~pair_mr_states_for ~update_mark ~update_vol
       ~risk_config_for:(risk_config_for ctx)
       ~total_equity_for:(total_equity_for ctx)
-      ~mark_for:(mark_for ctx) ~volatility_for ~sizing_for
+      ~mark_for:(mark_for ctx) ~volatility_for:(volatility_for ctx)
+      ~sizing_for:(sizing_for ctx)
+      ~target_portfolio_for ~publish_target_portfolio_updated cmd
+  in
+  { ctx with last_apply_bar_result = Some result }
+
+(** Drive {!Apply_bar_command_workflow} with no pair_mr states
+    registered — useful when a scenario only needs to populate
+    the cross-instrument mark cache and vol estimator from a
+    bar stream (e.g. vol-target warm-up for the alpha path). *)
+let feed_bar ctx ~instrument ~ts ~close =
+  let pair_mr_states_for _ = [] in
+  let target_portfolio_for book =
+    if Pm.Common.Book_id.equal book book_alpha then ctx.target_portfolio
+    else ref (Pm.Target_portfolio.empty book)
+  in
+  let publish_target_portfolio_updated e =
+    ctx.target_portfolio_updated_pub := e :: !(ctx.target_portfolio_updated_pub)
+  in
+  let close_str = Decimal.to_string close in
+  let candle : Portfolio_management_commands.Apply_bar_command.candle_dto =
+    {
+      ts = Datetime.Iso8601.format ts;
+      open_ = close_str;
+      high = close_str;
+      low = close_str;
+      close = close_str;
+      volume = Decimal.to_string Decimal.one;
+    }
+  in
+  let cmd : Portfolio_management_commands.Apply_bar_command.t =
+    { instrument = Core.Instrument.to_qualified instrument; timeframe = "h1"; candle }
+  in
+  let update_mark inst ~close =
+    Hashtbl.replace ctx.marks (Core.Instrument.to_qualified inst) close
+  in
+  let update_vol inst ~close = make_update_vol ctx inst ~close in
+  let result =
+    Apply_bar_wf.execute ~pair_mr_states_for ~update_mark ~update_vol
+      ~risk_config_for:(risk_config_for ctx)
+      ~total_equity_for:(total_equity_for ctx)
+      ~mark_for:(mark_for ctx) ~volatility_for:(volatility_for ctx)
+      ~sizing_for:(sizing_for ctx)
       ~target_portfolio_for ~publish_target_portfolio_updated cmd
   in
   { ctx with last_apply_bar_result = Some result }

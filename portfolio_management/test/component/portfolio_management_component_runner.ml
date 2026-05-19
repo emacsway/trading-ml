@@ -8,4 +8,5 @@ let () =
       Commit_actual_fill_command_test.feature;
       Pair_mr_pipeline_test.feature;
       Define_alpha_view_command_test.feature;
+      Vol_target_pipeline_test.feature;
     ]
