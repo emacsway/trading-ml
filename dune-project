@@ -29,7 +29,7 @@
   digestif
   uuidm
   (alcotest :with-test)
-  (qcheck :with-test)
+  (qcheck-core :with-test)
   (gospel (>= 0.3.1))
   (why3 (>= 1.8))
   (alt-ergo (>= 2.6))
