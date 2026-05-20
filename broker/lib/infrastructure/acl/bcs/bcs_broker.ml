@@ -94,8 +94,29 @@ let get_executions t ~placement_id : Execution_view_model.t list =
               Some (Execution_view_model.of_domain exec)
             else None)
 
-let as_broker (rest : Rest.t) : Broker.client =
-  let t = make rest in
+(** Reverse lookup [order_num → placement_id]. In BCS the
+    venue-side identifier echoed back on deals (the [orderNum]
+    in [/trades/search] payloads) {b is} the same
+    [clientOrderId] we minted at submit — BCS uses the
+    caller-supplied id as the server-side handle. So this hop
+    is a direct [Placement_handle_store.find_placement_id]
+    over the same string; we still wrap it as its own function
+    to mirror Finam's adapter shape and so a future BCS server-
+    side id change becomes a single-callsite edit. *)
+let placement_id_by_order_num t ~order_num : int option =
+  Placement_handle_store.find_placement_id t.placements ~client_order_id:order_num
+
+(** Account-wide deal feed for the recent window: thin
+    pass-through to [Rest.get_deals] (which polls
+    [/trade-api-bff-trade-details/api/v1/trades/search]). Used
+    by the broker's WS-equivalent polling fiber to discover new
+    fills outside command-in-scope. Returns BCS's
+    [(order_num, execution)] pairs verbatim; callers filter to
+    their own placements via [placement_id_by_order_num]. *)
+let recent_deals ?from_ts ?to_ts t : (string * Order.execution) list =
+  Rest.get_deals ?from_ts ?to_ts t.rest
+
+let as_broker (t : t) : Broker.client =
   Broker.make
     (module struct
       type nonrec t = t

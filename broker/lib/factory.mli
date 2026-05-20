@@ -31,7 +31,11 @@ open Core
     can reach the per-adapter placement maps. *)
 type rest =
   | Finam of { rest : Finam.Rest.t; adapter : Finam.Finam_broker.t }
-  | Bcs of Bcs.Rest.t
+  | Bcs of { rest : Bcs.Rest.t; adapter : Bcs.Bcs_broker.t }
+      (** Mirrors the Finam variant: the broker adapter is kept
+          alongside the REST handle so the polling-fiber
+          order-filled producer can reach the per-adapter
+          placement map. *)
   | Synthetic
 
 type t = {

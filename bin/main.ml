@@ -549,7 +549,7 @@ let cmd_serve args =
   let rest : Broker_factory.Factory.rest =
     match opened with
     | Opened_finam { rest; adapter; _ } -> Finam { rest; adapter }
-    | Opened_bcs { rest; _ } -> Bcs rest
+    | Opened_bcs { rest; adapter; _ } -> Bcs { rest; adapter }
     | Opened_synthetic _ -> Synthetic
   in
   let broker =

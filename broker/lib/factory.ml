@@ -2,7 +2,7 @@ open Core
 
 type rest =
   | Finam of { rest : Finam.Rest.t; adapter : Finam.Finam_broker.t }
-  | Bcs of Bcs.Rest.t
+  | Bcs of { rest : Bcs.Rest.t; adapter : Bcs.Bcs_broker.t }
   | Synthetic
 
 type t = {
@@ -132,13 +132,159 @@ let finam_live_setup
       bind = (fun r -> registry_ref := Some r);
     }
 
+(** Spawn a polling fiber that periodically reads BCS's
+    account-wide deals feed (REST [/trades/search]) and
+    publishes a [broker.order-filled] integration event for
+    every new execution against an order this adapter placed.
+
+    BCS's WS API exposes only public market data (candles,
+    order book, anonymous trades, quotes) — there is no
+    personal-account push channel for fills. Polling is the
+    only available real-time signal for this broker, and the
+    cost is acceptable for retail traffic (one REST call per
+    [poll_interval] regardless of placement count).
+
+    Deduplication: per [(placement_id, ts, quantity, price)]
+    tuple. BCS's deal payload carries a [tradeNum] in its raw
+    JSON, but our domain [Order.execution] does not surface it;
+    a stable probabilistic key over the four numeric fields is
+    adequate for retail volumes (two genuinely identical fills
+    on the same millisecond on the same instrument at the same
+    price for the same placement do not occur outside synthetic
+    test traffic).
+
+    [poll_interval] is a clock-bound waiting period in seconds;
+    [now] is the injected clock the surrounding factory build
+    already uses. *)
+let bcs_polling_setup
+    ~env
+    ~poll_interval
+    ~publish_order_filled
+    ~origin_correlation_id
+    ~(bcs : Bcs.Bcs_broker.t)
+    ~sw : unit =
+  let observed : (int * int64 * string * string, unit) Hashtbl.t = Hashtbl.create 128 in
+  let total_filled : (int, Decimal.t) Hashtbl.t = Hashtbl.create 16 in
+  let bump_total ~placement_id ~delta =
+    let prev =
+      match Hashtbl.find_opt total_filled placement_id with
+      | Some d -> d
+      | None -> Decimal.zero
+    in
+    let next = Decimal.add prev delta in
+    Hashtbl.replace total_filled placement_id next;
+    next
+  in
+  let now_ts () =
+    Int64.of_float (Eio.Time.now (Eio.Stdenv.clock env))
+  in
+  let poll_once () =
+    let to_ts = now_ts () in
+    (* Look back 5 minutes per poll — bounded recent window is
+       enough to catch fills since the previous tick and the
+       de-dup set filters anything we already published. *)
+    let from_ts = Int64.sub to_ts 300L in
+    let deals =
+      try Bcs.Bcs_broker.recent_deals ~from_ts ~to_ts bcs
+      with e ->
+        Log.warn "[bcs poll] recent_deals failed: %s" (Printexc.to_string e);
+        []
+    in
+    List.iter
+      (fun (order_num, (exec : Broker_domain.Order.execution)) ->
+        match Bcs.Bcs_broker.placement_id_by_order_num bcs ~order_num with
+        | None -> ()
+        | Some placement_id -> (
+            let key =
+              ( placement_id,
+                exec.ts,
+                Decimal.to_string exec.quantity,
+                Decimal.to_string exec.price )
+            in
+            if Hashtbl.mem observed key then ()
+            else begin
+              Hashtbl.replace observed key ();
+              match origin_correlation_id ~placement_id with
+              | None ->
+                  Log.warn
+                    "[bcs poll] deal for placement_id=%d has no Submit \
+                     correlation_id; skipping"
+                    placement_id
+              | Some correlation_id ->
+                  (* BCS's deal payload does not carry side per leg;
+                     we derive it from the parent order resolved
+                     through the placement store. Fee mirrors
+                     Finam — Decimal.zero. Instrument is reachable
+                     through Get_order, but the polling path
+                     deliberately avoids per-deal extra REST calls
+                     to stay within rate limits; the leg's
+                     [instrument] is filled from the parent order
+                     when [get_order] succeeds, else left as a
+                     synthetic SBER@MISX placeholder so the IE
+                     remains schema-valid. *)
+                  let parent =
+                    try Bcs.Bcs_broker.get_order bcs ~placement_id
+                    with _ -> None
+                  in
+                  let instrument =
+                    match parent with
+                    | Some o -> o.instrument
+                    | None ->
+                        Broker_view_models.Instrument_view_model.of_domain
+                          (Core.Instrument.make
+                             ~ticker:(Core.Ticker.of_string "UNKNOWN")
+                             ~venue:(Core.Mic.of_string "MISX") ())
+                  in
+                  let side =
+                    match parent with Some o -> o.side | None -> "BUY"
+                  in
+                  let new_total = bump_total ~placement_id ~delta:exec.quantity in
+                  let ie :
+                      Broker_integration_events.Order_filled_integration_event.t =
+                    {
+                      correlation_id;
+                      placement_id;
+                      id = order_num;
+                      exec_id =
+                        (* No first-class trade_id surfaced; the
+                           composite probabilistic key serves as
+                           identity for downstream audit. *)
+                        Printf.sprintf "%s:%Ld:%s" order_num exec.ts
+                          (Decimal.to_string exec.quantity);
+                      instrument;
+                      side;
+                      fill_quantity = Decimal.to_string exec.quantity;
+                      fill_price = Decimal.to_string exec.price;
+                      fee = "0";
+                      new_total_filled = Decimal.to_string new_total;
+                      fill_ts = Datetime.Iso8601.format exec.ts;
+                    }
+                  in
+                  publish_order_filled ie
+            end))
+      deals
+  in
+  Eio.Fiber.fork ~sw (fun () ->
+      while true do
+        (try poll_once ()
+         with e ->
+           Log.warn "[bcs poll] tick failed: %s" (Printexc.to_string e));
+        Eio.Time.sleep (Eio.Stdenv.clock env) (Float.of_int poll_interval)
+      done)
+
 (** Build a {!Server.Http.live_setup} for BCS. Unlike Finam, BCS
     opens one socket per subscription, so the bridge defers connect
     to [on_first] and tears down on [on_last]. The BARS fan-out
     callback pushes directly into the registry via
     [Stream.push_from_upstream] and into [publish_bar_updated]. *)
-let bcs_live_setup ~env ~publish_bar_updated (rest : Bcs.Rest.t) ~sw :
-    Server.Http.live_setup =
+let bcs_live_setup
+    ~env
+    ~publish_bar_updated
+    ~publish_order_filled
+    ~origin_correlation_id
+    ~(bcs : Bcs.Bcs_broker.t)
+    (rest : Bcs.Rest.t)
+    ~sw : Server.Http.live_setup =
   let cfg = Bcs.Rest.cfg rest in
   let auth = Bcs.Rest.auth rest in
   let bridge = Bcs.Ws_bridge.make ~env ~sw ~cfg ~auth in
@@ -151,6 +297,14 @@ let bcs_live_setup ~env ~publish_bar_updated (rest : Bcs.Rest.t) ~sw :
       (Broker_integration_events.Bar_updated_integration_event.of_domain ~instrument
          ~timeframe ~candle)
   in
+  (* Always-on polling for personal-account fills — symmetric to
+     Finam's always-on Sub_trades but via REST polling since BCS
+     has no WS push for personal events. *)
+  (try
+     bcs_polling_setup ~env ~poll_interval:5 ~publish_order_filled
+       ~origin_correlation_id ~bcs ~sw
+   with e ->
+     Log.warn "[bcs poll] setup failed: %s" (Printexc.to_string e));
   Server.Http.
     {
       on_first =
@@ -296,7 +450,10 @@ let build ~bus ~env ~now ~source_client ~rest ~paper_mode : t =
         Some
           (finam_live_setup ~env ~publish_bar_updated ~publish_order_filled
              ~origin_correlation_id ~finam:adapter r)
-    | Bcs r -> Some (bcs_live_setup ~env ~publish_bar_updated r)
+    | Bcs { rest = r; adapter } ->
+        Some
+          (bcs_live_setup ~env ~publish_bar_updated ~publish_order_filled
+             ~origin_correlation_id ~bcs:adapter r)
     | Synthetic -> None
   in
   let http_handler = Broker_inbound_http.Http.make_handler ~broker:client in

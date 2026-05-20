@@ -29,7 +29,16 @@ type opened =
               producer needs reach into the per-adapter placement
               map to reverse-lookup [order_id → placement_id]. *)
     }
-  | Opened_bcs of { client : Broker.client; rest : Bcs.Rest.t }
+  | Opened_bcs of {
+      client : Broker.client;
+      rest : Bcs.Rest.t;
+      adapter : Bcs.Bcs_broker.t;
+          (** Concrete adapter retained alongside the abstract
+              [Broker.client]; the broker's polling-fiber
+              order-filled producer reaches the per-adapter
+              placement map to reverse-lookup
+              [order_num → placement_id]. *)
+    }
   | Opened_synthetic of { client : Broker.client }
 
 val opened_client : opened -> Broker.client

@@ -26,7 +26,16 @@ type opened =
               producer needs reach into the per-adapter placement
               map to reverse-lookup [order_id → placement_id]. *)
     }
-  | Opened_bcs of { client : Broker.client; rest : Bcs.Rest.t }
+  | Opened_bcs of {
+      client : Broker.client;
+      rest : Bcs.Rest.t;
+      adapter : Bcs.Bcs_broker.t;
+          (** Concrete adapter retained alongside the abstract
+              [Broker.client]; the broker's polling-fiber
+              order-filled producer reaches the per-adapter
+              placement map to reverse-lookup
+              [order_num → placement_id]. *)
+    }
   | Opened_synthetic of { client : Broker.client }
 
 let opened_client = function
@@ -86,7 +95,8 @@ let open_bcs ~env ~secret ~account ~client_id : opened =
   let cfg = Bcs.Config.make ?account_id:account ?client_id () in
   let transport = Http_transport.make_eio ~env in
   let rest = Bcs.Rest.make ~transport ~cfg ~token_store in
-  Opened_bcs { client = Bcs.Bcs_broker.as_broker rest; rest }
+  let adapter = Bcs.Bcs_broker.make rest in
+  Opened_bcs { client = Bcs.Bcs_broker.as_broker adapter; rest; adapter }
 
 let open_synthetic () : opened =
   let t = Synthetic.Synthetic_broker.make () in
