@@ -20,7 +20,15 @@ val broker_env_prefix : string -> string
     plus the concrete REST handle for live brokers (the server's
     WS bridge needs it). Synthetic has no REST side. *)
 type opened =
-  | Opened_finam of { client : Broker.client; rest : Finam.Rest.t }
+  | Opened_finam of {
+      client : Broker.client;
+      rest : Finam.Rest.t;
+      adapter : Finam.Finam_broker.t;
+          (** Concrete adapter retained alongside the abstract
+              [Broker.client]; the broker's WS-side trade-update
+              producer needs reach into the per-adapter placement
+              map to reverse-lookup [order_id → placement_id]. *)
+    }
   | Opened_bcs of { client : Broker.client; rest : Bcs.Rest.t }
   | Opened_synthetic of { client : Broker.client }
 

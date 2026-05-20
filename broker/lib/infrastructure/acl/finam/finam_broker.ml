@@ -63,6 +63,30 @@ let remember t ~client_order_id ~order_id =
   Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       Hashtbl.replace t.order_id_by_cid client_order_id order_id)
 
+(** Reverse lookup [order_id → placement_id]. Two hops:
+    [order_id → client_order_id] via the in-process
+    [order_id_by_cid] cache, then
+    [client_order_id → placement_id] via the placement store.
+    Returns [None] when either link is unknown (e.g. a fill
+    arrives for an order this adapter never placed, or its
+    caches rotated out of memory). *)
+let placement_id_by_order_id t ~order_id : int option =
+  let cid_opt =
+    Eio.Mutex.use_ro t.mutex (fun () ->
+        Hashtbl.fold
+          (fun cid oid acc ->
+            match acc with
+            | Some _ -> acc
+            | None -> if String.equal oid order_id then Some cid else None)
+          t.order_id_by_cid None)
+  in
+  match cid_opt with
+  | None -> None
+  | Some client_order_id ->
+      Placement_handle_store.find_placement_id t.placements ~client_order_id
+
+let account_id t = t.account_id
+
 let resolve_order_id t ~client_order_id =
   let cached =
     Eio.Mutex.use_ro t.mutex (fun () -> Hashtbl.find_opt t.order_id_by_cid client_order_id)

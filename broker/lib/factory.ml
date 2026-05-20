@@ -1,6 +1,9 @@
 open Core
 
-type rest = Finam of Finam.Rest.t | Bcs of Bcs.Rest.t | Synthetic
+type rest =
+  | Finam of { rest : Finam.Rest.t; adapter : Finam.Finam_broker.t }
+  | Bcs of Bcs.Rest.t
+  | Synthetic
 
 type t = {
   client : Broker.client;
@@ -15,12 +18,66 @@ type t = {
     per-key SUBSCRIBE/UNSUBSCRIBE messages flow on subscriber
     lifecycle hooks; inbound BARS events fan out via
     [Stream.push_from_upstream] and [publish_bar_updated]. *)
-let finam_live_setup ~env ~publish_bar_updated (rest : Finam.Rest.t) ~sw :
-    Server.Http.live_setup =
+let finam_live_setup
+    ~env
+    ~publish_bar_updated
+    ~publish_order_filled
+    ~origin_correlation_id
+    ~(finam : Finam.Finam_broker.t)
+    (rest : Finam.Rest.t)
+    ~sw : Server.Http.live_setup =
   let cfg = Finam.Rest.cfg rest in
   let auth = Finam.Rest.auth rest in
   let registry_ref : Server.Stream.t option ref = ref None in
   let bridge_ref : Finam.Ws_bridge.bridge option ref = ref None in
+  (* Per-placement cumulative-fill accumulator. Finam ships each
+     execution leg separately; [new_total_filled] is the sum of
+     [fill_quantity] across every observed [trade_update] for the
+     same [placement_id]. Lives in process memory — survives only
+     the adapter's lifetime, replayed on reconnect from the
+     venue if needed via REST. *)
+  let total_filled : (int, Decimal.t) Hashtbl.t = Hashtbl.create 16 in
+  let bump_total ~placement_id ~delta =
+    let prev =
+      match Hashtbl.find_opt total_filled placement_id with
+      | Some d -> d
+      | None -> Decimal.zero
+    in
+    let next = Decimal.add prev delta in
+    Hashtbl.replace total_filled placement_id next;
+    next
+  in
+  let handle_trade (tu : Finam.Ws.trade_update) =
+    match Finam.Finam_broker.placement_id_by_order_id finam ~order_id:tu.order_id with
+    | None ->
+        Log.warn "[finam ws] trade for unknown order_id=%s — skipping" tu.order_id
+    | Some placement_id -> (
+        match origin_correlation_id ~placement_id with
+        | None ->
+            Log.warn
+              "[finam ws] trade for placement_id=%d has no Submit correlation_id; \
+               skipping"
+              placement_id
+        | Some correlation_id ->
+            let new_total = bump_total ~placement_id ~delta:tu.quantity in
+            let ie : Broker_integration_events.Order_filled_integration_event.t =
+              {
+                correlation_id;
+                placement_id;
+                id = tu.order_id;
+                exec_id = tu.trade_id;
+                instrument =
+                  Broker_view_models.Instrument_view_model.of_domain tu.instrument;
+                side = Side.to_string tu.side;
+                fill_quantity = Decimal.to_string tu.quantity;
+                fill_price = Decimal.to_string tu.price;
+                fee = "0";
+                new_total_filled = Decimal.to_string new_total;
+                fill_ts = Datetime.Iso8601.format tu.ts;
+              }
+            in
+            publish_order_filled ie)
+  in
   let on_event (ev : Finam.Ws.event) =
     match ev with
     | Bars { instrument; timeframe; bars } ->
@@ -45,6 +102,7 @@ let finam_live_setup ~env ~publish_bar_updated (rest : Finam.Rest.t) ~sw :
                      ~instrument ~timeframe:tf ~candle))
               bars)
           tfs
+    | Trades trades -> List.iter handle_trade trades
     | Error_ev { code; type_; message } ->
         Log.warn "[finam ws] error %d %s: %s" code type_ message
     | Lifecycle { event; code; reason } ->
@@ -53,6 +111,14 @@ let finam_live_setup ~env ~publish_bar_updated (rest : Finam.Rest.t) ~sw :
   in
   let bridge = Finam.Ws_bridge.make ~env ~sw ~cfg ~auth ~on_event in
   bridge_ref := Some bridge;
+  (* Always-on trade subscription for the broker's account, so
+     fills observed at the venue surface as Order_filled IEs
+     without waiting for any per-instrument subscriber. *)
+  (try
+     Finam.Ws_bridge.subscribe_trades bridge
+       ~account_id:(Finam.Finam_broker.account_id finam)
+   with e ->
+     Log.warn "[finam ws] subscribe_trades failed: %s" (Printexc.to_string e));
   Server.Http.
     {
       on_first =
@@ -129,6 +195,10 @@ let build ~bus ~env ~now ~source_client ~rest ~paper_mode : t =
   let publish_bar_updated =
     produce ~uri:"in-memory://broker.bar-updated"
       ~yojson_of:Broker_integration_events.Bar_updated_integration_event.yojson_of_t
+  in
+  let publish_order_filled =
+    produce ~uri:"in-memory://broker.order-filled"
+      ~yojson_of:Broker_integration_events.Order_filled_integration_event.yojson_of_t
   in
   (* Process-correlation log: [placement_id ↦ submit/cancel
      correlation_id]. Recorded by Submit on Accepted (and, when
@@ -216,9 +286,16 @@ let build ~bus ~env ~now ~source_client ~rest ~paper_mode : t =
          now_ts )
      in
      ());
+  let origin_correlation_id ~placement_id =
+    let module CL = (val command_log_module) in
+    CL.origin_correlation_id command_log ~placement_id
+  in
   let ws_setup =
     match rest with
-    | Finam r -> Some (finam_live_setup ~env ~publish_bar_updated r)
+    | Finam { rest = r; adapter } ->
+        Some
+          (finam_live_setup ~env ~publish_bar_updated ~publish_order_filled
+             ~origin_correlation_id ~finam:adapter r)
     | Bcs r -> Some (bcs_live_setup ~env ~publish_bar_updated r)
     | Synthetic -> None
   in

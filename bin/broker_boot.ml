@@ -17,7 +17,15 @@ let broker_env_prefix = function
   | _ -> "FINAM"
 
 type opened =
-  | Opened_finam of { client : Broker.client; rest : Finam.Rest.t }
+  | Opened_finam of {
+      client : Broker.client;
+      rest : Finam.Rest.t;
+      adapter : Finam.Finam_broker.t;
+          (** Concrete adapter retained alongside the abstract
+              [Broker.client]; the broker's WS-side trade-update
+              producer needs reach into the per-adapter placement
+              map to reverse-lookup [order_id → placement_id]. *)
+    }
   | Opened_bcs of { client : Broker.client; rest : Bcs.Rest.t }
   | Opened_synthetic of { client : Broker.client }
 
@@ -38,7 +46,7 @@ let open_finam ~env ~secret ~account : opened =
   let transport = Http_transport.make_eio ~env in
   let rest = Finam.Rest.make ~transport ~cfg in
   let adapter = Finam.Finam_broker.make ~account_id rest in
-  Opened_finam { client = Finam.Finam_broker.as_broker adapter; rest }
+  Opened_finam { client = Finam.Finam_broker.as_broker adapter; rest; adapter }
 
 (** State path for the persisted BCS refresh-token. [$XDG_STATE_HOME]
     per the XDG Base Directory spec, with [~/.local/state] as the

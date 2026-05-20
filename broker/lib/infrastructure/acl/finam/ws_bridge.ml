@@ -14,6 +14,7 @@ module SubKey = struct
 end
 
 module SubMap = Map.Make (SubKey)
+module StringSet = Set.Make (String)
 
 type bridge = {
   auth : Auth.t;
@@ -21,6 +22,10 @@ type bridge = {
   mutex : Eio.Mutex.t;
   mutable conn : Websocket.Resilient.t option;
   mutable bar_subs : Timeframe.t SubMap.t;
+  mutable trade_subs : StringSet.t;
+      (** Account ids currently subscribed for trade-execution
+          updates. Tracked so reconnect can re-issue subscribe
+          messages for every previously-active account. *)
   make_conn : on_reconnect:(unit -> unit) -> Websocket.Resilient.t;
 }
 
@@ -63,6 +68,7 @@ let make ~env ~sw ~cfg ~auth ~on_event : bridge =
       mutex = Eio.Mutex.create ();
       conn = None;
       bar_subs = SubMap.empty;
+      trade_subs = StringSet.empty;
       make_conn;
     }
   in
@@ -76,11 +82,23 @@ let send_subscribe t ~instrument ~timeframe =
   | Some c -> Websocket.Resilient.send c (Yojson.Safe.to_string j)
   | None -> ()
 
+let send_subscribe_trades t ~account_id =
+  let token = Auth.current t.auth in
+  let j = Ws.subscribe_message ~token (Sub_trades account_id) in
+  match t.conn with
+  | Some c -> Websocket.Resilient.send c (Yojson.Safe.to_string j)
+  | None -> ()
+
 let resubscribe_all t () =
-  let subs = Eio.Mutex.use_ro t.mutex (fun () -> t.bar_subs) in
+  let bar_subs, trade_subs =
+    Eio.Mutex.use_ro t.mutex (fun () -> (t.bar_subs, t.trade_subs))
+  in
   SubMap.iter
     (fun (instrument, timeframe) _ -> send_subscribe t ~instrument ~timeframe)
-    subs
+    bar_subs;
+  StringSet.iter
+    (fun account_id -> send_subscribe_trades t ~account_id)
+    trade_subs
 
 let ensure_conn t =
   match t.conn with
@@ -118,3 +136,18 @@ let timeframes_for_instrument (t : bridge) instrument : Timeframe.t list =
       SubMap.fold
         (fun (i, tf) _ acc -> if Instrument.equal i instrument then tf :: acc else acc)
         t.bar_subs [])
+
+let subscribe_trades (t : bridge) ~(account_id : string) : unit =
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      ignore (ensure_conn t);
+      t.trade_subs <- StringSet.add account_id t.trade_subs);
+  send_subscribe_trades t ~account_id
+
+let unsubscribe_trades (t : bridge) ~(account_id : string) : unit =
+  let token = Auth.current t.auth in
+  let j = Ws.unsubscribe_message ~token (Sub_trades account_id) in
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.trade_subs <- StringSet.remove account_id t.trade_subs);
+  match t.conn with
+  | Some c -> Websocket.Resilient.send c (Yojson.Safe.to_string j)
+  | None -> ()

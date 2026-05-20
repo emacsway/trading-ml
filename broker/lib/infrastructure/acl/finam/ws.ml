@@ -28,6 +28,11 @@ type subscribe =
   | Sub_orderbook of Instrument.t
   | Sub_bars of { instrument : Instrument.t; timeframe : Timeframe.t }
   | Sub_account of string
+  | Sub_trades of string
+      (** Account-scoped trade-execution feed. Finam publishes one
+          envelope per [trade_id] with [order_id] + side + price
+          + size, the load-bearing input for the broker's
+          [Order_filled_integration_event] producer. *)
 
 (** [subscribe_message ~token sub] — full envelope ready to JSON-encode
     and send over the socket. *)
@@ -71,6 +76,14 @@ let subscribe_message ~token = function
         [
           ("action", `String "SUBSCRIBE");
           ("type", `String "ACCOUNT");
+          ("data", `Assoc [ ("account_id", `String account_id) ]);
+          ("token", `String token);
+        ]
+  | Sub_trades account_id ->
+      `Assoc
+        [
+          ("action", `String "SUBSCRIBE");
+          ("type", `String "TRADES");
           ("data", `Assoc [ ("account_id", `String account_id) ]);
           ("token", `String token);
         ]
@@ -118,11 +131,35 @@ let unsubscribe_message ~token = function
           ("data", `Assoc [ ("account_id", `String account_id) ]);
           ("token", `String token);
         ]
+  | Sub_trades account_id ->
+      `Assoc
+        [
+          ("action", `String "UNSUBSCRIBE");
+          ("type", `String "TRADES");
+          ("data", `Assoc [ ("account_id", `String account_id) ]);
+          ("token", `String token);
+        ]
 
 (** Decoded server-side events. BARS events carry the timeframe
     directly (recovered from [subscription_key], which Finam encodes
     as ["<TICKER>@<MIC>:<TIMEFRAME>"]), so dispatch is exact rather
     than best-effort. *)
+type trade_update = {
+  trade_id : string;
+  order_id : string;
+  account_id : string;
+  instrument : Instrument.t;
+  side : Side.t;
+  quantity : Decimal.t;
+  price : Decimal.t;
+  ts : int64;
+}
+(** One execution leg of an order Finam reports over the
+    [TRADES] subscription. Multiple {!trade_update} envelopes for
+    the same [order_id] add up to that order's cumulative
+    [new_total_filled]; aggregation is the consumer's job —
+    Finam ships them per-execution, not pre-summed. *)
+
 type event =
   | Bars of {
       instrument : Instrument.t;
@@ -130,6 +167,11 @@ type event =
       bars : Candle.t list;
     }
   | Quote of { instrument : Instrument.t; bid : Decimal.t; ask : Decimal.t; ts : int64 }
+  | Trades of trade_update list
+      (** One inbound envelope may carry several executions
+          (Finam batches them as an array under [trades]). The
+          variant preserves the batch so downstream consumers
+          can treat the envelope as a single observation. *)
   | Error_ev of { code : int; type_ : string; message : string }
   | Lifecycle of { event : string; code : int; reason : string }
   | Other of Yojson.Safe.t
@@ -213,6 +255,53 @@ let event_of_json (j : Yojson.Safe.t) : event =
               in
               Quote { instrument; bid; ask; ts }
           | _ -> Other j)
+      | `String "TRADES" ->
+          let payload = unwrap_payload (member "payload" j) in
+          let parse_side = function
+            | `String "SIDE_BUY" -> Side.Buy
+            | `String "SIDE_SELL" -> Side.Sell
+            | _ -> raise Exit
+          in
+          let parse_one (t : Yojson.Safe.t) : trade_update option =
+            try
+              let trade_id = member "trade_id" t |> to_string in
+              let order_id = member "order_id" t |> to_string in
+              let account_id =
+                match member "account_id" t with
+                | `String s -> s
+                | _ -> ""
+              in
+              let instrument =
+                Instrument.of_qualified (member "symbol" t |> to_string)
+              in
+              let side = parse_side (member "side" t) in
+              let quantity = Dto.decimal_field "size" t in
+              let price = Dto.decimal_field "price" t in
+              let ts =
+                match member "timestamp" t with
+                | `String s -> Datetime.Iso8601.parse s
+                | `Int n -> Int64.of_int n
+                | _ -> 0L
+              in
+              Some
+                {
+                  trade_id;
+                  order_id;
+                  account_id;
+                  instrument;
+                  side;
+                  quantity;
+                  price;
+                  ts;
+                }
+            with _ -> None
+          in
+          let trades =
+            match member "trades" payload with
+            | `List items -> List.filter_map parse_one items
+            | _ -> []
+          in
+          if trades = [] then Other j else Trades trades
       | _ -> Other j)
   | `String "ERROR" ->
       let info = member "error_info" j in

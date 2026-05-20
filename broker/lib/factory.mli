@@ -26,8 +26,13 @@ open Core
 
 (** Tagged variant for the live REST handle the WS bridge needs.
     [Synthetic] means «no live data source»: the factory yields no
-    [ws_setup]. *)
-type rest = Finam of Finam.Rest.t | Bcs of Bcs.Rest.t | Synthetic
+    [ws_setup]. The Finam variant carries the broker adapter
+    alongside the REST handle so the WS-side trade-update producer
+    can reach the per-adapter placement maps. *)
+type rest =
+  | Finam of { rest : Finam.Rest.t; adapter : Finam.Finam_broker.t }
+  | Bcs of Bcs.Rest.t
+  | Synthetic
 
 type t = {
   client : Broker.client;

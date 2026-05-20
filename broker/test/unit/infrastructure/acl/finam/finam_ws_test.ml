@@ -159,6 +159,82 @@ let test_decode_error () =
       Alcotest.(check string) "message" "JWT expired" message
   | _ -> Alcotest.fail "expected Error_ev"
 
+let test_subscribe_trades_envelope () =
+  let j = Finam.Ws.subscribe_message ~token:"T" (Sub_trades "ACC1") in
+  let open Yojson.Safe.Util in
+  Alcotest.(check string) "type" "TRADES" (member "type" j |> to_string);
+  Alcotest.(check string)
+    "data.account_id" "ACC1"
+    (member "data" j |> member "account_id" |> to_string)
+
+let test_decode_trades () =
+  let j =
+    Yojson.Safe.from_string
+      {|
+    { "type": "DATA",
+      "subscription_type": "TRADES",
+      "timestamp": 1700000000,
+      "payload": {
+        "trades": [
+          { "trade_id": "T-001",
+            "order_id": "O-100",
+            "account_id": "ACC1",
+            "symbol": "SBER@MISX",
+            "side": "SIDE_BUY",
+            "size": "10",
+            "price": "302.5",
+            "timestamp": "2026-04-16T10:00:00Z" },
+          { "trade_id": "T-002",
+            "order_id": "O-100",
+            "account_id": "ACC1",
+            "symbol": "SBER@MISX",
+            "side": "SIDE_BUY",
+            "size": "5",
+            "price": "302.7",
+            "timestamp": "2026-04-16T10:00:05Z" }
+        ] } }
+  |}
+  in
+  match Finam.Ws.event_of_json j with
+  | Trades trades ->
+      Alcotest.(check int) "two trades" 2 (List.length trades);
+      let t0 = List.hd trades in
+      Alcotest.(check string) "trade_id" "T-001" t0.trade_id;
+      Alcotest.(check string) "order_id" "O-100" t0.order_id;
+      Alcotest.(check string) "account_id" "ACC1" t0.account_id;
+      Alcotest.(check string)
+        "symbol" "SBER@MISX"
+        (Instrument.to_qualified t0.instrument);
+      Alcotest.(check string) "side BUY" "BUY" (Side.to_string t0.side);
+      Alcotest.(check (float 1e-6)) "size" 10.0 (Decimal.to_float t0.quantity);
+      Alcotest.(check (float 1e-6)) "price" 302.5 (Decimal.to_float t0.price)
+  | _ -> Alcotest.fail "expected Trades event"
+
+let test_decode_trades_sell_side () =
+  let j =
+    Yojson.Safe.from_string
+      {|
+    { "type": "DATA",
+      "subscription_type": "TRADES",
+      "timestamp": 1700000000,
+      "payload": {
+        "trades": [
+          { "trade_id": "T-003",
+            "order_id": "O-101",
+            "account_id": "ACC1",
+            "symbol": "GAZP@MISX",
+            "side": "SIDE_SELL",
+            "size": "3",
+            "price": "150.0",
+            "timestamp": "2026-04-16T10:00:10Z" }
+        ] } }
+  |}
+  in
+  match Finam.Ws.event_of_json j with
+  | Trades [ t ] ->
+      Alcotest.(check string) "side SELL" "SELL" (Side.to_string t.side)
+  | _ -> Alcotest.fail "expected one Trade"
+
 let test_decode_lifecycle () =
   let j =
     Yojson.Safe.from_string
@@ -190,4 +266,7 @@ let tests =
     ("decode BARS spec format", `Quick, test_decode_bars_spec_format);
     ("decode ERROR event", `Quick, test_decode_error);
     ("decode EVENT lifecycle", `Quick, test_decode_lifecycle);
+    ("subscribe TRADES envelope", `Quick, test_subscribe_trades_envelope);
+    ("decode TRADES data", `Quick, test_decode_trades);
+    ("decode TRADES sell side", `Quick, test_decode_trades_sell_side);
   ]
