@@ -1,0 +1,20 @@
+(library
+ (name trading_config)
+ (public_name trading.config)
+ (libraries yojson atdgen-runtime))
+
+; Generate the typed schema modules from the .atd contract.
+; The .atd is the single source of truth; hand-written .ml /
+; .mli wrappers add JSON-string projections and a merge
+; combinator over the generated record.
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/config/trading_config.atd))
+ (targets trading_config_t.ml
+          trading_config_t.mli
+          trading_config_j.ml
+          trading_config_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o trading_config %{atd})
+   (run atdgen -j -o trading_config %{atd}))))

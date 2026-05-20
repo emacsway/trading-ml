@@ -23,5 +23,6 @@
             bus in_memory
             logistic_regression triple_barrier
             http_transport finam bcs acl_common datetime broker_persistence synthetic server log logs
+            trading_config
             eio_main mirage-crypto-rng.unix unix)
  (flags (:standard -open Common)))

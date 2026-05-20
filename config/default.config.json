@@ -1,0 +1,13 @@
+{
+  "broker": "Synthetic",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080
+  },
+  "engine": {
+    "paper_mode": false
+  },
+  "logging": {
+    "level": "Info"
+  }
+}

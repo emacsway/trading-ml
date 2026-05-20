@@ -1,0 +1,3 @@
+(test
+ (name trading_config_test)
+ (libraries trading_config alcotest))

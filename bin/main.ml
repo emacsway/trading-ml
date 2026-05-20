@@ -444,40 +444,114 @@ let make_backtest_handler ~env : Inbound_http.Route.handler =
                  (`Assoc [ ("error", `String (Printexc.to_string e)) ])) ))
   | _ -> None
 
+(* Build a sparse Trading_config.t carrying only the CLI flags
+   the operator explicitly passed. None at every field means
+   "don't override" — the loader merges this overlay on top of
+   default.config.json, local.config.json, and env vars. *)
+let cli_overlay_of_args (args : string list) : Trading_config.t =
+  let parse_log_level = function
+    | "debug" -> Some `Debug
+    | "info" -> Some `Info
+    | "warning" | "warn" -> Some `Warning
+    | "error" -> Some `Error
+    | _ -> None
+  in
+  let server : Trading_config.server option =
+    let host = arg_value "--host" args in
+    let port = arg_value "--port" args |> Option.map int_of_string in
+    if host = None && port = None then None else Some { host; port }
+  in
+  let engine : Trading_config.engine option =
+    let strategy = arg_value "--strategy" args in
+    let symbol = arg_value "--engine-symbol" args in
+    let paper_mode =
+      if List.mem "--paper" args then Some true else None
+    in
+    if strategy = None && symbol = None && paper_mode = None then None
+    else Some { strategy; symbol; paper_mode }
+  in
+  let logging : Trading_config.logging option =
+    match arg_value "--log-level" args with
+    | None -> None
+    | Some s -> ( match parse_log_level s with
+                  | None -> None
+                  | Some level -> Some { level = Some level })
+  in
+  let broker : Trading_config.broker option =
+    (* --broker on the CLI selects the variant; --secret /
+       --account / --client-id fill in the credentials. None
+       overrides nothing — broker stays as configured in the
+       lower layers. *)
+    match arg_value "--broker" args with
+    | None -> None
+    | Some "synthetic" -> Some `Synthetic
+    | Some "finam" ->
+        let creds : Trading_config.finam_credentials =
+          {
+            account_id = arg_value "--account" args;
+            secret = arg_value "--secret" args;
+          }
+        in
+        Some (`Finam creds)
+    | Some "bcs" ->
+        let creds : Trading_config.bcs_credentials =
+          {
+            account_id = arg_value "--account" args;
+            client_id = arg_value "--client-id" args;
+            secret_seed = arg_value "--secret" args;
+          }
+        in
+        Some (`Bcs creds)
+    | Some other ->
+        failwith
+          ("unknown --broker: " ^ other ^ " (expected synthetic|finam|bcs)")
+  in
+  { broker; server; engine; logging }
+
+let config_default_path = "config/default.config.json"
+let config_env_var = "TRADING_CONFIG"
+
+let logs_level_of_config : Trading_config.log_level -> Logs.level = function
+  | `Debug -> Logs.Debug
+  | `Info -> Logs.Info
+  | `Warning -> Logs.Warning
+  | `Error -> Logs.Error
+
 let cmd_serve args =
-  let port =
-    match arg_value "--port" args with
-    | Some v -> int_of_string v
-    | None -> 8080
+  let cli_overrides = cli_overlay_of_args args in
+  let local_path = arg_value "--config" args in
+  let cfg =
+    Trading_config.Loader.load ~default_path:config_default_path
+      ?local_path ~env_var:config_env_var ~cli_overrides ()
+  in
+  let server : Trading_config.server =
+    Option.value cfg.server ~default:{ host = None; port = None }
+  in
+  let port = Option.value server.port ~default:8080 in
+  let engine : Trading_config.engine =
+    Option.value cfg.engine
+      ~default:{ strategy = None; symbol = None; paper_mode = None }
+  in
+  let paper_mode = Option.value engine.paper_mode ~default:false in
+  let strategy_name = engine.strategy in
+  let broker_choice : Trading_config.broker =
+    Option.value cfg.broker ~default:`Synthetic
   in
   let broker_id =
-    match arg_value "--broker" args with
-    | Some v -> v
-    | None -> "synthetic"
+    match broker_choice with
+    | `Synthetic -> "synthetic"
+    | `Finam _ -> "finam"
+    | `Bcs _ -> "bcs"
   in
-  let prefix = broker_env_prefix broker_id in
-  let secret =
-    match arg_value "--secret" args with
-    | Some v -> Some v
-    | None -> Sys.getenv_opt (prefix ^ "_SECRET")
-  in
-  let account =
-    match arg_value "--account" args with
-    | Some v -> Some v
-    | None -> Sys.getenv_opt (prefix ^ "_ACCOUNT_ID")
-  in
-  (* BCS-only knob; Finam doesn't have a concept of [client_id] (its
-     auth is a single long-lived secret). *)
-  let client_id =
-    match arg_value "--client-id" args with
-    | Some v -> Some v
-    | None -> Sys.getenv_opt "BCS_CLIENT_ID"
+  let secret, account, client_id =
+    match broker_choice with
+    | `Synthetic -> (None, None, None)
+    | `Finam creds -> (creds.secret, creds.account_id, None)
+    | `Bcs creds -> (creds.secret_seed, creds.account_id, creds.client_id)
   in
   let log_level =
-    match arg_value "--log-level" args with
-    | Some "debug" -> Logs.Debug
-    | Some "warning" -> Logs.Warning
-    | Some "error" -> Logs.Error
+    match cfg.logging with
+    | Some { level = Some level } -> logs_level_of_config level
     | _ -> Logs.Info
   in
   Log.setup ~level:log_level ();
@@ -491,14 +565,15 @@ let cmd_serve args =
     match secret with
     | Some s -> s
     | None ->
-        Printf.eprintf "--broker %s requires a secret (use --secret or %s_SECRET)\n"
+        let prefix = String.uppercase_ascii broker_id in
+        Printf.eprintf
+          "--broker %s requires a secret (use --secret, %s_SECRET, or the \
+           config file)\n"
           broker_id prefix;
         exit 2
   in
-  let paper_mode = List.mem "--paper" args in
-  let strategy_name = arg_value "--strategy" args in
   let engine_symbol =
-    match arg_value "--engine-symbol" args with
+    match engine.symbol with
     | Some v -> Instrument.of_qualified v
     | None -> Instrument.of_qualified "SBER@MISX"
   in

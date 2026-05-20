@@ -1,0 +1,64 @@
+(* Trading-system runtime configuration schema.
+
+   Defaults live in config/default.config.json (committed) rather
+   than as ~default annotations in this .atd, so that changing a
+   default value is a JSON edit, not a code change requiring
+   atdgen regen + recompile. Adding a new field still requires
+   recompile (strongly-typed language; the code must consume it),
+   but operational tuning does not.
+
+   Every field is optional at the schema level. This is what lets
+   the layered loader work: default.config.json fills the full
+   shape, then per-deployment local.config.json overrides any
+   subset of fields, then env vars override that, then CLI flags
+   override that. None at every layer is honoured — a downstream
+   consumer that needs a required field has to validate it
+   itself, where the failure message can be domain-meaningful
+   ("no broker.kind specified") rather than schema-level
+   ("missing field"). *)
+
+type log_level = [
+  | Debug <doc text="Most verbose; useful for protocol-level debugging.">
+  | Info <doc text="Default for production.">
+  | Warning <doc text="Errors and lifecycle only.">
+  | Error <doc text="Errors only.">
+]
+
+type broker = [
+  | Finam of finam_credentials <doc text="Live Finam Trade API. Requires account_id + secret (or FINAM_ACCOUNT_ID/FINAM_SECRET env vars).">
+  | Bcs of bcs_credentials <doc text="Live BCS Trade API. account_id + client_id optional in config; secret resolved from BCS_SECRET env var + persistent token store.">
+  | Synthetic <doc text="No live source. Order placement, bars, and quotes all generated in-process. Default for development and tests.">
+]
+
+type finam_credentials = {
+  ?account_id <doc text="Finam account id. Required at runtime; the config layer accepts None to let env-var resolution provide it."> : string option;
+  ?secret <doc text="Long-lived API secret (Finam does not rotate). Required at runtime; env-var fallback is FINAM_SECRET."> : string option;
+}
+
+type bcs_credentials = {
+  ?account_id <doc text="BCS account id."> : string option;
+  ?client_id <doc text="OAuth client id (BCS distinguishes trade-api-read / trade-api-write — must match the client whose refresh-token is in the store)."> : string option;
+  ?secret_seed <doc text="Optional bootstrap secret. If present, overwrites the persistent refresh-token store before reading. Use to recover from a stale rotated token."> : string option;
+}
+
+type server = {
+  ?host <doc text="HTTP listener host. Defaults to 127.0.0.1 in default.config.json."> : string option;
+  ?port <doc text="HTTP listener port. Defaults to 8080."> : int option;
+}
+
+type engine = {
+  ?strategy <doc text="Strategy id to run inside the live engine. None means: no strategy mounted (broker / WS only)."> : string option;
+  ?symbol <doc text="Qualified instrument the strategy operates on, e.g. \"SBER@MISX\"."> : string option;
+  ?paper_mode <doc text="When true, paper_broker BC handles submit_order / cancel_pending_order; the live broker's order subscriptions are gated off. Bars from the live WS still flow."> : bool option;
+}
+
+type logging = {
+  ?level <doc text="Global logging verbosity."> : log_level option;
+}
+
+type t = {
+  ?broker <doc text="Broker selection (Finam / BCS / Synthetic) and its credentials."> : broker option;
+  ?server <doc text="HTTP listener configuration."> : server option;
+  ?engine <doc text="Live engine / strategy configuration. None means: no strategy mounted."> : engine option;
+  ?logging <doc text="Logging configuration."> : logging option;
+}
