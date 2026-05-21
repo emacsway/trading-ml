@@ -107,7 +107,8 @@ in-memory://broker.bar-updated/SBER@MISX-d1
 in-memory://broker.bar-updated/GAZP@MISX-h1
 ```
 
-Subscribers select by full URI; the bus layer needs no field
+Subscribers consumer group select by full URI;
+the bus layer needs no field
 filter. Each `(instrument, timeframe)` pair is an independent
 publication line — a domain BC subscribes to exactly the lines
 it cares about. Adding a third instrument or a fourth
