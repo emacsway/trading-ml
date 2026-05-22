@@ -180,8 +180,8 @@ let bcs_order_type_of (k : Order.kind) : string =
   | Market -> "1"
   | Limit _ | Stop _ | Stop_limit _ -> "2"
 
-(** Decode a single BCS [OrderStatus] JSON into [External_order.t]. *)
-let bcs_order_of_json cfg (j : Yojson.Safe.t) : External_order.t =
+(** Decode a single BCS [OrderStatus] JSON into [Dto.Order.t]. *)
+let bcs_order_of_json cfg (j : Yojson.Safe.t) : Dto.Order.t =
   let open Yojson.Safe.Util in
   let str k =
     match member k j with
@@ -223,7 +223,7 @@ let bcs_order_of_json cfg (j : Yojson.Safe.t) : External_order.t =
     | _ -> 0L
   in
   {
-    External_order.client_order_id = str "clientOrderId";
+    Dto.Order.client_order_id = str "clientOrderId";
     exec_id = str "exchangeId";
     instrument;
     side = bcs_side_to (str "side");
@@ -247,7 +247,7 @@ let create_order
     ~(quantity : int)
     ~(kind : Order.kind)
     ~client_order_id
-    () : External_order.t =
+    () : Dto.Order.t =
   let ticker, class_code = route_instrument t.cfg instrument in
   let price_field =
     match kind with
@@ -278,7 +278,7 @@ let create_order
     | _ -> "NEW"
   in
   {
-    External_order.client_order_id;
+    Dto.Order.client_order_id;
     exec_id = "";
     instrument;
     side;
@@ -303,7 +303,7 @@ let create_order
     default covers 30 days ending "now" — enough for reconcile
     (which wants live orders) but short enough to keep payloads
     small on accounts with years of history. *)
-let get_orders ?from_ts ?to_ts t : External_order.t list =
+let get_orders ?from_ts ?to_ts t : Dto.Order.t list =
   let base = t.cfg.Config.rest_base in
   let path = "/trade-api-bff-order-details/api/v1/orders/search" in
   let url = Uri.with_path base (Uri.path base ^ path) in
@@ -347,7 +347,7 @@ let get_orders ?from_ts ?to_ts t : External_order.t list =
   List.map (bcs_order_of_json t.cfg) items
 
 (** GET /trade-api-bff-operations/api/v1/orders/{id} — single order status. *)
-let get_order t ~client_order_id : External_order.t =
+let get_order t ~client_order_id : Dto.Order.t =
   let path = ops_path ^ "/orders/" ^ client_order_id in
   bcs_order_of_json t.cfg (get_json t path [])
 
@@ -355,7 +355,7 @@ let get_order t ~client_order_id : External_order.t =
     Same pattern as cancel: URL path names the order being modified,
     body carries a fresh [clientOrderId] that BCS uses to dedupe
     retries of this edit operation. *)
-let edit_order t ~client_order_id ?quantity ?price () : External_order.t =
+let edit_order t ~client_order_id ?quantity ?price () : Dto.Order.t =
   let path = ops_path ^ "/orders/" ^ client_order_id in
   let edit_cid = Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string in
   let fields =
@@ -376,7 +376,7 @@ let edit_order t ~client_order_id ?quantity ?price () : External_order.t =
     | _ -> "NEW"
   in
   {
-    External_order.client_order_id;
+    Dto.Order.client_order_id;
     exec_id = "";
     instrument =
       Instrument.make ~ticker:(Ticker.of_string "UNKNOWN") ~venue:(Mic.of_string "MISX")
@@ -397,7 +397,7 @@ let edit_order t ~client_order_id ?quantity ?price () : External_order.t =
   }
 
 (** Decode one record from the BCS Deals payload into an
-    {!External_execution.t}. Field shape per official BCS docs
+    {!Dto.Execution.t}. Field shape per official BCS docs
     (paginated retail API):
 
     - [orderNum] int64       broker order number (correlates with
@@ -428,7 +428,7 @@ let edit_order t ~client_order_id ?quantity ?price () : External_order.t =
 
     No per-fill commission field — [fee] defaults to zero; fees live
     on the parent [Order] state, not per-execution. *)
-let bcs_trade_of_json (j : Yojson.Safe.t) : External_execution.t =
+let bcs_trade_of_json (j : Yojson.Safe.t) : Dto.Execution.t =
   let open Yojson.Safe.Util in
   let int_or_str k =
     match member k j with
@@ -494,7 +494,7 @@ let bcs_trade_of_json (j : Yojson.Safe.t) : External_execution.t =
 
     Default window = 30 days ending "now", same rationale as
     [get_orders]. *)
-let get_deals ?from_ts ?to_ts t : External_execution.t list =
+let get_deals ?from_ts ?to_ts t : Dto.Execution.t list =
   let base = t.cfg.Config.rest_base in
   let path = "/trade-api-bff-trade-details/api/v1/trades/search" in
   let url = Uri.with_path base (Uri.path base ^ path) in
@@ -540,7 +540,7 @@ let get_deals ?from_ts ?to_ts t : External_execution.t list =
     per call — it's opaque to callers and not surfaced on [Order.t];
     stable-across-retries idempotency is a higher-layer concern and
     we don't retry POSTs at the HTTP transport level. *)
-let cancel_order t ~client_order_id : External_order.t =
+let cancel_order t ~client_order_id : Dto.Order.t =
   let path = ops_path ^ "/orders/" ^ client_order_id ^ "/cancel" in
   let cancel_cid = Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string in
   let payload : Yojson.Safe.t = `Assoc [ ("clientOrderId", `String cancel_cid) ] in
@@ -552,7 +552,7 @@ let cancel_order t ~client_order_id : External_order.t =
     | _ -> "CANCELLED"
   in
   {
-    External_order.client_order_id;
+    Dto.Order.client_order_id;
     exec_id = "";
     instrument =
       Instrument.make ~ticker:(Ticker.of_string "UNKNOWN") ~venue:(Mic.of_string "MISX")

@@ -41,7 +41,7 @@ type t = {
           external system reports it. *)
 }
 
-val to_broker_domain : placement_id:int -> t -> Order.t
+val to_domain : placement_id:int -> t -> Order.t
 (** Project to broker BC's internal domain order by attaching
     the saga's [placement_id]. Finam-side handles
     ([client_order_id], [order_id], [exec_id]) are dropped —

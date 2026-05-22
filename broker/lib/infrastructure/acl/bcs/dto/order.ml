@@ -5,13 +5,13 @@ type t = {
   side : Core.Side.t;
   quantity : Decimal.t;
   filled : Decimal.t;
-  kind : Order.kind;
-  tif : Order.time_in_force;
-  status : Order.status;
+  kind : Broker_domain.Order.kind;
+  tif : Broker_domain.Order.time_in_force;
+  status : Broker_domain.Order.status;
   placed_ts : int64;
 }
 
-let to_broker_domain ~placement_id (v : t) : Order.t =
+let to_domain ~placement_id (v : t) : Broker_domain.Order.t =
   {
     placement_id;
     instrument = v.instrument;

@@ -109,8 +109,8 @@ let venues _t : Mic.t list = [ Mic.of_string "MISX" ]
 let mint_client_order_id () =
   Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string
 
-let project ~placement_id (v : External_order.t) : Order_view_model.t =
-  Order_view_model.of_domain (External_order.to_broker_domain ~placement_id v)
+let project ~placement_id (v : Dto.Order.t) : Order_view_model.t =
+  Order_view_model.of_domain (Dto.Order.to_domain ~placement_id v)
 
 let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif:_ :
     Order_view_model.t =
@@ -144,7 +144,7 @@ let get_order t ~placement_id : Order_view_model.t option =
     placement identified by [placement_id]. BCS's deal payload
     does not carry [clientOrderId] — only [orderNum]
     (broker-assigned). So we resolve the order first to pick up
-    its [exec_id] (= the [orderNum] BCS kept on [External_order.t]),
+    its [exec_id] (= the [orderNum] BCS kept on [Dto.Order.t]),
     then filter the deals list by string-equality on that id.
     Returns [] if the placement is unknown, has no [exec_id] yet
     (still pending), or no fills against it. *)
@@ -156,7 +156,7 @@ let get_executions t ~placement_id : Execution_view_model.t list =
       if external_order.exec_id = "" then []
       else
         Rest.get_deals t.rest
-        |> List.filter_map (fun (e : External_execution.t) ->
+        |> List.filter_map (fun (e : Dto.Execution.t) ->
             if e.order_num = external_order.exec_id then
               Some
                 (Execution_view_model.of_domain
@@ -185,9 +185,9 @@ let placement_id_by_order_num t ~order_num : int option =
     [/trade-api-bff-trade-details/api/v1/trades/search]). Used
     by the broker's WS-equivalent polling fiber to discover new
     fills outside command-in-scope. Returns BCS's
-    [External_execution.t]s verbatim; callers filter to their
+    [Dto.Execution.t]s verbatim; callers filter to their
     own placements via [placement_id_by_order_num]. *)
-let recent_deals ?from_ts ?to_ts t : External_execution.t list =
+let recent_deals ?from_ts ?to_ts t : Dto.Execution.t list =
   Rest.get_deals ?from_ts ?to_ts t.rest
 
 let dispatch t (event : Broker.event) : unit =
@@ -202,7 +202,7 @@ let dispatch t (event : Broker.event) : unit =
     the final value is computed by {!finalize_and_dispatch}
     after dedup, so that catch-up replays of an already-seen
     fill don't double-count the cumulative. *)
-let order_leg_filled_of_rest t (e : External_execution.t) :
+let order_leg_filled_of_rest t (e : Dto.Execution.t) :
     Broker_domain.Remote_broker.Events.Order_leg_filled.t option =
   match placement_id_by_order_num t ~order_num:e.order_num with
   | None -> None

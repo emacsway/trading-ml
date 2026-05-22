@@ -26,15 +26,15 @@ type t = {
   side : Core.Side.t;
   quantity : Decimal.t;
   filled : Decimal.t;
-  kind : Order.kind;
-  tif : Order.time_in_force;
-  status : Order.status;
+  kind : Broker_domain.Order.kind;
+  tif : Broker_domain.Order.time_in_force;
+  status : Broker_domain.Order.status;
   placed_ts : int64;
       (** Venue's [createdAt] parsed into int64 epoch — the
           domain-event timestamp of the placement. *)
 }
 
-val to_broker_domain : placement_id:int -> t -> Order.t
+val to_domain : placement_id:int -> t -> Broker_domain.Order.t
 (** Project to broker BC's internal domain order by attaching
     the saga's [placement_id]. BCS-side handles
     ([client_order_id], [exec_id]) are dropped — they never

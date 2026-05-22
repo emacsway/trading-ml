@@ -203,7 +203,7 @@ let mint_client_order_id () =
   String.concat "" (String.split_on_char '-' uuid)
 
 let project ~placement_id (v : External_order.t) : Order_view_model.t =
-  Order_view_model.of_domain (External_order.to_broker_domain ~placement_id v)
+  Order_view_model.of_domain (External_order.to_domain ~placement_id v)
 
 let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif :
     Order_view_model.t =

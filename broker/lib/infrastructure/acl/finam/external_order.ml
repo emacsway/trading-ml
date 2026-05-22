@@ -12,7 +12,7 @@ type t = {
   placed_ts : int64;
 }
 
-let to_broker_domain ~placement_id (v : t) : Order.t =
+let to_domain ~placement_id (v : t) : Order.t =
   {
     placement_id;
     instrument = v.instrument;

@@ -178,7 +178,7 @@ let test_filter_correlates_by_order_num () =
   (* Two fills for the same broker order + an unrelated one. The
      broker's [get_executions] first looks up the order's
      [exec_id], then runs exactly this filter. *)
-  let mk order_num trade_id qty price : External_execution.t =
+  let mk order_num trade_id qty price : Dto.Execution.t =
     {
       order_num;
       trade_id;
@@ -194,13 +194,11 @@ let test_filter_correlates_by_order_num () =
   let deals =
     [ mk "1001" "T1" 3 100.0; mk "1001" "T2" 7 101.0; mk "1002" "T3" 5 200.0 ]
   in
-  let only_1001 =
-    List.filter (fun (e : External_execution.t) -> e.order_num = "1001") deals
-  in
+  let only_1001 = List.filter (fun (e : Dto.Execution.t) -> e.order_num = "1001") deals in
   Alcotest.(check int) "2 fills for 1001" 2 (List.length only_1001);
   let total =
     List.fold_left
-      (fun acc (e : External_execution.t) -> Decimal.add acc e.quantity)
+      (fun acc (e : Dto.Execution.t) -> Decimal.add acc e.quantity)
       Decimal.zero only_1001
   in
   Alcotest.(check (float 1e-6)) "1001 totals 10" 10.0 (Decimal.to_float total)

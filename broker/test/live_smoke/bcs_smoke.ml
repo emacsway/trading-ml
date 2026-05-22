@@ -146,7 +146,7 @@ let test_limit_order_lifecycle () =
           if fetched.exec_id = "" then []
           else
             Bcs.Rest.get_deals rest
-            |> List.filter (fun (e : Bcs.External_execution.t) ->
+            |> List.filter (fun (e : Bcs.Dto.Execution.t) ->
                 e.order_num = fetched.exec_id)
         in
         Alcotest.(check int)
