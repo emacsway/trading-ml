@@ -29,6 +29,11 @@ type t = {
       ({[/last-candle/ws]}, {[/quotes/ws]}, …); the [bcs-trade-go]
       reference client still reflects the old layout. *)
   ws_market_data_url : Uri.t;
+  ws_orders_execution_url : Uri.t;
+      (** Account-wide WebSocket channel that emits per-leg
+      execution events (FIX ExecutionReport, [executionType=11
+      Trade] plus aggregate fill states). Bearer-authenticated,
+      push-only. *)
 }
 
 (* Public auth host is [be.broker.ru] per the BCS docs. [rest_base]
@@ -57,6 +62,9 @@ let make
     ?(ws_market_data_url =
       Uri.of_string
         "wss://ws.broker.ru/trade-api-market-data-connector/api/v1/market-data/ws")
+    ?(ws_orders_execution_url =
+      Uri.of_string
+        "wss://ws.broker.ru/trade-api-bff-operations/api/v1/orders/execution/ws")
     () =
   {
     rest_base;
@@ -65,4 +73,5 @@ let make
     account_id;
     default_class_code;
     ws_market_data_url;
+    ws_orders_execution_url;
   }

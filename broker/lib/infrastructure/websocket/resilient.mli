@@ -1,11 +1,15 @@
 (** Resilient WebSocket connection: auto-reconnect with exponential
     backoff + periodic heartbeat ping. Broker-agnostic — the caller
-    injects [connect], [on_text], and [on_disconnect] callbacks.
+    injects [connect], [on_text], and the
+    [on_disconnect] / [on_reconnect] lifecycle hooks.
 
     Lifecycle:
     1. [create] spawns the reader + heartbeat fibers.
-    2. On disconnect: waits [backoff] → calls [connect] → calls
-       [on_reconnect] (for resubscription) → resumes reader.
+    2. On disconnect: fires [on_disconnect] (callers can flip a
+       fallback transport into active) → waits [backoff] →
+       calls [connect] → fires [on_reconnect] (for
+       resubscription, catch-up, fallback-deactivation) →
+       resumes reader.
     3. [close] stops all fibers and closes the socket.
 
     Thread-safe: [send] serialises writes via a mutex. *)
@@ -16,6 +20,11 @@ type config = {
   max_backoff : float;
   connect : unit -> Client.t;
   on_text : string -> unit;
+  on_disconnect : unit -> unit;
+      (** Fired once when the reader detects a dropped
+          connection, before the backoff loop begins.
+          Callers use this to engage a fallback transport
+          (e.g. activate a REST-poll fiber). *)
   on_reconnect : unit -> unit;
 }
 

@@ -89,6 +89,7 @@ let subscribe_bars
                   Log.warn "[bcs ws] error %s: %s" code message
               | Other _ -> ()
             with e -> Log.warn "[bcs ws] decode failed: %s" (Printexc.to_string e));
+        on_disconnect = (fun () -> ());
         on_reconnect = (fun () -> ());
       }
     in

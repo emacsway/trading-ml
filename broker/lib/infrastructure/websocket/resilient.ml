@@ -6,6 +6,7 @@ type config = {
   max_backoff : float;
   connect : unit -> Client.t;
   on_text : string -> unit;
+  on_disconnect : unit -> unit;
   on_reconnect : unit -> unit;
 }
 
@@ -44,6 +45,7 @@ and reconnect t =
   let clock = Eio.Stdenv.clock t.env in
   let backoff = ref 1.0 in
   let connected = ref false in
+  (try t.config.on_disconnect () with _ -> ());
   while (not !connected) && not t.closed do
     Log.warn "[%s] disconnected — reconnecting in %.0fs" t.config.label !backoff;
     Eio.Time.sleep clock !backoff;

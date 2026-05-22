@@ -26,11 +26,15 @@
     on create_order, every order is effectively DAY.
 
     {b Live feeds.} Unlike Finam's multiplexed socket, BCS opens
-    one WS connection per (instrument, timeframe). The adapter
-    owns the bridge and the per-key refcount. Personal-account
-    fills are surfaced via a REST-polling fiber for now; BCS's
-    WebSocket execution-status / transaction-status channels are
-    available and will replace the polling in a future commit. *)
+    one WS connection per (instrument, timeframe) for market
+    data, plus one account-wide WS connection for personal
+    fills (execution-status channel). Account fills run
+    behind an {!Acl_common.Transport_supervisor}: WS is the
+    primary transport, REST [get_deals] polling is the
+    fallback that activates whenever the WS disconnects and
+    deactivates on reconnect. The supervisor is invisible
+    to consumers — {!Broker.event} fires the same regardless
+    of which transport delivered the leg. *)
 
 open Core
 
@@ -51,7 +55,6 @@ type t = {
   mutable bridge : Ws_bridge.bridge option;
   mutable on_event : (Broker.event -> unit) option;
   mutable bar_refcount : int SubMap.t;
-  observed_deals : (int * int64 * string * string, unit) Hashtbl.t;
   total_filled : (int, Decimal.t) Acl_common.Cumulative_sum.t;
       (** Per-placement cumulative-fill accumulator. The
           adapter is the recognizer of venue fill facts (per
@@ -60,6 +63,15 @@ type t = {
           the sequence of observed legs and lives here, with
           the recognizer, rather than leaking into the
           application layer. *)
+  fill_dedup :
+    (int, Broker_domain.Remote_broker.Events.Order_leg_filled.t) Acl_common.Stream_dedup.t;
+      (** Per-placement fill-stream deduplicator. Shared
+          between the WS execution-status branch and the REST
+          [get_deals] fallback branch so the same fill never
+          crosses the ACL boundary twice. Keyed by
+          [placement_id]; [equal_value] compares
+          [(fill_quantity, fill_price)] — the discriminator
+          available on both transports. *)
   bar_dedup : (Instrument.t * Timeframe.t, Candle.t) Acl_common.Stream_dedup.t;
       (** Inbound bar-stream deduplicator: drops stale snapshots
           and exact intra-period duplicates before they cross
@@ -72,6 +84,12 @@ type t = {
 let name = "bcs"
 
 let make (rest : Rest.t) : t =
+  let fill_equal
+      (a : Broker_domain.Remote_broker.Events.Order_leg_filled.t)
+      (b : Broker_domain.Remote_broker.Events.Order_leg_filled.t) : bool =
+    Decimal.equal a.fill_quantity b.fill_quantity
+    && Decimal.equal a.fill_price b.fill_price
+  in
   {
     rest;
     placements = Placement_handle_store.create ();
@@ -79,8 +97,8 @@ let make (rest : Rest.t) : t =
     bridge = None;
     on_event = None;
     bar_refcount = SubMap.empty;
-    observed_deals = Hashtbl.create 128;
     total_filled = Acl_common.Cumulative_sum.create ~zero:Decimal.zero ~add:Decimal.add;
+    fill_dedup = Acl_common.Stream_dedup.create ~equal_value:fill_equal;
     bar_dedup = Acl_common.Stream_dedup.create ~equal_value:Candle.equal;
   }
 
@@ -172,78 +190,98 @@ let dispatch t (event : Broker.event) : unit =
       try f event with e -> Log.warn "[bcs] on_event raised: %s" (Printexc.to_string e))
   | None -> ()
 
-(** Polling tick for personal-account fills. Reads recent deals
-    via REST, dedups by [(placement_id, ts, qty, price)] tuple,
-    emits {!Broker.Order_leg_filled} for every newly-observed fill
-    against a placement this adapter recognises. *)
-let poll_fills_once t ~env : unit =
-  let to_ts = Int64.of_float (Eio.Time.now (Eio.Stdenv.clock env)) in
-  let from_ts = Int64.sub to_ts 300L in
-  let deals =
-    try recent_deals ~from_ts ~to_ts t
-    with e ->
-      Log.warn "[bcs poll] recent_deals failed: %s" (Printexc.to_string e);
-      []
+(** Convert a single REST-deal tuple into a (raw) domain event
+    suitable for funnelling into the fill supervisor. The
+    [new_total_filled] field is a placeholder ([Decimal.zero]):
+    the final value is computed by {!finalize_and_dispatch}
+    after dedup, so that catch-up replays of an already-seen
+    fill don't double-count the cumulative.
+
+    {b Known gap.} BCS REST [get_deals] does not return the
+    instrument or side per execution. Until the
+    {!Placement_handle_store} carries those at submit time,
+    fills arriving via the REST branch carry an [UNKNOWN]
+    placeholder; the WS branch (when up) provides the
+    canonical instrument. Dedup compares fills on
+    [(fill_quantity, fill_price)] only, so an UNKNOWN-instrument
+    REST event still suppresses the matching WS event (and
+    vice versa) — but if the REST event wins the race,
+    downstream sees the placeholder. Pre-existing limitation;
+    addressed separately when the placement store grows
+    domain-typed fields. *)
+let order_leg_filled_of_rest t ~(order_num : string) (exec : Broker_domain.Order.trade) :
+    Broker_domain.Remote_broker.Events.Order_leg_filled.t option =
+  match placement_id_by_order_num t ~order_num with
+  | None -> None
+  | Some placement_id ->
+      let parent = try get_order t ~placement_id with _ -> None in
+      let side =
+        match parent with
+        | Some o -> ( try Side.of_string o.side with _ -> Side.Buy)
+        | None -> Side.Buy
+      in
+      let instrument =
+        Core.Instrument.make
+          ~ticker:(Core.Ticker.of_string "UNKNOWN")
+          ~venue:(Core.Mic.of_string "MISX") ()
+      in
+      let trade_id =
+        Printf.sprintf "%s:%Ld:%s" order_num exec.ts (Decimal.to_string exec.quantity)
+      in
+      Some
+        {
+          placement_id;
+          trade_id;
+          instrument;
+          side;
+          fill_quantity = exec.quantity;
+          fill_price = exec.price;
+          fee = Decimal.zero;
+          fill_ts = exec.ts;
+          new_total_filled = Decimal.zero;
+        }
+
+(** REST-side branch of the supervisor's [poll_window]:
+    pulls deals over [(since_ts, to_ts)], drops the ones we
+    can't map back to a known placement, and returns raw domain
+    events (cumulative-bump happens at the seam, not here). *)
+let poll_fill_window t ~since_ts ~to_ts :
+    Broker_domain.Remote_broker.Events.Order_leg_filled.t list =
+  recent_deals ~from_ts:since_ts ~to_ts t
+  |> List.filter_map (fun (order_num, exec) -> order_leg_filled_of_rest t ~order_num exec)
+
+(** WS-side branch: takes a parsed BCS execution-status event,
+    looks up the placement, and returns a (raw, not finalised)
+    domain event. Returns [None] when the event is not a fill
+    (lifecycle events on this channel are dropped silently) or
+    when the placement is unknown (the broker may report fills
+    on orders placed by another session sharing the
+    [original_client_order_id] — not our problem). *)
+let order_leg_filled_of_ws t (ev : Ws.Events.Order_event.t) :
+    Broker_domain.Remote_broker.Events.Order_leg_filled.t option =
+  if not (Ws.Events.Order_event.is_fill ev) then None
+  else
+    let cid = ev.original_client_order_id in
+    match Placement_handle_store.find_placement_id t.placements ~client_order_id:cid with
+    | None ->
+        Log.warn "[bcs order ws] fill for unknown clientOrderId=%s — skipping" cid;
+        None
+    | Some placement_id ->
+        Ws.Events.Order_event.to_domain ~placement_id ~new_total_filled:Decimal.zero ev
+
+(** Common seam for both branches: dedup → cumulative-bump →
+    dispatch. The [new_total_filled] supplied on the raw event
+    is ignored; the final field is the post-bump cumulative.
+    This way a catch-up REST tick that re-emits the same fill
+    after a WS dispatch is suppressed at dedup and never bumps
+    the accumulator twice. *)
+let finalize_and_dispatch t (raw : Broker_domain.Remote_broker.Events.Order_leg_filled.t)
+    : unit =
+  let new_total =
+    Acl_common.Cumulative_sum.bump t.total_filled ~key:raw.placement_id
+      ~delta:raw.fill_quantity
   in
-  List.iter
-    (fun (order_num, (exec : Broker_domain.Order.trade)) ->
-      match placement_id_by_order_num t ~order_num with
-      | None -> ()
-      | Some placement_id ->
-          let key =
-            ( placement_id,
-              exec.ts,
-              Decimal.to_string exec.quantity,
-              Decimal.to_string exec.price )
-          in
-          if Hashtbl.mem t.observed_deals key then ()
-          else begin
-            Hashtbl.replace t.observed_deals key ();
-            let parent = try get_order t ~placement_id with _ -> None in
-            let instrument =
-              match parent with
-              | Some o ->
-                  (* Reverse from view model — for now use unknown
-                     placeholder; future refactor surfaces domain
-                     Instrument.t directly from the placement store. *)
-                  let _ = o in
-                  Core.Instrument.make
-                    ~ticker:(Core.Ticker.of_string "UNKNOWN")
-                    ~venue:(Core.Mic.of_string "MISX") ()
-              | None ->
-                  Core.Instrument.make
-                    ~ticker:(Core.Ticker.of_string "UNKNOWN")
-                    ~venue:(Core.Mic.of_string "MISX") ()
-            in
-            let side =
-              match parent with
-              | Some o -> ( try Side.of_string o.side with _ -> Side.Buy)
-              | None -> Side.Buy
-            in
-            let new_total =
-              Acl_common.Cumulative_sum.bump t.total_filled ~key:placement_id
-                ~delta:exec.quantity
-            in
-            let trade_id =
-              Printf.sprintf "%s:%Ld:%s" order_num exec.ts
-                (Decimal.to_string exec.quantity)
-            in
-            let domain_ev : Broker_domain.Remote_broker.Events.Order_leg_filled.t =
-              {
-                placement_id;
-                trade_id;
-                instrument;
-                side;
-                fill_quantity = exec.quantity;
-                fill_price = exec.price;
-                fee = Decimal.zero;
-                fill_ts = exec.ts;
-                new_total_filled = new_total;
-              }
-            in
-            dispatch t (Broker.Order_leg_filled domain_ev)
-          end)
-    deals
+  dispatch t (Broker.Order_leg_filled { raw with new_total_filled = new_total })
 
 let start_live_feed t ~sw ~env ~on_event : unit =
   t.on_event <- Some on_event;
@@ -251,13 +289,32 @@ let start_live_feed t ~sw ~env ~on_event : unit =
   let auth = Rest.auth t.rest in
   let bridge = Ws_bridge.make ~env ~sw ~cfg ~auth in
   t.bridge <- Some bridge;
-  let poll_interval = 5 in
-  Eio.Fiber.fork ~sw (fun () ->
-      while true do
-        (try poll_fills_once t ~env
-         with e -> Log.warn "[bcs poll] tick failed: %s" (Printexc.to_string e));
-        Eio.Time.sleep (Eio.Stdenv.clock env) (Float.of_int poll_interval)
-      done)
+  let ts_now () = Int64.of_float (Unix.gettimeofday ()) in
+  let initial_since_ts = ts_now () in
+  let dedup_accept (ev : Broker_domain.Remote_broker.Events.Order_leg_filled.t) =
+    Acl_common.Stream_dedup.should_accept t.fill_dedup ~key:ev.placement_id ~ts:ev.fill_ts
+      ~value:ev
+  in
+  let sup =
+    Acl_common.Transport_supervisor.start ~env ~sw ~label:"bcs fills" ~poll_interval:5.0
+      ~ts_now
+      ~poll_window:(fun ~since_ts ~to_ts -> poll_fill_window t ~since_ts ~to_ts)
+      ~ts_of_event:(fun ev ->
+        ev.Broker_domain.Remote_broker.Events.Order_leg_filled.fill_ts)
+      ~dedup_accept ~emit:(finalize_and_dispatch t) ~initial_since_ts
+  in
+  try
+    Order_event_bridge.start ~env ~sw ~cfg ~auth
+      ~on_event:(fun ev ->
+        match order_leg_filled_of_ws t ev with
+        | Some raw -> Acl_common.Transport_supervisor.feed_ws sup raw
+        | None -> ())
+      ~on_disconnect:(fun () -> Acl_common.Transport_supervisor.ws_went_down sup)
+      ~on_reconnect:(fun () -> Acl_common.Transport_supervisor.ws_reconnected sup);
+    Acl_common.Transport_supervisor.ws_came_up sup
+  with e ->
+    Log.warn "[bcs] order WS failed to start (%s) — falling back to REST-poll only"
+      (Printexc.to_string e)
 
 let with_bridge t f =
   match t.bridge with

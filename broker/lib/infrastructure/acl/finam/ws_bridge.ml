@@ -56,6 +56,7 @@ let make ~env ~sw ~cfg ~auth ~on_event : bridge =
                 with e ->
                   Log.warn "[finam ws] decode failed: %s raw: %s" (Printexc.to_string e)
                     payload));
+        on_disconnect = (fun () -> ());
         on_reconnect;
       }
     in
