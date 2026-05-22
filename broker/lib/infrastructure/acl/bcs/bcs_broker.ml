@@ -319,8 +319,14 @@ let subscribe t (request : Broker.request) : unit =
               Acl_common.Stream_dedup.should_accept t.bar_dedup
                 ~key:(instrument, timeframe) ~ts:candle.ts ~value:candle
             in
-            let poll_window ~since_ts:_ ~to_ts:_ =
-              try Rest.bars t.rest ~n:20 ~instrument ~timeframe
+            let poll_window ~since_ts ~to_ts =
+              (* BCS /candles-chart takes startDate / endDate cursors
+                 and caps each request at 1440 bars. Steady-state ticks
+                 keep the window narrow (poll_interval = 60s); a
+                 reconnect catch-up over a longer gap can hit the cap
+                 and 400 — accepted as a known limit, documented in
+                 docs/architecture/transport-supervisor.md. *)
+              try Rest.bars t.rest ~from_ts:since_ts ~to_ts ~instrument ~timeframe
               with e ->
                 Log.warn "[bcs] bars poll %s/%s failed: %s"
                   (Instrument.to_qualified instrument)

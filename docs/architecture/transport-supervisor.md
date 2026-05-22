@@ -230,14 +230,21 @@ long outage depends on the broker's REST endpoint:
 
 | Broker | Stream | REST endpoint | Cursor support |
 |---|---|---|---|
-| BCS | bars | `Rest.bars ~n` | **none** — returns last N bars regardless. `n=20` covers ~20 minutes on M1, ~20 hours on H1. Long gaps on short timeframes can lose intermediate bars; the steady-state poll loop fills in piecemeal while WS is down. |
+| BCS | bars | `Rest.bars ?from_ts ?to_ts` | precise cursors (BCS caps at 1440 bars per request) |
 | BCS | fills | `Rest.get_deals ?from_ts ?to_ts` | precise cursors |
 | Finam | bars | `Rest.bars ?from_ts ?to_ts ?n` | precise cursors |
 | Finam | fills | `Rest.get_trades ?from_ts ?to_ts` | precise cursors |
 
-The BCS-bars asymmetry is documented in
-`bcs/ws_bridge.ml` and is the one place this pattern leaks a
-broker-specific compromise into the shape of the abstraction.
+The four streams are now symmetric on cursor support. The
+steady-state poll fiber ticks every 60 s, so its window stays
+narrow regardless of the broker's per-request cap. The
+single-shot reconnect catch-up can hit the cap on long outages
+— for BCS bars specifically, a gap longer than ~24 h on M1
+exceeds 1440 bars and the server returns 400. In that case
+the catch-up returns no bars and the gap is filled only by
+the next steady-state ticks once WS is back; some
+intermediate bars are lost. Acceptable for current scope;
+chunked catch-up requests are a possible future enhancement.
 
 ## Known limitations
 
