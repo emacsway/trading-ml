@@ -202,11 +202,8 @@ let mint_client_order_id () =
   let uuid = Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string in
   String.concat "" (String.split_on_char '-' uuid)
 
-let project ~placement_id (v : Dto.Order.t) : Order_view_model.t =
-  Order_view_model.of_domain (Dto.Order.to_domain ~placement_id v)
-
 let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif :
-    Order_view_model.t =
+    Broker_domain.Order.t =
   let cid = mint_client_order_id () in
   (match
      Placement_handle_store.record t.placements ~placement_id ~client_order_id:cid
@@ -217,33 +214,32 @@ let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif :
       ~tif ~client_order_id:cid ()
   in
   remember t ~client_order_id:cid ~order_id:external_order.order_id;
-  project ~placement_id external_order
+  Dto.Order.to_domain ~placement_id external_order
 
-let cancel_order t ~placement_id : Order_view_model.t option =
+let cancel_order t ~placement_id : Broker_domain.Order.t option =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> None
   | Some cid ->
       let order_id = resolve_order_id t ~client_order_id:cid in
       let external_order = Rest.cancel_order t.rest ~account_id:t.account_id ~order_id in
-      Some (project ~placement_id external_order)
+      Some (Dto.Order.to_domain ~placement_id external_order)
 
-let get_order t ~placement_id : Order_view_model.t option =
+let get_order t ~placement_id : Broker_domain.Order.t option =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> None
   | Some cid ->
       let order_id = resolve_order_id t ~client_order_id:cid in
       let external_order = Rest.get_order t.rest ~account_id:t.account_id ~order_id in
-      Some (project ~placement_id external_order)
+      Some (Dto.Order.to_domain ~placement_id external_order)
 
-let get_executions t ~placement_id : Execution_view_model.t list =
+let get_executions t ~placement_id : Broker_domain.Order.trade list =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> []
   | Some cid ->
       let order_id = resolve_order_id t ~client_order_id:cid in
       Rest.get_trades t.rest ~account_id:t.account_id
       |> List.filter_map (fun (at : Dto.Trade.t) ->
-          if at.order_id = order_id then Some (Execution_view_model.of_domain at.trade)
-          else None)
+          if at.order_id = order_id then Some at.trade else None)
 
 let dispatch t (event : Broker.event) : unit =
   match t.on_event with

@@ -3,12 +3,10 @@
     The Submit/Cancel handshake is exercised against an
     in-process fake of the {!Broker.S} port. The fake mimics an
     ACL adapter — it owns an internal {[placement_id ↦ string]}
-    map and returns the canned view-model status the test
+    map and returns the canned {!Order.status} the test
     instructs it to. *)
 
 open Core
-module Order_view_model = Broker_view_models.Order_view_model
-module Execution_view_model = Broker_view_models.Execution_view_model
 module Submit = Broker_commands.Submit_order_command
 module Submit_wf = Broker_commands.Submit_order_command_workflow
 module Cancel = Broker_commands.Cancel_pending_order_command
@@ -18,27 +16,28 @@ module Order_cancelled = Broker_integration_events.Order_cancelled_integration_e
 
 module Fake_broker = struct
   type t = {
-    mutable next_cancel_status : string;
+    mutable next_cancel_status : Order.status;
     mutable cancel_calls : int list;
     placements : (int, string) Hashtbl.t;
   }
 
-  let create ?(next_cancel_status = "CANCELLED") () =
+  let create ?(next_cancel_status = Order.Cancelled) () =
     { next_cancel_status; cancel_calls = []; placements = Hashtbl.create 8 }
 
   let name = "fake"
   let venues _ = []
   let bars _ ~n:_ ~instrument:_ ~timeframe:_ = []
 
-  let view_model ~placement_id ~status : Order_view_model.t =
+  let mk_order ~placement_id ~(status : Order.status) : Order.t =
     {
       placement_id;
-      instrument = { ticker = "SBER"; venue = "MISX"; isin = None; board = None };
-      side = "BUY";
-      quantity = "10";
-      filled = "0";
-      kind = { type_ = "MARKET"; price = None; stop_price = None; limit_price = None };
-      tif = "GTC";
+      instrument =
+        Instrument.make ~ticker:(Ticker.of_string "SBER") ~venue:(Mic.of_string "MISX") ();
+      side = Side.Buy;
+      quantity = Decimal.of_int 10;
+      filled = Decimal.zero;
+      kind = Market;
+      tif = GTC;
       status;
       placed_ts = 0L;
     }
@@ -49,18 +48,18 @@ module Fake_broker = struct
   let place_order t ~placement_id ~instrument:_ ~side:_ ~quantity:_ ~kind:_ ~tif:_ =
     incr next_cid;
     Hashtbl.replace t.placements placement_id (Printf.sprintf "cid-%d" !next_cid);
-    view_model ~placement_id ~status:"NEW"
+    mk_order ~placement_id ~status:New
 
   let cancel_order t ~placement_id =
     t.cancel_calls <- placement_id :: t.cancel_calls;
     match Hashtbl.find_opt t.placements placement_id with
     | None -> None
-    | Some _ -> Some (view_model ~placement_id ~status:t.next_cancel_status)
+    | Some _ -> Some (mk_order ~placement_id ~status:t.next_cancel_status)
 
   let get_order t ~placement_id =
     match Hashtbl.find_opt t.placements placement_id with
     | None -> None
-    | Some _ -> Some (view_model ~placement_id ~status:"NEW")
+    | Some _ -> Some (mk_order ~placement_id ~status:New)
 
   let get_executions _ ~placement_id:_ = []
   let start_live_feed _ ~sw:_ ~env:_ ~on_event:_ = ()
@@ -99,7 +98,7 @@ let submit_one ~fb ~log ~placement_id ~correlation_id =
 
 let test_cancel_confirmed_publishes_ie () =
   Fake_broker.reset_id_seq ();
-  let fb = Fake_broker.create ~next_cancel_status:"CANCELLED" () in
+  let fb = Fake_broker.create ~next_cancel_status:Order.Cancelled () in
   let log = Broker_persistence.In_memory_order_command_log.create () in
   submit_one ~fb ~log ~placement_id:42 ~correlation_id:"saga-A";
   let cancelled = ref [] in
@@ -131,7 +130,7 @@ let test_cancel_confirmed_publishes_ie () =
 
 let test_cancel_pending_publishes_ie () =
   Fake_broker.reset_id_seq ();
-  let fb = Fake_broker.create ~next_cancel_status:"PENDING_CANCEL" () in
+  let fb = Fake_broker.create ~next_cancel_status:Order.Pending_cancel () in
   let log = Broker_persistence.In_memory_order_command_log.create () in
   submit_one ~fb ~log ~placement_id:7 ~correlation_id:"saga-P";
   let cancelled = ref [] in
@@ -147,7 +146,7 @@ let test_cancel_pending_publishes_ie () =
 
 let test_cancel_refused_no_ie () =
   Fake_broker.reset_id_seq ();
-  let fb = Fake_broker.create ~next_cancel_status:"FILLED" () in
+  let fb = Fake_broker.create ~next_cancel_status:Order.Filled () in
   let log = Broker_persistence.In_memory_order_command_log.create () in
   submit_one ~fb ~log ~placement_id:9 ~correlation_id:"saga-F";
   let cancelled = ref [] in

@@ -80,29 +80,34 @@ module type S = sig
     quantity:Decimal.t ->
     kind:Order.kind ->
     tif:Order.time_in_force ->
-    Order_view_model.t
+    Order.t
   (** Submit a new order under the saga's [placement_id]. The
       adapter mints whatever native handle the venue requires,
       records the linkage in its private placement-handle store,
-      and projects the venue's response onto the wire view model.
-      Returns the projection at submission time — [status] is
-      typically [NEW] / [PENDING_NEW], but may already reflect a
-      partial or full fill on aggressive orders. *)
+      and returns the broker BC's internal {!Order.t} —
+      ACL-private venue handles ([client_order_id], server-side
+      ids, exec ids) never cross this boundary.
 
-  val cancel_order : t -> placement_id:int -> Order_view_model.t option
+      The returned status is typically [New] / [Pending_new],
+      but may already reflect a partial or full fill on
+      aggressive orders. *)
+
+  val cancel_order : t -> placement_id:int -> Order.t option
   (** Resolve [placement_id] to the adapter's native handle, call
-      the venue's cancel, project the response. [None] when no
-      placement is recorded under this id (cancel arrived for an
-      order this adapter never placed, or its index has been
-      lost). *)
+      the venue's cancel, return the resulting domain {!Order.t}.
+      [None] when no placement is recorded under this id (cancel
+      arrived for an order this adapter never placed, or its
+      index has been lost). *)
 
-  val get_order : t -> placement_id:int -> Order_view_model.t option
+  val get_order : t -> placement_id:int -> Order.t option
   (** Snapshot of a single placement's state. [None] when no
       placement is recorded under this id. *)
 
-  val get_executions : t -> placement_id:int -> Execution_view_model.t list
+  val get_executions : t -> placement_id:int -> Order.trade list
   (** Per-execution detail for a placement. Empty list when the
-      order has no fills yet or no placement is recorded. *)
+      order has no fills yet or no placement is recorded.
+      Wire-shape projection (e.g. {!Execution_view_model.of_domain})
+      happens at the external seam, not here. *)
 
   val start_live_feed :
     t -> sw:Eio.Switch.t -> env:Eio_unix.Stdenv.base -> on_event:(event -> unit) -> unit

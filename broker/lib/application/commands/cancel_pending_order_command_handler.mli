@@ -9,16 +9,15 @@
       for an order this broker instance never placed (or whose
       index has been lost).
     - {b Dispatch & classify}: if the adapter found the
-      placement and the venue acknowledged, its returned
-      {!Order_view_model.t}'s [status] is mapped into a
-      tri-state outcome:
+      placement and the venue acknowledged, the returned
+      {!Order.status} is mapped into a tri-state outcome:
 
-      - ["CANCELLED"] → {!Cancel_confirmed}
-      - ["PENDING_CANCEL"] → {!Cancel_pending}
-      - any other status (e.g. ["FILLED"], ["REJECTED"],
-        ["EXPIRED"]) → {!Cancel_refused} — the venue
-        acknowledged the request but did not (and will not)
-        cancel.
+      - {!Order.Cancelled} → {!Cancel_confirmed}
+      - {!Order.Pending_cancel} → {!Cancel_pending}
+      - any other status (e.g. {!Order.Filled},
+        {!Order.Rejected}, {!Order.Expired}) →
+        {!Cancel_refused} — the venue acknowledged the
+        request but did not (and will not) cancel.
 
       Adapter exceptions (transport, parse) fold into
       {!Unreachable}.
@@ -39,20 +38,22 @@ val resolution_error_to_string : resolution_error -> string
 
 type broker_outcome =
   | Cancel_confirmed of { cancelled_ts : int64 }
-      (** Venue confirmed the cancel — view model [status] is
-          ["CANCELLED"]. [cancelled_ts] is from broker's
+      (** Venue confirmed the cancel — {!Order.status} is
+          {!Order.Cancelled}. [cancelled_ts] is from broker's
           injected clock at the moment the response was
           observed. *)
   | Cancel_pending of { cancelled_ts : int64 }
       (** Venue acknowledged the request but the cancel is not
-          yet final (status ["PENDING_CANCEL"]). The order may
+          yet final ({!Order.Pending_cancel}). The order may
           still fill before the cancel takes effect;
-          reconciliation between live feed and venue is required
-          to surface the final state. *)
+          reconciliation between live feed and venue is
+          required to surface the final state. *)
   | Cancel_refused of { reason : string }
       (** Venue refused (order is already terminal — filled,
           rejected, expired, or in some other non-cancellable
-          status). [reason] is the venue-reported status string. *)
+          status). [reason] is the {!Order.status_to_string}
+          projection of whichever non-cancellable status the
+          venue returned. *)
   | Unreachable of { reason : string }
       (** {!Broker.cancel_order} raised —
           transport, parse, or any other adapter-internal

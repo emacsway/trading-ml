@@ -12,11 +12,11 @@ type broker_outcome =
 
 type handle_error = Resolution of resolution_error
 
-let classify ~cancelled_ts ~status : broker_outcome =
+let classify ~cancelled_ts ~(status : Order.status) : broker_outcome =
   match status with
-  | "CANCELLED" -> Cancel_confirmed { cancelled_ts }
-  | "PENDING_CANCEL" -> Cancel_pending { cancelled_ts }
-  | other -> Cancel_refused { reason = other }
+  | Cancelled -> Cancel_confirmed { cancelled_ts }
+  | Pending_cancel -> Cancel_pending { cancelled_ts }
+  | other -> Cancel_refused { reason = Order.status_to_string other }
 
 let handle
     ~(broker : Broker.client)
@@ -29,5 +29,4 @@ let handle
   with
   | Error reason -> Rop.succeed (Unreachable { reason })
   | Ok None -> Rop.fail (Resolution (Placement_not_found cmd.placement_id))
-  | Ok (Some (vm : Order_view_model.t)) ->
-      Rop.succeed (classify ~cancelled_ts ~status:vm.status)
+  | Ok (Some (o : Order.t)) -> Rop.succeed (classify ~cancelled_ts ~status:o.status)

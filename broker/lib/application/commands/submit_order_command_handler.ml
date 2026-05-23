@@ -126,15 +126,16 @@ let place ~(broker : Broker.client) (v : validated_submit_order_command) : broke
     with e -> Error (Printexc.to_string e)
   with
   | Error reason -> Unreachable { reason }
-  | Ok (vm : Order_view_model.t) ->
-      (* The view model surfaces venue status as a string; the
-         ACL adapter has already projected from whatever the
-         venue spoke into our wire vocabulary. Anything other
-         than "REJECTED" counts as accepted at submission time —
-         a partial fill on an aggressive IOC, a [PENDING_NEW]
+  | Ok (o : Order.t) -> (
+      (* The ACL adapter has already projected from whatever the
+         venue spoke into our domain vocabulary. Anything other
+         than [Rejected] counts as accepted at submission time —
+         a partial fill on an aggressive IOC, a [Pending_new]
          under high venue latency, etc. all flow through the
          saga the same way. *)
-      if vm.status = "REJECTED" then Rejected { reason = vm.status } else Accepted
+      match o.status with
+      | Rejected -> Rejected { reason = Order.status_to_string o.status }
+      | _ -> Accepted)
 
 let handle ~(broker : Broker.client) (cmd : Submit_order_command.t) :
     (broker_outcome, handle_error) Rop.t =

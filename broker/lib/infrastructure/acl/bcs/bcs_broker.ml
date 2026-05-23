@@ -109,11 +109,8 @@ let venues _t : Mic.t list = [ Mic.of_string "MISX" ]
 let mint_client_order_id () =
   Uuidm.v4_gen (Random.State.make_self_init ()) () |> Uuidm.to_string
 
-let project ~placement_id (v : Dto.Order.t) : Order_view_model.t =
-  Order_view_model.of_domain (Dto.Order.to_domain ~placement_id v)
-
 let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif:_ :
-    Order_view_model.t =
+    Broker_domain.Order.t =
   let cid = mint_client_order_id () in
   (match
      Placement_handle_store.record t.placements ~placement_id ~client_order_id:cid
@@ -124,21 +121,21 @@ let place_order t ~placement_id ~instrument ~side ~quantity ~kind ~tif:_ :
     Rest.create_order t.rest ~instrument ~side ~quantity:q_int ~kind ~client_order_id:cid
       ()
   in
-  project ~placement_id external_order
+  Dto.Order.to_domain ~placement_id external_order
 
-let cancel_order t ~placement_id : Order_view_model.t option =
+let cancel_order t ~placement_id : Broker_domain.Order.t option =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> None
   | Some cid ->
       let external_order = Rest.cancel_order t.rest ~client_order_id:cid in
-      Some (project ~placement_id external_order)
+      Some (Dto.Order.to_domain ~placement_id external_order)
 
-let get_order t ~placement_id : Order_view_model.t option =
+let get_order t ~placement_id : Broker_domain.Order.t option =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> None
   | Some cid ->
       let external_order = Rest.get_order t.rest ~client_order_id:cid in
-      Some (project ~placement_id external_order)
+      Some (Dto.Order.to_domain ~placement_id external_order)
 
 (** Project account-wide deals into per-execution records for the
     placement identified by [placement_id]. BCS's deal payload
@@ -148,7 +145,7 @@ let get_order t ~placement_id : Order_view_model.t option =
     then filter the deals list by string-equality on that id.
     Returns [] if the placement is unknown, has no [exec_id] yet
     (still pending), or no fills against it. *)
-let get_executions t ~placement_id : Execution_view_model.t list =
+let get_executions t ~placement_id : Broker_domain.Order.trade list =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> []
   | Some cid ->
@@ -159,13 +156,12 @@ let get_executions t ~placement_id : Execution_view_model.t list =
         |> List.filter_map (fun (e : Dto.Execution.t) ->
             if e.order_num = external_order.exec_id then
               Some
-                (Execution_view_model.of_domain
-                   {
-                     Broker_domain.Order.ts = e.ts;
-                     quantity = e.quantity;
-                     price = e.price;
-                     fee = e.fee;
-                   })
+                {
+                  Broker_domain.Order.ts = e.ts;
+                  quantity = e.quantity;
+                  price = e.price;
+                  fee = e.fee;
+                }
             else None)
 
 (** Reverse lookup [order_num → placement_id]. In BCS the
