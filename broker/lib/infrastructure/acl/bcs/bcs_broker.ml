@@ -8,7 +8,7 @@
     speak [placement_id : int]. The adapter mints a BCS-format
     [client_order_id] (dashed UUIDv4 — BCS's validator rejects any
     other shape) on submit and records the linkage in a private
-    {!Placement_handle_store}. Cancel / get / get_executions
+    {!Placement_handle_store}. Cancel / get / get_trades
     resolve through that store; [None] when the placement was
     never observed by this adapter.
 
@@ -145,7 +145,7 @@ let get_order t ~placement_id : Broker_domain.Order.t option =
     then filter the deals list by string-equality on that id.
     Returns [] if the placement is unknown, has no [exec_id] yet
     (still pending), or no fills against it. *)
-let get_executions t ~placement_id : Broker_domain.Order.trade list =
+let get_trades t ~placement_id : Broker_domain.Order.trade list =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> []
   | Some cid ->
@@ -380,7 +380,7 @@ let as_broker (t : t) : Broker.client =
       let place_order = place_order
       let cancel_order = cancel_order
       let get_order = get_order
-      let get_executions = get_executions
+      let get_trades = get_trades
       let start_live_feed = start_live_feed
       let subscribe = subscribe
       let unsubscribe = unsubscribe

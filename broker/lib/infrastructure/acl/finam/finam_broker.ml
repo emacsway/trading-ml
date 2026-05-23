@@ -232,7 +232,7 @@ let get_order t ~placement_id : Broker_domain.Order.t option =
       let external_order = Rest.get_order t.rest ~account_id:t.account_id ~order_id in
       Some (Dto.Order.to_domain ~placement_id external_order)
 
-let get_executions t ~placement_id : Broker_domain.Order.trade list =
+let get_trades t ~placement_id : Broker_domain.Order.trade list =
   match Placement_handle_store.find_client_order_id t.placements ~placement_id with
   | None -> []
   | Some cid ->
@@ -515,7 +515,7 @@ let as_broker (t : t) : Broker.client =
       let place_order = place_order
       let cancel_order = cancel_order
       let get_order = get_order
-      let get_executions = get_executions
+      let get_trades = get_trades
       let start_live_feed = start_live_feed
       let subscribe = subscribe
       let unsubscribe = unsubscribe

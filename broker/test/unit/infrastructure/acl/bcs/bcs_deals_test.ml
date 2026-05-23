@@ -176,7 +176,7 @@ let test_doc_example_shape () =
 
 let test_filter_correlates_by_order_num () =
   (* Two fills for the same broker order + an unrelated one. The
-     broker's [get_executions] first looks up the order's
+     broker's [get_trades] first looks up the order's
      [exec_id], then runs exactly this filter. *)
   let mk order_num trade_id qty price : Dto.Execution.t =
     {

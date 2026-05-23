@@ -37,10 +37,10 @@ type t = {
 }
 
 type execution = { ts : int64; quantity : Decimal.t; price : Decimal.t; fee : Decimal.t }
-(** One execution (trade / fill slice) reported by the broker.
-    A single {!t} may be filled across multiple executions —
-    {!Broker.S.get_executions} returns the list that sums to the
-    order's [filled] quantity. Price and fee are per-execution
+(** One trade (fill slice) reported by the broker. A single
+    {!t} may be filled across multiple trades —
+    {!Broker.S.get_trades} returns the list that sums to the
+    order's [filled] quantity. Price and fee are per-trade
     (broker's actual numbers), not intended. *)
 
 val remaining_qty : t -> Decimal.t

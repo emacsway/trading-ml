@@ -103,10 +103,10 @@ module type S = sig
   (** Snapshot of a single placement's state. [None] when no
       placement is recorded under this id. *)
 
-  val get_executions : t -> placement_id:int -> Order.trade list
-  (** Per-execution detail for a placement. Empty list when the
+  val get_trades : t -> placement_id:int -> Order.trade list
+  (** Per-trade detail for a placement. Empty list when the
       order has no fills yet or no placement is recorded.
-      Wire-shape projection (e.g. {!Execution_view_model.of_domain})
+      Wire-shape projection (e.g. {!Trade_view_model.of_domain})
       happens at the external seam, not here. *)
 
   val start_live_feed :
@@ -157,7 +157,7 @@ let cancel_order (E ((module M), t)) ~placement_id = M.cancel_order t ~placement
 
 let get_order (E ((module M), t)) ~placement_id = M.get_order t ~placement_id
 
-let get_executions (E ((module M), t)) ~placement_id = M.get_executions t ~placement_id
+let get_trades (E ((module M), t)) ~placement_id = M.get_trades t ~placement_id
 
 let start_live_feed (E ((module M), t)) ~sw ~env ~on_event =
   M.start_live_feed t ~sw ~env ~on_event

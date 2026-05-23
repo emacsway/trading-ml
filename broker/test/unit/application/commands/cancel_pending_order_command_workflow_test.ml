@@ -61,7 +61,7 @@ module Fake_broker = struct
     | None -> None
     | Some _ -> Some (mk_order ~placement_id ~status:New)
 
-  let get_executions _ ~placement_id:_ = []
+  let get_trades _ ~placement_id:_ = []
   let start_live_feed _ ~sw:_ ~env:_ ~on_event:_ = ()
   let subscribe _ (_ : Broker.request) = ()
   let unsubscribe _ (_ : Broker.request) = ()

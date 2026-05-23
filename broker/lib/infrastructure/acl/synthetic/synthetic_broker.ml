@@ -79,7 +79,7 @@ let cancel_order _ ~placement_id:_ = unsupported "cancel_order"
 
 let get_order _ ~placement_id:_ = unsupported "get_order"
 
-let get_executions _ ~placement_id:_ = unsupported "get_executions"
+let get_trades _ ~placement_id:_ = unsupported "get_trades"
 
 (** Live-feed surface: today's synthetic adapter is a sync REST
     source only. [start_live_feed] / [subscribe] / [unsubscribe]
@@ -105,7 +105,7 @@ let as_broker (t : t) : Broker.client =
       let place_order = place_order
       let cancel_order = cancel_order
       let get_order = get_order
-      let get_executions = get_executions
+      let get_trades = get_trades
       let start_live_feed = start_live_feed
       let subscribe = subscribe
       let unsubscribe = unsubscribe

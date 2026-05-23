@@ -52,10 +52,10 @@
 
 (rule
  (deps
-  (:atd %{project_root}/shared/contracts/broker/view_models/execution_view_model.atd))
- (targets execution_view_model_t.ml execution_view_model_t.mli
-          execution_view_model_j.ml execution_view_model_j.mli)
+  (:atd %{project_root}/shared/contracts/broker/view_models/trade_view_model.atd))
+ (targets trade_view_model_t.ml trade_view_model_t.mli
+          trade_view_model_j.ml trade_view_model_j.mli)
  (action
   (progn
-   (run atdgen -t -o execution_view_model %{atd})
-   (run atdgen -j -o execution_view_model %{atd}))))
+   (run atdgen -t -o trade_view_model %{atd})
+   (run atdgen -j -o trade_view_model %{atd}))))
