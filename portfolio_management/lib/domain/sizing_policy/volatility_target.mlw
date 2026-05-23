@@ -9,6 +9,7 @@
 
 module Volatility_target
   use int.Int
+  use option.Option
   use decimal.Decimal
 
   type instrument
