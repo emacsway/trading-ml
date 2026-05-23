@@ -256,6 +256,12 @@ chunked catch-up requests are a possible future enhancement.
   on the next reconnect. Acceptable for current scope —
   silent subscribe failures are not a common BCS / Finam
   pattern — but worth keeping in mind.
+
+  Note that this is orthogonal to WS-protocol-level heartbeat
+  liveness; pong correctness is enforced by the
+  reader / consumer split in `Resilient`, documented
+  separately in
+  [WebSocket protocol layer](websocket-protocol-layer.md).
 - **Listener registry on Finam is unbounded.** Per
   subscription the list grows by one entry and shrinks by one
   on unsubscribe. The fan-out cost is `O(N)` in active
@@ -269,6 +275,9 @@ chunked catch-up requests are a possible future enhancement.
 - [Live engine](live-engine.md) — the consumer of
   `Broker.event`. Does not know which transport produced any
   given event; that opacity is what this pattern preserves.
+- [WebSocket protocol layer](websocket-protocol-layer.md) —
+  one layer below: how `Resilient` keeps RFC 6455 heartbeats
+  responsive while a downstream consumer is busy.
 - `broker/lib/infrastructure/acl/common/transport_supervisor.mli`
   — the API reference.
 - `broker/lib/infrastructure/acl/common/stream_dedup.mli` —

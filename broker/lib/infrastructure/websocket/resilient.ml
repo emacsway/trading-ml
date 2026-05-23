@@ -1,4 +1,31 @@
-(** Resilient WebSocket connection with auto-reconnect and heartbeat. *)
+(** Resilient WebSocket connection with auto-reconnect and heartbeat.
+
+    {1 Reader / consumer split}
+
+    Two fibers, not one. The {b reader} owns {!Client.recv} —
+    its only job is to pull frames off the socket as fast as
+    they arrive. {!Client.recv} auto-answers RFC 6455 Ping
+    frames with Pong inline, so as long as the reader is
+    iterating its loop the server's heartbeat is honoured.
+
+    The {b consumer} drains a bounded queue between the two
+    fibers and calls [config.on_text]. Anything heavy in
+    user-supplied [on_text] (parsing, dispatch, downstream
+    integration-event publish, hypothetical synchronous REST)
+    runs here — not in the reader — so a slow handler never
+    blocks recv, and thus never blocks the auto-pong.
+
+    The queue is bounded; {!Eio.Stream.add} blocks the reader
+    if the consumer falls behind by more than [queue_capacity]
+    frames. In practice that means at least [queue_capacity ×
+    typical-frame-rate] seconds of accumulated lag before the
+    reader can stall — far in excess of any server heartbeat
+    timeout. A high-watermark warning fires at 80% so a
+    deteriorating consumer is observable before the queue
+    saturates. *)
+
+let queue_capacity = 1024
+let queue_warn_threshold = 819 (* ~80% of capacity *)
 
 type config = {
   label : string;
@@ -15,6 +42,8 @@ type t = {
   env : Eio_unix.Stdenv.base;
   sw : Eio.Switch.t;
   mutex : Eio.Mutex.t;
+  queue : string Eio.Stream.t;
+  mutable warned_high_watermark : bool;
   mutable client : Client.t;
   mutable closed : bool;
 }
@@ -29,12 +58,26 @@ let close t =
 
 let is_alive t = not t.closed
 
+(** The reader's only side-effects are: [recv] (which auto-pongs)
+    and [Eio.Stream.add]. Both are cheap. If the consumer can't
+    keep up, [Eio.Stream.add] blocks here — but the high-water
+    threshold logs a warn long before that becomes a real
+    problem. *)
 let rec spawn_reader t =
   Eio.Fiber.fork_daemon ~sw:t.sw (fun () ->
       (try
          while not t.closed do
            match Client.recv t.client with
-           | Text payload -> ( try t.config.on_text payload with _ -> ())
+           | Text payload ->
+               let len = Eio.Stream.length t.queue in
+               if len >= queue_warn_threshold && not t.warned_high_watermark then begin
+                 t.warned_high_watermark <- true;
+                 Log.warn "[%s] consumer queue at %d/%d — slow on_text handler suspected"
+                   t.config.label len queue_capacity
+               end
+               else if len < queue_warn_threshold / 2 && t.warned_high_watermark then
+                 t.warned_high_watermark <- false;
+               Eio.Stream.add t.queue payload
            | Binary _ | Close _ -> raise Exit
          done
        with End_of_file | Exit -> ());
@@ -78,9 +121,36 @@ and spawn_heartbeat t =
        with _ -> ());
       `Stop_daemon)
 
+(** The consumer's lifetime spans reconnects — the queue and
+    the on_text callback are independent of any one socket
+    instance. Spawned once at {!create}; it drains forever
+    until [t.closed]. Exceptions from user [on_text] are
+    swallowed (same policy as before the split). *)
+let spawn_consumer t =
+  Eio.Fiber.fork_daemon ~sw:t.sw (fun () ->
+      (try
+         while not t.closed do
+           let payload = Eio.Stream.take t.queue in
+           try t.config.on_text payload with _ -> ()
+         done
+       with _ -> ());
+      `Stop_daemon)
+
 let create ~env ~sw ~config =
   let client = config.connect () in
-  let t = { config; env; sw; mutex = Eio.Mutex.create (); client; closed = false } in
+  let t =
+    {
+      config;
+      env;
+      sw;
+      mutex = Eio.Mutex.create ();
+      queue = Eio.Stream.create queue_capacity;
+      warned_high_watermark = false;
+      client;
+      closed = false;
+    }
+  in
   spawn_reader t;
+  spawn_consumer t;
   spawn_heartbeat t;
   t

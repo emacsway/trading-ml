@@ -202,5 +202,8 @@ build would fail.
 - [Transport supervisor](transport-supervisor.md) — how broker
   ACL adapters keep `Broker.event` flowing across WS
   disconnects by falling back to REST polling transparently.
+- [WebSocket protocol layer](websocket-protocol-layer.md) —
+  reader / consumer split that isolates RFC 6455 heartbeats
+  from downstream-handler latency.
 - [Hexagonal ADR](../adr/0001-hexagonal-architecture.md) — why
   this layering over alternatives.
