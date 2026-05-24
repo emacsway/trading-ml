@@ -35,4 +35,16 @@ module Reservation
   lemma reserved_qty_sell_is_cover :
     forall r: t. r.side = Side.Sell ->
       raw (reserved_qty r) = raw r.cover_qty
+
+  (** A reservation is [drained] when both its cover and open
+      parts have reached zero. The aggregate-level [commit_fill]
+      removes a reservation iff it becomes drained; partial draws
+      keep it in the ledger with reduced parts. The predicate is
+      structural — no arithmetic, only [Decimal.is_zero]. *)
+  predicate is_drained (r: t) =
+    Decimal.is_zero r.cover_qty /\ Decimal.is_zero r.open_qty
+
+  lemma drained_iff_zero_qty :
+    forall r: t.
+      is_drained r <-> raw r.cover_qty = 0 /\ raw r.open_qty = 0
 end

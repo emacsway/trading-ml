@@ -1,0 +1,24 @@
+(** Why3 companion for [reservation_filled.mli] — Domain Event
+    record. Emitted by [Portfolio.commit_fill] when the final
+    draw exhausts the reservation. A pure data carrier carrying
+    the atomic post-image of cash and position. *)
+
+module Reservation_filled
+  use int.Int
+  use decimal.Decimal
+  use side.Side
+
+  type instrument
+
+  type t = {
+    reservation_id : int;
+    instrument : instrument;
+    side : Side.t;
+    filled_quantity : Decimal.t;
+    fill_price : Decimal.t;
+    fee : Decimal.t;
+    new_position_quantity : Decimal.t;
+    new_avg_price : Decimal.t;
+    new_cash : Decimal.t;
+  }
+end

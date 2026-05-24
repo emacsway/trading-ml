@@ -1,0 +1,28 @@
+(** Why3 companion for [reservation_drawn_down.mli] — Domain
+    Event record. Emitted by [Portfolio.commit_fill] on a
+    partial draw that leaves an unfilled remainder. Carries the
+    atomic post-image of cash, position and the residual
+    reservation snapshot. *)
+
+module Reservation_drawn_down
+  use int.Int
+  use decimal.Decimal
+  use side.Side
+
+  type instrument
+
+  type t = {
+    reservation_id : int;
+    instrument : instrument;
+    side : Side.t;
+    drawn_quantity : Decimal.t;
+    fill_price : Decimal.t;
+    fee : Decimal.t;
+    remaining_cover_qty : Decimal.t;
+    remaining_open_qty : Decimal.t;
+    remaining_reserved_cash : Decimal.t;
+    new_position_quantity : Decimal.t;
+    new_avg_price : Decimal.t;
+    new_cash : Decimal.t;
+  }
+end

@@ -1,10 +1,12 @@
 (** Why3 companion for [portfolio.mli] — aggregate-root invariants.
     Models the reservations list symbolically and proves structural
     transitions: [try_reserve] grows the list by one, [try_release]
-    either shrinks it or signals absence. Per-reservation invariants
-    (e.g. [reserved_qty] case-analysis) live in
-    [reservation/reservation.mlw]; this module re-uses that proof
-    surface via qualified import. *)
+    either shrinks it or signals absence, and [commit_fill] either
+    draws a reservation down (keeps cardinality) or terminally
+    settles it (shrinks cardinality by one). Per-reservation
+    invariants (e.g. [reserved_qty] case-analysis, [is_drained])
+    live in [reservation/reservation.mlw]; this module re-uses that
+    proof surface via qualified import. *)
 
 module Portfolio
   use int.Int
@@ -15,6 +17,8 @@ module Portfolio
   use decimal.Decimal
   use side.Side
   use portfolio.reservation.reservation.Reservation as R
+  use portfolio.events.reservation_drawn_down.Reservation_drawn_down as RD
+  use portfolio.events.reservation_filled.Reservation_filled as RF
 
   type t = {
     cash : Decimal.t;
@@ -73,4 +77,144 @@ module Portfolio
   lemma empty_no_id :
     forall cash: Decimal.t, id: int.
       not (has_id (empty_portfolio cash).reservations id)
+
+  (* --------------------------------------------------------- *)
+  (*                       commit_fill                          *)
+  (* --------------------------------------------------------- *)
+
+  (** Symbolic outcome variant — mirrors OCaml's
+      [Account.Portfolio.commit_fill_outcome] without modelling
+      the event records' field contents (those are pure data
+      carriers, specified in [events/*.mlw]). *)
+  type commit_outcome =
+    | Drawn_down RD.t
+    | Fully_committed RF.t
+
+  (** Symbolic [(t * commit_outcome, commit_fill_error) result],
+      flattened so Why3 can pattern-match without nested [match]. *)
+  type commit_result =
+    | COk t commit_outcome
+    | CErr_not_found int
+    | CErr_overfill int
+
+  (** Axiomatic contract of [commit_fill]: any concrete
+      implementation that satisfies this predicate inherits the
+      structural lemmas stated below. The OCaml side
+      ([portfolio.ml:commit_fill]) is verified by code-review and
+      test against this contract, in the same axiomatic style
+      [decimal.mlw] relates to [decimal.ml].
+
+      The contract captures only structural effects (cardinality,
+      id presence, event-id correspondence,
+      [per_unit_collateral] preservation under partial draw).
+      Cover-first proration arithmetic and Overfill detection
+      semantics involve [Decimal] ordering / [min] and are left
+      to a future arithmetic-track spec. *)
+  predicate commit_fill_step
+    (before: t) (id: int) (result: commit_result) =
+    match result with
+    | COk after (Drawn_down ev) ->
+        ev.RD.reservation_id = id
+        /\ length after.reservations = length before.reservations
+        /\ has_id before.reservations id
+        /\ has_id after.reservations id
+        /\ (* The post-draw reservation with the same id keeps the
+              [per_unit_collateral] invariant — partial draws scale
+              by [open_qty] only. *)
+           (exists r_before r_after: R.t.
+              mem r_before before.reservations
+              /\ mem r_after after.reservations
+              /\ r_before.R.id = id
+              /\ r_after.R.id = id
+              /\ r_after.R.per_unit_collateral = r_before.R.per_unit_collateral)
+    | COk after (Fully_committed ev) ->
+        ev.RF.reservation_id = id
+        /\ length after.reservations = length before.reservations - 1
+        /\ has_id before.reservations id
+        /\ not has_id after.reservations id
+    | CErr_not_found id' ->
+        id' = id /\ not has_id before.reservations id
+    | CErr_overfill id' ->
+        id' = id /\ has_id before.reservations id
+    end
+
+  (** Cardinality contract: a partial draw never changes the
+      reservation count. *)
+  lemma commit_drawn_down_preserves_cardinality :
+    forall before after: t, id: int, ev: RD.t.
+      commit_fill_step before id (COk after (Drawn_down ev)) ->
+      length after.reservations = length before.reservations
+
+  (** Cardinality contract: a terminal draw removes exactly one
+      reservation. *)
+  lemma commit_fully_committed_shrinks_cardinality :
+    forall before after: t, id: int, ev: RF.t.
+      commit_fill_step before id (COk after (Fully_committed ev)) ->
+      length after.reservations = length before.reservations - 1
+
+  (** has_id monotonicity: the just-committed reservation is no
+      longer in the ledger. Cannot be observed again — the next
+      commit on the same id must be [Reservation_not_found]. *)
+  lemma commit_fully_committed_removes_id :
+    forall before after: t, id: int, ev: RF.t.
+      commit_fill_step before id (COk after (Fully_committed ev)) ->
+      not has_id after.reservations id
+
+  (** has_id preservation: a partial draw keeps the id reachable
+      for the next leg. *)
+  lemma commit_drawn_down_keeps_id :
+    forall before after: t, id: int, ev: RD.t.
+      commit_fill_step before id (COk after (Drawn_down ev)) ->
+      has_id after.reservations id
+
+  (** ID correspondence: the published event always references the
+      command's [id]. Future audit consumers can route by it. *)
+  lemma commit_event_id_matches_command_id_drawn :
+    forall before after: t, id: int, ev: RD.t.
+      commit_fill_step before id (COk after (Drawn_down ev)) ->
+      ev.RD.reservation_id = id
+
+  lemma commit_event_id_matches_command_id_filled :
+    forall before after: t, id: int, ev: RF.t.
+      commit_fill_step before id (COk after (Fully_committed ev)) ->
+      ev.RF.reservation_id = id
+
+  (** Pre-condition mirrors: error variants imply the
+      corresponding membership state of the pre-image. *)
+  lemma commit_not_found_implies_absent :
+    forall before: t, id id': int.
+      commit_fill_step before id (CErr_not_found id') ->
+      not has_id before.reservations id
+
+  lemma commit_overfill_implies_present :
+    forall before: t, id id': int.
+      commit_fill_step before id (CErr_overfill id') ->
+      has_id before.reservations id
+
+  (** [per_unit_collateral] invariance under partial draw: the
+      open-portion collateral rate set at reservation time
+      (see [reservation/reservation.mli]: "set at construction
+      and never changes") survives the draw, so [Drawn_down]'s
+      [remaining_reserved_cash = remaining_open_qty *
+      per_unit_collateral] stays well-defined across legs. *)
+  lemma commit_drawn_down_preserves_per_unit_collateral :
+    forall before after: t, id: int, ev: RD.t.
+      commit_fill_step before id (COk after (Drawn_down ev)) ->
+      exists r_before r_after: R.t.
+        mem r_before before.reservations
+        /\ mem r_after after.reservations
+        /\ r_before.R.id = id
+        /\ r_after.R.id = id
+        /\ r_after.R.per_unit_collateral = r_before.R.per_unit_collateral
+
+  (** Composition: a partial draw followed by a terminal draw
+      removes exactly one reservation from the original ledger.
+      The progressive-drawdown invariant promised by ADR 0028 —
+      one or many [Drawn_down] events followed by exactly one
+      [Fully_committed] per reservation lifecycle. *)
+  lemma commit_drawn_then_filled_total_shrink :
+    forall before mid after: t, id: int, ev1: RD.t, ev2: RF.t.
+      commit_fill_step before id (COk mid (Drawn_down ev1)) ->
+      commit_fill_step mid id (COk after (Fully_committed ev2)) ->
+      length after.reservations = length before.reservations - 1
 end
