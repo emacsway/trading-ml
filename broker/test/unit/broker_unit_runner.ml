@@ -16,6 +16,11 @@ let () =
       ("bcs ws", Bcs_ws_test.tests);
       ("bcs orders", Bcs_order_test.tests);
       ("bcs deals", Bcs_deals_test.tests);
+      (* ACL: Alor *)
+      ("alor dto", Alor_dto_test.tests);
+      ("alor auth", Alor_auth_test.tests);
+      ("alor rest", Alor_rest_test.tests);
+      ("alor ws", Alor_ws_test.tests);
       (* Infrastructure: secret storage (BCS refresh-token) *)
       ("token store", Token_store_test.tests);
       (* Infrastructure: WebSocket framing *)

@@ -6,7 +6,7 @@
 
 (executables
  (names live_smoke_runner finam_ws_subscription_key_probe)
- (libraries core broker_domain decimal finam bcs broker http_transport
+ (libraries core broker_domain decimal finam bcs alor broker http_transport
             websocket
             eio eio_main mirage-crypto-rng.unix
             str alcotest)

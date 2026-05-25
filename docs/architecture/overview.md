@@ -48,6 +48,7 @@ lib/
     acl/               ← external broker translators
       finam/
       bcs/
+      alor/
       synthetic/
     paper/             ← Paper_broker decorator (simulated fills)
     inbound/http/      ← HTTP API + SSE stream registry
@@ -84,7 +85,8 @@ through `dune` library dependencies and `.mli` files; see
                   │
 ┌─────────────────────────────────────┐
 │ Infrastructure                      │  ← IO, adapters
-│   acl/finam, acl/bcs, acl/synthetic │
+│   acl/finam, acl/bcs, acl/alor,     │
+│   acl/synthetic                     │
 │   paper, inbound/http, eio_stream   │
 │   websocket, http_transport, log    │
 └─────────────────────────────────────┘
@@ -92,7 +94,7 @@ through `dune` library dependencies and `.mli` files; see
 
 **Broker.S** is the key port: it lives in Application
 (`lib/application/broker/`) and declares what the engine needs
-from a broker. Infrastructure adapters (Finam, BCS, Paper,
+from a broker. Infrastructure adapters (Finam, BCS, Alor, Paper,
 Synthetic) implement it. The engine programs against the
 existential `Broker.client` without naming a concrete adapter,
 so swapping brokers is a one-line wiring change.
@@ -123,7 +125,7 @@ type client = E : (module S with type t = 't) * 't -> client
 ```
 
 An existential wrapper `Broker.client` hides the concrete adapter
-from callers. Finam, BCS, Synthetic and Paper all implement this
+from callers. Finam, BCS, Alor, Synthetic and Paper all implement this
 same port. Adding a new broker means writing one `.ml` file that
 satisfies `S` — no other change is needed upstream.
 
@@ -131,7 +133,7 @@ satisfies `S` — no other change is needed upstream.
 
 ```
                                      ┌─────────────────┐
- WS upstream (Finam/BCS/Synthetic)   │ HTTP /api/stream│
+ WS upstream (Finam/BCS/Alor/Synth.)  │ HTTP /api/stream│
               ▼                       │      (SSE)      │
      ┌────────────────┐               └────────▲────────┘
      │  Stream        │◀── fan-out ──┐         │
@@ -145,7 +147,7 @@ satisfies `S` — no other change is needed upstream.
        Stream.of_eio ──► Pipeline.run (Step) ──► Broker.place_order
            (pull)          (pure transducer)            │
                                                         ▼
-                                                  Paper / Finam / BCS
+                                              Paper / Finam / BCS / Alor
                                                         │
                                                    fill event
                                                         │

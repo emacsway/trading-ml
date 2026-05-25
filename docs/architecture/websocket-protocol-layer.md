@@ -8,7 +8,7 @@ with backoff, server-driven heartbeat, decoupling of socket
 reads from consumer work).
 
 The interesting architectural property is how heartbeats are
-kept responsive under load. Most providers — BCS, Finam — push
+kept responsive under load. Most providers — BCS, Finam, Alor — push
 an RFC 6455 Ping every ~30 s and close the connection if a
 Pong does not come back fast enough. The full constraint chain
 is:
@@ -107,7 +107,7 @@ The protocol-layer correctness is covered indirectly:
 - `websocket_frame_test` (88-test broker unit suite)
   verifies RFC 6455 framing and the auto-Pong path through
   `Frame.decode`.
-- Live smoke against BCS / Finam (4-test alias)
+- Live smoke against BCS / Finam / Alor (6-test alias)
   exercises the real reader / consumer pair against the real
   brokers; a regression here would show up as broker-side
   disconnects within ~30 s of a slow downstream handler.

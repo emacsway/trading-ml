@@ -120,8 +120,8 @@ REST poll ┘
 ```
 
 The bridges that wrap the supervisor (`Bcs.Ws_bridge`,
-`Bcs.Order_event_bridge`, `Finam.Ws_bridge` plus
-`Finam_broker.dispatch_ws_event`) all route through
+`Bcs.Order_event_bridge`, `Finam.Ws_bridge`, `Alor.Ws_bridge`
+plus the `*_broker.dispatch_ws_event` routers) all route through
 `Transport_supervisor.feed_ws`, and the supervisor's poll fiber
 calls the same internal `absorb` for REST-derived events. The
 single shared `dedup_accept` closure means:
@@ -142,6 +142,8 @@ dedup on `trade_id`:
 - **Finam**: the REST `AccountTrade.trade_id` matches the WS
   `Trade.update.trade_id`.
 - **BCS**: the REST `tradeNum` matches the WS `executionId`.
+- **Alor**: the trade object's `id` is the same on the REST
+  `/trades` list and the WS `TradesGetAndSubscribeV2` frame.
 
 Both broker REST surfaces expose the venue-side per-leg id, so
 the supervisor seam can rely on exact `String.equal` rather
@@ -222,6 +224,20 @@ to, `Finam_broker.dispatch_ws_event` routes by lookup:
 So the supervisors live on the broker (`finam_broker.t`)
 rather than on the bridge: the broker is the routing point.
 
+### Multiplexed socket: Alor
+
+Alor is multiplexed like Finam, with the same broker-side
+supervisor registry and `register_lifecycle` fan-out. The one
+difference is **correlation**: Alor data frames carry no
+subscription key — a bar payload is bare OHLCV `{ data, guid }`
+— so `Alor.Ws_bridge` keeps a `guid → target`
+(`Bars (instrument, timeframe) | Trades`) map and enriches each
+frame back into a typed `Ws.event` before handing it to
+`Alor_broker.dispatch_ws_event`, which then routes to the
+matching supervisor exactly as Finam does. On reconnect the
+bridge resubscribes reusing the original guids so the map stays
+valid.
+
 ## Catch-up windows
 
 `ws_reconnected` calls `poll_window ~since_ts:last_ts
@@ -234,8 +250,14 @@ long outage depends on the broker's REST endpoint:
 | BCS | fills | `Rest.get_deals ?from_ts ?to_ts` | precise cursors |
 | Finam | bars | `Rest.bars ?from_ts ?to_ts ?n` | precise cursors |
 | Finam | fills | `Rest.get_trades ?from_ts ?to_ts` | precise cursors |
+| Alor | bars | `Rest.bars ?from_ts ?to_ts ?n` | precise cursors |
+| Alor | fills | `Rest.get_trades ~exchange` | session-scoped (no time cursor); dedup on `trade_id` filters re-observed legs |
 
-The four streams are now symmetric on cursor support. The
+Bars are symmetric on cursor support across all three brokers.
+Alor's fills endpoint is the one exception — it returns the
+current session's trades with no time window, so the supervisor
+relies on `Stream_dedup` (keyed by `trade_id`) to suppress the
+re-observed legs rather than on a precise cursor. The
 steady-state poll fiber ticks every 60 s, so its window stays
 narrow regardless of the broker's per-request cap. The
 single-shot reconnect catch-up can hit the cap on long outages

@@ -1,6 +1,7 @@
 (** Live smoke tests — hit the real broker API with credentials
-    from env (FINAM_SECRET, BCS_SECRET). Disabled by default; opt
-    in with `dune build @live_smoke`. Flaky by design: network,
+    from env (FINAM_SECRET, BCS_SECRET, ALOR_SECRET / ALOR_PORTFOLIO).
+    Disabled by default; opt in with `dune build @live_smoke`.
+    Flaky by design: network,
     geo-blocks, broker downtime all cause failures we don't want
     CI to mistake for regressions.
 
@@ -9,4 +10,4 @@
 
 let () =
   Alcotest.run "trading-live-smoke"
-    [ ("finam", Finam_smoke.tests); ("bcs", Bcs_smoke.tests) ]
+    [ ("finam", Finam_smoke.tests); ("bcs", Bcs_smoke.tests); ("alor", Alor_smoke.tests) ]

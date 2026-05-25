@@ -45,6 +45,7 @@ module Opened : sig
         adapter : Finam.Finam_broker.t;
       }
     | Bcs of { client : Broker.client; rest : Bcs.Rest.t; adapter : Bcs.Bcs_broker.t }
+    | Alor of { client : Broker.client; rest : Alor.Rest.t; adapter : Alor.Alor_broker.t }
     | Synthetic of { client : Broker.client }
 
   val client : t -> Broker.client
@@ -54,9 +55,9 @@ module Opened : sig
 
   val env_prefix : string -> string
   (** [env_prefix broker_id] returns the env-var prefix for the
-      named broker — ["BCS"] for ["bcs"], ["FINAM"] for everything
-      else. Used by CLI tooling to resolve [_SECRET] / [_ACCOUNT_ID]
-      env vars consistently across binaries. *)
+      named broker — ["BCS"] for ["bcs"], ["ALOR"] for ["alor"],
+      ["FINAM"] for everything else. Used by CLI tooling to resolve
+      [_SECRET] / [_ACCOUNT_ID] env vars consistently across binaries. *)
 
   val open_finam : env:Eio_unix.Stdenv.base -> secret:string -> account_id:string -> t
 
@@ -72,6 +73,20 @@ module Opened : sig
       Subsequent runs read the rotated token from the file
       automatically; [BCS_SECRET] env var is the bootstrap
       fallback when the file is still empty. *)
+
+  val open_alor :
+    env:Eio_unix.Stdenv.base ->
+    ?secret:string ->
+    ?exchange:string ->
+    portfolio:string ->
+    unit ->
+    t
+  (** [portfolio] is the Alor account code (e.g. ["D12345"]), baked
+      into the adapter. [?secret] is the long-lived refresh-token;
+      when absent it is read from the [ALOR_SECRET] env var (Alor does
+      not rotate it, so there is no persistent store). [?exchange]
+      overrides the default venue ([MOEX]) used for account-wide
+      calls. *)
 
   val open_synthetic : unit -> t
 end

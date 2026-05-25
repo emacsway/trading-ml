@@ -37,16 +37,20 @@ let usage () =
   prerr_endline
     {|trading <command> [options]
 
-  serve [--port 8080] [--broker synthetic|finam|bcs] [--paper]
+  serve [--port 8080] [--broker synthetic|finam|bcs|alor] [--paper]
         [--strategy NAME] [--engine-symbol SBER@MISX]
         [--secret SECRET] [--account ACCOUNT_ID]
-        [--client-id CLIENT_ID]
+        [--client-id CLIENT_ID] [--exchange MOEX|SPBX]
         [--log-level debug|info|warning|error]
       start HTTP API server (bound to localhost).
       --broker selects the data source (default: synthetic).
-      Credentials (same convention for both live brokers):
-        --secret VALUE  or  <BROKER>_SECRET env var (FINAM_SECRET, BCS_SECRET)
+      Credentials (same convention for the live brokers):
+        --secret VALUE  or  <BROKER>_SECRET env var (FINAM_SECRET, BCS_SECRET, ALOR_SECRET)
         --account VALUE or  <BROKER>_ACCOUNT_ID env var
+      Alor-only:
+        --account carries the portfolio code (e.g. D12345); --secret is
+        the long-lived refresh token (or ALOR_SECRET env var, which Alor
+        does not rotate); --exchange overrides the default venue (MOEX).
       BCS-only:
         --client-id VALUE or BCS_CLIENT_ID env var. Must match the
         Keycloak client under which your refresh-token was issued —
@@ -507,8 +511,20 @@ let cli_overlay_of_args (args : string list) : Trading_config.t =
           }
         in
         Some (`Bcs creds)
+    | Some "alor" ->
+        (* Alor reuses [--account] for the portfolio code and [--secret]
+           for the refresh token; [--exchange] overrides the default
+           venue (MOEX). *)
+        let creds : Trading_config.alor_credentials =
+          {
+            portfolio = arg_value "--account" args;
+            secret = arg_value "--secret" args;
+            exchange = arg_value "--exchange" args;
+          }
+        in
+        Some (`Alor creds)
     | Some other ->
-        failwith ("unknown --broker: " ^ other ^ " (expected synthetic|finam|bcs)")
+        failwith ("unknown --broker: " ^ other ^ " (expected synthetic|finam|bcs|alor)")
   in
   (* CLI overlay never declares a watchlist — the operator should
      express bar subscriptions in a config file, not on the
@@ -548,6 +564,7 @@ let cmd_serve args =
     | `Synthetic -> "synthetic"
     | `Finam _ -> "finam"
     | `Bcs _ -> "bcs"
+    | `Alor _ -> "alor"
   in
   let secret, account, client_id =
     match broker_choice with
@@ -557,6 +574,15 @@ let cmd_serve args =
     (* BCS has no account_id parameter at the API level; the
        middle slot here is uniformly None so the surrounding
        open_bcs ?account_id receives nothing to forward. *)
+    | `Alor creds -> (creds.secret, creds.portfolio, None)
+    (* Alor reuses the [account] slot for its portfolio code and the
+       [secret] slot for the refresh token; [exchange] is carried
+       separately in [alor_exchange]. *)
+  in
+  let alor_exchange =
+    match broker_choice with
+    | `Alor creds -> creds.exchange
+    | _ -> None
   in
   let log_level =
     match cfg.logging with
@@ -600,7 +626,20 @@ let cmd_serve args =
     | "bcs" ->
         Broker_factory.Factory.Opened.open_bcs ~env ?secret ?account_id:account ?client_id
           ()
-    | other -> failwith ("unknown --broker: " ^ other ^ " (expected synthetic|finam|bcs)")
+    | "alor" ->
+        let portfolio =
+          match account with
+          | Some a -> a
+          | None ->
+              Printf.eprintf
+                "--broker alor requires a portfolio (set broker.alor.portfolio in the \
+                 config)\n";
+              exit 2
+        in
+        Broker_factory.Factory.Opened.open_alor ~env ?secret ?exchange:alor_exchange
+          ~portfolio ()
+    | other ->
+        failwith ("unknown --broker: " ^ other ^ " (expected synthetic|finam|bcs|alor)")
   in
   let source_client = Broker_factory.Factory.Opened.client opened in
   (* Resolve [--strategy] CLI arg into a built [Strategies.Strategy.t].

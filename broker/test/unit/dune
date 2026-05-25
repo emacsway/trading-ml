@@ -11,6 +11,7 @@
   websocket
   finam
   bcs
+  alor
   broker_persistence
   acl_common
   rop
@@ -18,6 +19,7 @@
   eio_main
   str
   unix
+  base64
   alcotest
   qcheck-core)
  (flags (:standard -open Broker_domain -w -33)))

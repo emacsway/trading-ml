@@ -17,6 +17,7 @@
   broker_persistence
   finam
   bcs
+  alor
   synthetic
   http_transport
   inbound_http

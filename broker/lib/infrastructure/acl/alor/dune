@@ -1,0 +1,16 @@
+(library
+ (name alor)
+ (public_name trading.alor)
+ (libraries core broker_domain decimal broker http_transport websocket log
+            acl_common datetime
+            eio eio.unix yojson uri uuidm base64 x509)
+ (flags (:standard -open Broker_domain)))
+
+; Per-channel WS requests live under [ws/]. Qualified mode wraps
+; subdirectory names into the module path:
+;   ws/ws.ml                → Alor.Ws (collapse-rule main module)
+;   ws/requests/bars.ml      → Alor.Ws.Requests.Bars
+;   ws/events/trade.ml       → Alor.Ws.Events.Trade
+;   dto/dto.ml               → Alor.Dto (collapse-rule main module)
+;   dto/order.ml             → Alor.Dto.Order
+(include_subdirs qualified)

@@ -31,16 +31,26 @@ module Opened = struct
                 per-adapter placement map to reverse-lookup
                 [order_num → placement_id]. *)
       }
+    | Alor of {
+        client : Broker.client;
+        rest : Alor.Rest.t;
+        adapter : Alor.Alor_broker.t;
+            (** Same rationale as the Finam / BCS variants — the fill
+                supervisor reaches the per-adapter placement map to
+                reverse-lookup [order_id → placement_id]. *)
+      }
     | Synthetic of { client : Broker.client }
 
   let client : t -> Broker.client = function
-    | Finam { client; _ } | Bcs { client; _ } | Synthetic { client } -> client
+    | Finam { client; _ } | Bcs { client; _ } | Alor { client; _ } | Synthetic { client }
+      -> client
 
   (** Selects the env-var prefix per broker. Keeps CLI invocations
       single-flagged while letting users park credentials for several
-      brokers side by side ([FINAM_SECRET], [BCS_SECRET], ...). *)
+      brokers side by side ([FINAM_SECRET], [BCS_SECRET], [ALOR_SECRET], ...). *)
   let env_prefix = function
     | "bcs" -> "BCS"
+    | "alor" -> "ALOR"
     | _ -> "FINAM"
 
   (** State-file path for the persisted BCS refresh-token. Follows
@@ -91,6 +101,28 @@ module Opened = struct
     let rest = Bcs.Rest.make ~transport ~cfg ~token_store in
     let adapter = Bcs.Bcs_broker.make rest in
     Bcs { client = Bcs.Bcs_broker.as_broker adapter; rest; adapter }
+
+  (** Alor scopes its API by [portfolio] (baked into the adapter) and a
+      long-lived [refresh_token]. The token does not rotate, so there is
+      no persistent store: it is taken from [?secret] or, failing that,
+      the [ALOR_SECRET] env var. [?exchange] overrides the default venue
+      ([MOEX]) used for account-wide calls. *)
+  let open_alor ~env ?secret ?exchange ~portfolio () : t =
+    let refresh_token =
+      match secret with
+      | Some s when s <> "" -> s
+      | _ -> (
+          match Sys.getenv_opt "ALOR_SECRET" with
+          | Some s when s <> "" -> s
+          | _ ->
+              failwith
+                "Alor: refresh token required (config secret or ALOR_SECRET env var)")
+    in
+    let cfg = Alor.Config.make ~refresh_token ~portfolio ?default_exchange:exchange () in
+    let transport = Http_transport.make_eio ~env in
+    let rest = Alor.Rest.make ~transport ~cfg in
+    let adapter = Alor.Alor_broker.make rest in
+    Alor { client = Alor.Alor_broker.as_broker adapter; rest; adapter }
 
   let open_synthetic () : t =
     let adapter = Synthetic.Synthetic_broker.make () in
@@ -278,7 +310,7 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
      publish on [broker.trade-executed]. *)
   (match opened with
   | Opened.Synthetic _ -> ()
-  | Opened.Finam _ | Opened.Bcs _ ->
+  | Opened.Finam _ | Opened.Bcs _ | Opened.Alor _ ->
       let on_event (event : Broker.event) =
         match event with
         | Remote_bar_updated ev ->
