@@ -224,6 +224,7 @@ let test_decode_order_event_trade_leg () =
                 "price": 244.5,
                 "currency": "RUB",
                 "transactionTime": "2024-10-30T09:01:00.000Z",
+                "executionValue": 12500,
                 "commission": 6.15
               } }|};
          ])
@@ -244,8 +245,12 @@ let test_decode_order_event_trade_leg () =
           Alcotest.(check (float 1e-6))
             "quantity = 50" 50.0
             (Decimal.to_float dom.quantity);
-          Alcotest.(check (float 1e-6)) "price = 244.5" 244.5 (Decimal.to_float dom.price)
-      )
+          (* This trade's price = its notional / its quantity
+             (12500/50 = 250), NOT the cumulative averagePrice (244.5). *)
+          Alcotest.(check (float 1e-6))
+            "price = executionValue / quantity = 250" 250.0 (Decimal.to_float dom.price);
+          Alcotest.(check (float 1e-6))
+            "fee = this trade's commission = 6.15" 6.15 (Decimal.to_float dom.fee))
 
 let test_decode_order_event_malformed_returns_none () =
   let j = Yojson.Safe.from_string {| { "no": "data subtree" } |} in

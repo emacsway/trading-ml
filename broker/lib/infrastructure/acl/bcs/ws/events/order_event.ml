@@ -103,7 +103,7 @@ let is_fill (t : t) : bool = t.execution_type = "11"
 
 let to_domain ~(placement_id : int) (t : t) :
     Broker_domain.Remote_broker.Events.Trade_executed.t option =
-  if not (is_fill t) then None
+  if (not (is_fill t)) || Decimal.is_zero t.last_quantity then None
   else
     let instrument =
       Instrument.make ~ticker:(Ticker.of_string t.ticker) ~venue:(Mic.of_string "MISX")
@@ -117,7 +117,12 @@ let to_domain ~(placement_id : int) (t : t) :
         instrument;
         side = t.side;
         quantity = t.last_quantity;
-        price = t.average_price;
+        (* This trade's price = its own notional / its own quantity.
+           [execution_value] is THIS trade's volume and [commission] THIS
+           trade's fee (per the BCS spec). [average_price] is the cumulative
+           VWAP across all the order's legs — not this leg's price — and
+           [price] is the order's limit price; neither is used here. *)
+        price = Decimal.div t.execution_value t.last_quantity;
         fee = t.commission;
         ts = t.transaction_time;
       }

@@ -65,22 +65,18 @@ type t = {
           ["TQBR-Z3fE7c-S-1-1-N"]). Stable, used as the
           [trade_id] on the domain event. *)
   price : Decimal.t;
-      (** BCS doc calls this "Order price"; the wire shape
-          shows it equal to [average_price] on the sample fill,
-          so it may actually be LastPx. Cross-check
-          empirically before using as authoritative leg
-          price; {!to_domain} prefers [average_price]. *)
+      (** The order's (limit) price ("Цена заявки") — NOT the
+          fill price, and not used by {!to_domain}. *)
   currency : string;
   client_code : string;
   transaction_time : int64;  (** ISO8601 → epoch nanoseconds. *)
   trade_date : string;
   order_number : string;
   accrued_coupon : Decimal.t;
-  execution_value : Decimal.t;  (** Total notional value across all legs so far. *)
-  commission : Decimal.t;
-      (** Cumulative fee. Per-leg fee is not separately
-          surfaced; downstream consumers that need it must
-          diff across consecutive legs. *)
+  execution_value : Decimal.t;
+      (** Notional of THIS trade ("Объем сделки"), not a running
+          total. The trade's price is [execution_value / last_quantity]. *)
+  commission : Decimal.t;  (** Commission for THIS trade (not a running total). *)
   security_exchange : string;
   reject_reason : string option;
 }
@@ -108,6 +104,10 @@ val to_domain :
     future [Order_state_changed] event).
 
     [placement_id] is the caller's reverse-lookup of
-    [original_client_order_id] via
-    [Placement_handle_store]. Mirrors the
-    [Finam.Ws.Events.Trade.to_domain] shape. *)
+    [original_client_order_id] via [Placement_handle_store].
+
+    The leg price is [execution_value / last_quantity] (this
+    trade's own notional and quantity) and the fee is this
+    trade's [commission] — NOT the cumulative [average_price] or a
+    running commission. Mirrors the [Finam.Ws.Events.Trade.to_domain]
+    shape. *)
