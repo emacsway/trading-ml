@@ -3,6 +3,7 @@ module Requests = Requests
 
 type event =
   | Candle_ev of Events.Candle.t
+  | Public_trades_ev of Events.Public_trades.t
   | Subscribe_ack of Events.Subscribe_ack.t
   | Error_ev of Events.Error.t
   | Other of Yojson.Safe.t
@@ -16,5 +17,6 @@ let event_of_json (j : Yojson.Safe.t) : event =
   | None -> (
       match member "responseType" j with
       | `String "CandleStick" -> Candle_ev (Events.Candle.parse j)
+      | `String "LastTrades" -> Public_trades_ev (Events.Public_trades.parse j)
       | `String "CandleStickSuccess" -> Subscribe_ack (Events.Subscribe_ack.parse j)
       | _ -> Other j)

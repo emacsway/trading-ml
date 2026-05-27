@@ -26,6 +26,9 @@ module Requests = Requests
 type event =
   | Bar of { instrument : Instrument.t; timeframe : Timeframe.t; candle : Candle.t }
   | Trade of Dto.Trade.t
+  | Public_trades of Events.Public_trades.t
+      (** A public-tape print (AllTradesGetAndSubscribe) — the
+          all-participants flow, distinct from the personal [Trade]. *)
 
 type frame = { guid : string; data : Yojson.Safe.t }
 (** The channel-agnostic shape of an Alor data frame. *)

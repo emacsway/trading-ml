@@ -26,6 +26,9 @@ module Requests = Requests
 (** Top-level decoded inbound event variants. *)
 type event =
   | Candle_ev of Events.Candle.t
+  | Public_trades_ev of Events.Public_trades.t
+      (** A public-tape print (LastTrades, [dataType:2]) — the
+          all-participants flow, distinct from candles. *)
   | Subscribe_ack of Events.Subscribe_ack.t
   | Error_ev of Events.Error.t
   | Other of Yojson.Safe.t

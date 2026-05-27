@@ -24,6 +24,7 @@ module SubKey = struct
 end
 
 module SubMap = Map.Make (SubKey)
+module InstrMap = Map.Make (Instrument)
 
 type bridge = {
   env : Eio_unix.Stdenv.base;
@@ -34,6 +35,10 @@ type bridge = {
   mutex : Eio.Mutex.t;
   mutable conns : Websocket.Resilient.t SubMap.t;
   mutable supervisors : Candle.t Acl_common.Transport_supervisor.t SubMap.t;
+  mutable public_trade_conns : Websocket.Resilient.t InstrMap.t;
+      (** One socket per instrument for the public tape ([dataType:2]).
+          WS-only — BCS exposes no REST history for the public tape, so
+          there is no Transport_supervisor fallback (unlike bars). *)
 }
 
 let make ~env ~sw ~cfg ~auth : bridge =
@@ -53,6 +58,7 @@ let make ~env ~sw ~cfg ~auth : bridge =
     mutex = Eio.Mutex.create ();
     conns = SubMap.empty;
     supervisors = SubMap.empty;
+    public_trade_conns = InstrMap.empty;
   }
 
 let route (t : bridge) (i : Instrument.t) : string * string =
@@ -118,6 +124,7 @@ let subscribe_bars
               match Ws.event_of_json j with
               | Candle_ev { instrument = _; timeframe = _; candle } ->
                   Acl_common.Transport_supervisor.feed_ws sup candle
+              | Public_trades_ev _ -> ()
               | Subscribe_ack { subscribe_type; _ } ->
                   Log.info "[bcs ws] %s ack for %s/%s"
                     (if subscribe_type = 0 then "subscribe" else "unsubscribe")
@@ -166,3 +173,75 @@ let unsubscribe_bars (t : bridge) ~instrument ~timeframe : unit =
       Websocket.Resilient.close c)
     conn_opt;
   Option.iter Acl_common.Transport_supervisor.stop sup_opt
+
+(* Public tape (dataType:2): one dedicated socket per instrument,
+   WS-only (no REST fallback — BCS exposes no public-tape history). *)
+let subscribe_public_trades
+    (t : bridge)
+    ~instrument
+    ~(on_trade : Broker_domain.Remote_broker.Events.Remote_public_trade_updated.t -> unit)
+    : unit =
+  let already =
+    Eio.Mutex.use_ro t.mutex (fun () -> InstrMap.mem instrument t.public_trade_conns)
+  in
+  if already then ()
+  else begin
+    let ticker, class_code = route t instrument in
+    let label = Printf.sprintf "bcs trades %s" (Instrument.to_qualified instrument) in
+    let send_subscribe client =
+      Websocket.Client.send_text client
+        (Yojson.Safe.to_string (Ws.Requests.Public_trades.subscribe ~class_code ~ticker))
+    in
+    let config : Websocket.Resilient.config =
+      {
+        label;
+        ping_interval = 30.0;
+        max_backoff = 60.0;
+        connect =
+          (fun () ->
+            let extra_headers = [ ("Authorization", "Bearer " ^ Auth.current t.auth) ] in
+            let client =
+              Websocket.Client.connect ~env:t.env ~sw:t.sw
+                ~uri:t.cfg.Config.ws_market_data_url ~extra_headers
+                ?authenticator:t.authenticator ()
+            in
+            send_subscribe client;
+            client);
+        on_text =
+          (fun payload ->
+            try
+              match Ws.event_of_json (Yojson.Safe.from_string payload) with
+              | Public_trades_ev pt -> on_trade pt
+              | Error_ev { code; message } ->
+                  Log.warn "[bcs trades ws] error %s: %s" code message
+              | Candle_ev _ | Subscribe_ack _ | Other _ -> ()
+            with e ->
+              Log.warn "[bcs trades ws] decode failed: %s" (Printexc.to_string e));
+        on_disconnect = (fun () -> ());
+        on_reconnect = (fun () -> ());
+      }
+    in
+    try
+      let conn = Websocket.Resilient.create ~env:t.env ~sw:t.sw ~config in
+      Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+          t.public_trade_conns <- InstrMap.add instrument conn t.public_trade_conns)
+    with e ->
+      Log.warn "[bcs trades ws %s] initial connect failed: %s" label
+        (Printexc.to_string e)
+  end
+
+let unsubscribe_public_trades (t : bridge) ~instrument : unit =
+  let conn_opt =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        let c = InstrMap.find_opt instrument t.public_trade_conns in
+        t.public_trade_conns <- InstrMap.remove instrument t.public_trade_conns;
+        c)
+  in
+  Option.iter
+    (fun c ->
+      let ticker, class_code = route t instrument in
+      Websocket.Resilient.send c
+        (Yojson.Safe.to_string
+           (Ws.Requests.Public_trades.unsubscribe ~class_code ~ticker));
+      Websocket.Resilient.close c)
+    conn_opt

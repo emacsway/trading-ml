@@ -47,6 +47,7 @@ module SubKey = struct
 end
 
 module SubMap = Map.Make (SubKey)
+module InstrMap = Map.Make (Instrument)
 
 type t = {
   rest : Rest.t;
@@ -55,6 +56,7 @@ type t = {
   mutable bridge : Ws_bridge.bridge option;
   mutable on_event : (Broker.event -> unit) option;
   mutable bar_refcount : int SubMap.t;
+  mutable public_trade_refcount : int InstrMap.t;
   fill_dedup :
     (int, Broker_domain.Remote_broker.Events.Trade_executed.t) Acl_common.Stream_dedup.t;
       (** Per-placement fill-stream deduplicator. Shared
@@ -88,6 +90,7 @@ let make (rest : Rest.t) : t =
     bridge = None;
     on_event = None;
     bar_refcount = SubMap.empty;
+    public_trade_refcount = InstrMap.empty;
     fill_dedup = Acl_common.Stream_dedup.create ~equal_value:fill_equal;
     bar_dedup = Acl_common.Stream_dedup.create ~equal_value:Candle.equal;
   }
@@ -325,9 +328,25 @@ let subscribe t (request : Broker.request) : unit =
                 ~dedup_accept ~on_candle
             with e ->
               Log.warn "[bcs ws] subscribe_bars failed: %s" (Printexc.to_string e))
-  | Subscribe_public_trades _ ->
-      Log.info
-        "[bcs] public-trade (INSTRUMENT_TRADES) subscription not supported — ignored"
+  | Subscribe_public_trades { instrument } ->
+      let should_open =
+        Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+            let prev =
+              match InstrMap.find_opt instrument t.public_trade_refcount with
+              | Some n -> n
+              | None -> 0
+            in
+            t.public_trade_refcount <-
+              InstrMap.add instrument (prev + 1) t.public_trade_refcount;
+            prev = 0)
+      in
+      if should_open then
+        with_bridge t (fun bridge ->
+            let on_trade ev = dispatch t (Broker.Remote_public_trade_updated ev) in
+            try Ws_bridge.subscribe_public_trades bridge ~instrument ~on_trade
+            with e ->
+              Log.warn "[bcs ws] subscribe_public_trades failed: %s"
+                (Printexc.to_string e))
 
 let unsubscribe t (request : Broker.request) : unit =
   match request with
@@ -349,7 +368,26 @@ let unsubscribe t (request : Broker.request) : unit =
             try Ws_bridge.unsubscribe_bars bridge ~instrument ~timeframe
             with e ->
               Log.warn "[bcs ws] unsubscribe_bars failed: %s" (Printexc.to_string e))
-  | Subscribe_public_trades _ -> ()
+  | Subscribe_public_trades { instrument } ->
+      let should_close =
+        Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+            match InstrMap.find_opt instrument t.public_trade_refcount with
+            | None | Some 0 -> false
+            | Some 1 ->
+                t.public_trade_refcount <-
+                  InstrMap.remove instrument t.public_trade_refcount;
+                true
+            | Some n ->
+                t.public_trade_refcount <-
+                  InstrMap.add instrument (n - 1) t.public_trade_refcount;
+                false)
+      in
+      if should_close then
+        with_bridge t (fun bridge ->
+            try Ws_bridge.unsubscribe_public_trades bridge ~instrument
+            with e ->
+              Log.warn "[bcs ws] unsubscribe_public_trades failed: %s"
+                (Printexc.to_string e))
 
 let as_broker (t : t) : Broker.client =
   Broker.make

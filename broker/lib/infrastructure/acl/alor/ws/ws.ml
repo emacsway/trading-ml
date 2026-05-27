@@ -5,6 +5,7 @@ module Requests = Requests
 type event =
   | Bar of { instrument : Instrument.t; timeframe : Timeframe.t; candle : Candle.t }
   | Trade of Dto.Trade.t
+  | Public_trades of Events.Public_trades.t
 
 type frame = { guid : string; data : Yojson.Safe.t }
 

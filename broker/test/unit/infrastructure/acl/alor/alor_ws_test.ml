@@ -61,6 +61,55 @@ let test_unsubscribe_envelope () =
   Alcotest.(check string) "opcode" "unsubscribe" (str "opcode");
   Alcotest.(check string) "guid" "g3" (str "guid")
 
+let test_public_trades_subscribe_envelope () =
+  let j =
+    Ws.Requests.Public_trades.subscribe ~cfg ~token:"JWT" ~guid:"g4" ~instrument:sber ()
+  in
+  let str k = Yojson.Safe.Util.to_string (member j k) in
+  Alcotest.(check string) "opcode" "AllTradesGetAndSubscribe" (str "opcode");
+  Alcotest.(check string) "code (bare ticker)" "SBER" (str "code");
+  Alcotest.(check string) "exchange" "MOEX" (str "exchange");
+  Alcotest.(check string) "instrumentGroup" "TQBR" (str "instrumentGroup");
+  Alcotest.(check string) "guid" "g4" (str "guid");
+  Alcotest.(check int)
+    "depth=0 (live tape, no history)" 0
+    (match member j "depth" with
+    | `Int n -> n
+    | _ -> -1);
+  Alcotest.(check bool)
+    "includeVirtualTrades=false" false
+    (match member j "includeVirtualTrades" with
+    | `Bool b -> b
+    | _ -> true)
+
+(* AllTradesGetAndSubscribe data frame. Fields (symbol/exchange/board/
+   qty/price/side/timestamp) are the documented Alor shape; validation
+   is deferred until the account opens (ADR 0032). *)
+let trade_data side =
+  Yojson.Safe.from_string
+    (Printf.sprintf
+       {|{"symbol":"SBER","exchange":"MOEX","board":"TQBR","qty":7,"price":250.5,"side":"%s","timestamp":1716800000000}|}
+       side)
+
+let test_decode_public_trade_buy () =
+  let pt = Ws.Events.Public_trades.parse (trade_data "buy") in
+  Alcotest.(check bool) "side = Buy" true (pt.side = Some Side.Buy);
+  Alcotest.(check (float 1e-6)) "qty" 7.0 (Decimal.to_float pt.quantity);
+  Alcotest.(check (float 1e-6)) "price" 250.5 (Decimal.to_float pt.price);
+  Alcotest.(check string)
+    "instrument ticker" "SBER"
+    (Ticker.to_string (Instrument.ticker pt.instrument));
+  Alcotest.(check bool) "timestamp carried" true (pt.ts = 1716800000000L)
+
+let test_decode_public_trade_sell () =
+  let pt = Ws.Events.Public_trades.parse (trade_data "sell") in
+  Alcotest.(check bool) "side = Sell" true (pt.side = Some Side.Sell)
+
+let test_decode_public_trade_unmarked_has_no_side () =
+  (* The public tape must not fabricate a side for an unmarked print. *)
+  let pt = Ws.Events.Public_trades.parse (trade_data "") in
+  Alcotest.(check bool) "side = None" true (pt.side = None)
+
 let tests =
   [
     ("frame: data", `Quick, test_frame_data);
@@ -68,4 +117,10 @@ let tests =
     ("bars subscribe envelope", `Quick, test_bars_subscribe_envelope);
     ("trades subscribe envelope", `Quick, test_trades_subscribe_envelope);
     ("unsubscribe envelope", `Quick, test_unsubscribe_envelope);
+    ("public-trades subscribe envelope", `Quick, test_public_trades_subscribe_envelope);
+    ("decode public trade — buy aggressor", `Quick, test_decode_public_trade_buy);
+    ("decode public trade — sell aggressor", `Quick, test_decode_public_trade_sell);
+    ( "decode public trade — unmarked has no side",
+      `Quick,
+      test_decode_public_trade_unmarked_has_no_side );
   ]

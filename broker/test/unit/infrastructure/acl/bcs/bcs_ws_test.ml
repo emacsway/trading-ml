@@ -258,10 +258,70 @@ let test_decode_order_event_malformed_returns_none () =
     "malformed envelope returns None" true
     (Bcs.Ws.Events.Order_event.parse j = None)
 
+(* Public tape (dataType:2). The frame shape below mirrors the
+   candle channel's flattening (top-level ticker/classCode/dateTime),
+   which is the documented BCS convention; the [side]/quantity fields
+   are inferred and pending a live capture (ADR 0032). These tests
+   pin the parser's behaviour against that assumed shape — if a live
+   frame differs, parser and fixture move together. *)
+let test_public_trades_subscribe_envelope () =
+  let j = Bcs.Ws.Requests.Public_trades.subscribe ~class_code:"TQBR" ~ticker:"SBER" in
+  let open Yojson.Safe.Util in
+  Alcotest.(check int)
+    "subscribeType=0" 0
+    (match member "subscribeType" j with
+    | `Int n -> n
+    | _ -> -1);
+  Alcotest.(check int)
+    "dataType=2 (public tape)" 2
+    (match member "dataType" j with
+    | `Int n -> n
+    | _ -> -1);
+  match member "instruments" j with
+  | `List [ instr ] ->
+      Alcotest.(check string) "classCode" "TQBR" (member "classCode" instr |> to_string);
+      Alcotest.(check string) "ticker" "SBER" (member "ticker" instr |> to_string)
+  | _ -> Alcotest.fail "expected single-element instruments array"
+
+let trade_frame side =
+  Printf.sprintf
+    {|{"responseType":"LastTrades","ticker":"SBER","classCode":"TQBR","price":250.5,"quantity":7,"dateTime":"2026-05-27T10:00:00Z","side":"%s"}|}
+    side
+
+let test_decode_public_trade_buy () =
+  match Bcs.Ws.event_of_json (Yojson.Safe.from_string (trade_frame "BUY")) with
+  | Public_trades_ev pt ->
+      Alcotest.(check bool) "side = Buy" true (pt.side = Some Side.Buy);
+      Alcotest.(check (float 1e-6)) "quantity" 7.0 (Decimal.to_float pt.quantity);
+      Alcotest.(check (float 1e-6)) "price" 250.5 (Decimal.to_float pt.price);
+      Alcotest.(check string)
+        "instrument ticker" "SBER"
+        (Ticker.to_string (Instrument.ticker pt.instrument))
+  | _ -> Alcotest.fail "expected Public_trades_ev"
+
+let test_decode_public_trade_sell () =
+  match Bcs.Ws.event_of_json (Yojson.Safe.from_string (trade_frame "SELL")) with
+  | Public_trades_ev pt ->
+      Alcotest.(check bool) "side = Sell" true (pt.side = Some Side.Sell)
+  | _ -> Alcotest.fail "expected Public_trades_ev"
+
+let test_decode_public_trade_auction_has_no_side () =
+  (* An unmarked aggressor (e.g. an auction print) must not be
+     fabricated into a directional trade. *)
+  match Bcs.Ws.event_of_json (Yojson.Safe.from_string (trade_frame "")) with
+  | Public_trades_ev pt -> Alcotest.(check bool) "side = None" true (pt.side = None)
+  | _ -> Alcotest.fail "expected Public_trades_ev"
+
 let tests =
   [
     ("subscribe envelope", `Quick, test_subscribe_envelope);
     ("unsubscribe envelope", `Quick, test_unsubscribe_envelope);
+    ("public-trades subscribe envelope", `Quick, test_public_trades_subscribe_envelope);
+    ("decode public trade — BUY aggressor", `Quick, test_decode_public_trade_buy);
+    ("decode public trade — SELL aggressor", `Quick, test_decode_public_trade_sell);
+    ( "decode public trade — unmarked has no side",
+      `Quick,
+      test_decode_public_trade_auction_has_no_side );
     ("decode candle event", `Quick, test_decode_candle);
     ("decode subscribe ack", `Quick, test_decode_ack);
     ("decode error event", `Quick, test_decode_error);

@@ -24,9 +24,10 @@ end
 
 module SubMap = Map.Make (SubKey)
 module GuidMap = Map.Make (String)
+module InstrMap = Map.Make (Instrument)
 
 (** What a subscription guid resolves to on the inbound side. *)
-type target = Bars of SubKey.t | Trades
+type target = Bars of SubKey.t | Trades | Public_trades of Instrument.t
 
 type listener_id = int
 
@@ -38,6 +39,8 @@ type bridge = {
   mutable conn : Websocket.Resilient.t option;
   mutable bar_guids : string SubMap.t;  (** [(instrument, timeframe) → guid] *)
   mutable trades_guid : string option;  (** guid of the account-wide fill stream *)
+  mutable public_trade_guids : string InstrMap.t;
+      (** [instrument → guid] (public tape) *)
   mutable targets : target GuidMap.t;  (** reverse map for inbound frame routing *)
   mutable next_listener_id : listener_id;
   mutable disconnect_listeners : (listener_id * (unit -> unit)) list;
@@ -69,11 +72,16 @@ let handle_frame t ({ guid; data } : Ws.frame) : unit =
   | Some Trades -> (
       try t.on_event (Ws.Trade (Ws.Events.Trade.parse data))
       with e -> Log.warn "[alor ws] trade decode failed: %s" (Printexc.to_string e))
+  | Some (Public_trades _) -> (
+      try t.on_event (Ws.Public_trades (Ws.Events.Public_trades.parse data))
+      with e ->
+        Log.warn "[alor ws] public-trade decode failed: %s" (Printexc.to_string e))
   | None -> Log.info "[alor ws] frame for unknown guid %s — dropping" guid
 
 let resubscribe_all (t : bridge) () : unit =
-  let bar_guids, trades_guid =
-    Eio.Mutex.use_ro t.mutex (fun () -> (t.bar_guids, t.trades_guid))
+  let bar_guids, trades_guid, public_trade_guids =
+    Eio.Mutex.use_ro t.mutex (fun () ->
+        (t.bar_guids, t.trades_guid, t.public_trade_guids))
   in
   let token = Auth.current t.auth in
   SubMap.iter
@@ -81,6 +89,10 @@ let resubscribe_all (t : bridge) () : unit =
       send t
         (Ws.Requests.Bars.subscribe ~cfg:t.cfg ~token ~guid ~instrument ~timeframe ()))
     bar_guids;
+  InstrMap.iter
+    (fun instrument guid ->
+      send t (Ws.Requests.Public_trades.subscribe ~cfg:t.cfg ~token ~guid ~instrument ()))
+    public_trade_guids;
   match trades_guid with
   | Some guid -> send t (Ws.Requests.Trades.subscribe ~cfg:t.cfg ~token ~guid ())
   | None -> ()
@@ -144,6 +156,7 @@ let make ~env ~sw ~cfg ~auth ~on_event : bridge =
       conn = None;
       bar_guids = SubMap.empty;
       trades_guid = None;
+      public_trade_guids = InstrMap.empty;
       targets = GuidMap.empty;
       next_listener_id = 0;
       disconnect_listeners = [];
@@ -201,7 +214,9 @@ let unsubscribe_bars (t : bridge) ~instrument ~timeframe : unit =
         | Some g ->
             t.bar_guids <- SubMap.remove key t.bar_guids;
             t.targets <- GuidMap.remove g t.targets;
-            (Some g, SubMap.is_empty t.bar_guids && Option.is_none t.trades_guid))
+            ( Some g,
+              SubMap.is_empty t.bar_guids && Option.is_none t.trades_guid
+              && InstrMap.is_empty t.public_trade_guids ))
   in
   match guid_opt with
   | None -> ()
@@ -243,3 +258,46 @@ let unsubscribe_trades (t : bridge) : unit =
   match guid_opt with
   | None -> ()
   | Some guid -> send t (Ws.Requests.Unsubscribe.make ~token ~guid)
+
+(* Public tape (AllTradesGetAndSubscribe): one guid per instrument on
+   the shared multiplexed socket. WS-only — no Transport_supervisor
+   (the footprint domain is fold-order-independent; dedup is the
+   inbox's concern). *)
+let subscribe_public_trades (t : bridge) ~instrument : unit =
+  let token = Auth.current t.auth in
+  let guid =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        ignore (ensure_conn t);
+        match InstrMap.find_opt instrument t.public_trade_guids with
+        | Some g -> g
+        | None ->
+            let g = new_guid () in
+            t.public_trade_guids <- InstrMap.add instrument g t.public_trade_guids;
+            t.targets <- GuidMap.add g (Public_trades instrument) t.targets;
+            g)
+  in
+  send t (Ws.Requests.Public_trades.subscribe ~cfg:t.cfg ~token ~guid ~instrument ())
+
+let unsubscribe_public_trades (t : bridge) ~instrument : unit =
+  let token = Auth.current t.auth in
+  let guid_opt, should_close =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        match InstrMap.find_opt instrument t.public_trade_guids with
+        | None -> (None, false)
+        | Some g ->
+            t.public_trade_guids <- InstrMap.remove instrument t.public_trade_guids;
+            t.targets <- GuidMap.remove g t.targets;
+            ( Some g,
+              SubMap.is_empty t.bar_guids && Option.is_none t.trades_guid
+              && InstrMap.is_empty t.public_trade_guids ))
+  in
+  match guid_opt with
+  | None -> ()
+  | Some guid -> (
+      send t (Ws.Requests.Unsubscribe.make ~token ~guid);
+      if should_close then
+        match t.conn with
+        | Some c ->
+            Websocket.Resilient.close c;
+            t.conn <- None
+        | None -> ())
