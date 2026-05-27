@@ -1,0 +1,26 @@
+(** Why3 companion for [aggressor.mli] — three-case variant with the
+    delta-sign law. The [Indeterminate] case carries no directional
+    information, so its sign is 0; unlike [Side] the sign is therefore
+    not constrained to ±1. The downstream conservation proof for the
+    footprint relies on [sign Indeterminate = 0] to keep auction volume
+    out of the signed delta while still counting it in total volume. *)
+
+module Aggressor
+  use int.Int
+
+  type t = Buy | Sell | Indeterminate
+
+  function sign (a: t) : int =
+    match a with Buy -> 1 | Sell -> -1 | Indeterminate -> 0 end
+
+  lemma sign_bounds : forall a: t. -1 <= sign a <= 1
+
+  lemma sign_zero_iff_indeterminate : forall a: t.
+    sign a = 0 <-> a = Indeterminate
+
+  lemma sign_buy_iff_pos : forall a: t.
+    sign a = 1 <-> a = Buy
+
+  lemma sign_sell_iff_neg : forall a: t.
+    sign a = -1 <-> a = Sell
+end

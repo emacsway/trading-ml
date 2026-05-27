@@ -1,0 +1,27 @@
+(** Why3 companion for [bar_boundary.mli] — the [Time]-boundary
+    bucketing arithmetic the aggregate's stateless print assignment
+    relies on. Modelled over [period > 0] and [ts >= 0] (unix epoch);
+    [Volume]/[Tick] boundaries are not arithmetic in this sense and are
+    not modelled here. *)
+
+module Bar_boundary
+  use int.Int
+  use int.EuclideanDivision
+
+  function bucket_start (period ts: int) : int = ts - mod ts period
+
+  (** The bar opens no later than the print that falls in it. *)
+  lemma bucket_le : forall period ts: int.
+    period > 0 -> ts >= 0 -> bucket_start period ts <= ts
+
+  (** The print falls within one period of its bar's open. *)
+  lemma bucket_within_period : forall period ts: int.
+    period > 0 -> ts >= 0 -> ts - bucket_start period ts < period
+
+  (** A bar's open timestamp is aligned to the period grid: it is an
+      exact multiple of the period. (Stated multiplicatively rather
+      than as [mod _ period = 0] — equivalent, but the nested [mod]
+      form defeats the SMT solvers.) *)
+  lemma bucket_is_multiple : forall period ts: int.
+    period > 0 -> ts >= 0 -> bucket_start period ts = period * div ts period
+end

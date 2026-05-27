@@ -1,0 +1,73 @@
+(** Why3 companion for [footprint.mli] — the aggregate's conservation
+    and lifecycle laws, proved on the running accumulators ([volume],
+    [delta]) that the OCaml carries as the source of truth for the bar's
+    totals.
+
+    The per-price [clusters] list is intentionally elided from this
+    model: full functional correctness of the price-keyed fold is not
+    SMT-automatable and is not the invariant that matters here. What
+    matters — and what is proved — is that absorbing a print conserves
+    total volume exactly and moves delta by [sign(aggressor) * size]
+    (so directionless auction volume never perturbs delta), and that
+    sealing freezes the bar without disturbing its totals. The list-sum
+    equivalence ([sum of cluster totals = volume]) holds by construction
+    via [Cluster.add_conserves_total] per step and is covered by tests. *)
+
+module Footprint
+  use int.Int
+  use decimal.Decimal
+
+  type instrument
+  type boundary
+
+  type aggressor = Buy | Sell | Indeterminate
+
+  function sign (a: aggressor) : int =
+    match a with Buy -> 1 | Sell -> -1 | Indeterminate -> 0 end
+
+  type status = Forming | Sealed
+
+  type t = {
+    status : status;
+    open_ts : int;
+    volume : Decimal.t;
+    delta : Decimal.t;
+  }
+
+  function absorb (b: t) (a: aggressor) (size: Decimal.t) : t =
+    { b with
+      volume = Decimal.add b.volume size;
+      delta =
+        match a with
+        | Buy -> Decimal.add b.delta size
+        | Sell -> Decimal.sub b.delta size
+        | Indeterminate -> b.delta
+        end }
+
+  (** Conservation: absorbing a print grows total volume by exactly its
+      size, regardless of aggressor. *)
+  lemma absorb_conserves_volume : forall b: t, a: aggressor, size: Decimal.t.
+    raw (absorb b a size).volume = raw b.volume + raw size
+
+  (** Delta law: delta moves by [sign a * size]; an [Indeterminate]
+      print (sign 0) leaves delta unchanged. *)
+  lemma absorb_delta_law : forall b: t, a: aggressor, size: Decimal.t.
+    raw (absorb b a size).delta = raw b.delta + sign a * raw size
+
+  (** Absorbing never changes the lifecycle status — the rollover
+      decision lives outside the aggregate. *)
+  lemma absorb_keeps_status : forall b: t, a: aggressor, size: Decimal.t.
+    (absorb b a size).status = b.status
+
+  function seal (b: t) : t = { b with status = Sealed }
+
+  (** Sealing freezes the bar: status becomes [Sealed] and the totals
+      are carried through untouched. *)
+  lemma seal_is_sealed : forall b: t. (seal b).status = Sealed
+
+  lemma seal_preserves_volume : forall b: t.
+    raw (seal b).volume = raw b.volume
+
+  lemma seal_preserves_delta : forall b: t.
+    raw (seal b).delta = raw b.delta
+end

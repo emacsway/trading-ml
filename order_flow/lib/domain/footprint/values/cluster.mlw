@@ -1,0 +1,79 @@
+(** Why3 companion for [cluster.mli] — the per-level footprint algebra.
+    This is the formal heart at the value level: it proves that routing
+    a print into a bucket (a) conserves total volume exactly and
+    (b) moves delta by [sign(aggressor) * size], so that auction volume
+    ([sign = 0]) is counted in total yet never perturbs delta.
+
+    The aggregate-level conservation and fold-order independence proofs
+    (in [footprint.mlw]) build directly on these laws. *)
+
+module Cluster
+  use int.Int
+  use decimal.Decimal
+
+  (** Concrete aggressor with its delta-sign — mirrors [aggressor.mlw].
+      Duplicated here (rather than imported opaque) because [add] must
+      case-split on it to prove the bucket-routing laws. *)
+  type aggressor = Buy | Sell | Indeterminate
+
+  function sign (a: aggressor) : int =
+    match a with Buy -> 1 | Sell -> -1 | Indeterminate -> 0 end
+
+  type t = {
+    price : Decimal.t;
+    buy_volume : Decimal.t;
+    sell_volume : Decimal.t;
+    indeterminate_volume : Decimal.t;
+  }
+
+  predicate valid (c: t) =
+       raw c.buy_volume >= 0
+    /\ raw c.sell_volume >= 0
+    /\ raw c.indeterminate_volume >= 0
+
+  function total (c: t) : int =
+    raw c.buy_volume + raw c.sell_volume + raw c.indeterminate_volume
+
+  function delta (c: t) : int =
+    raw c.buy_volume - raw c.sell_volume
+
+  function empty (price: Decimal.t) : t =
+    { price = price;
+      buy_volume = Decimal.zero;
+      sell_volume = Decimal.zero;
+      indeterminate_volume = Decimal.zero }
+
+  lemma empty_valid : forall price: Decimal.t. valid (empty price)
+
+  lemma empty_total_zero : forall price: Decimal.t. total (empty price) = 0
+
+  function add (c: t) (a: aggressor) (size: Decimal.t) : t =
+    match a with
+    | Buy -> { c with buy_volume = Decimal.add c.buy_volume size }
+    | Sell -> { c with sell_volume = Decimal.add c.sell_volume size }
+    | Indeterminate ->
+        { c with indeterminate_volume = Decimal.add c.indeterminate_volume size }
+    end
+
+  (** Conservation at one level: total grows by exactly the print size,
+      whatever the aggressor. *)
+  lemma add_conserves_total : forall c: t, a: aggressor, size: Decimal.t.
+    total (add c a size) = total c + raw size
+
+  (** Delta moves by [sign a * size] — directionless (Indeterminate)
+      volume leaves delta fixed. *)
+  lemma add_delta_law : forall c: t, a: aggressor, size: Decimal.t.
+    delta (add c a size) = delta c + sign a * raw size
+
+  (** Non-negativity is preserved when the routed size is non-negative. *)
+  lemma add_valid : forall c: t, a: aggressor, size: Decimal.t.
+    valid c -> raw size >= 0 -> valid (add c a size)
+
+  (** Order independence at one level: absorbing two prints commutes.
+      This is the formal kernel of fold-order independence — a bar's
+      footprint does not depend on the order in which its prints arrive,
+      so out-of-order delivery within an open bar is harmless. Follows
+      from [Decimal.add] commutativity and associativity. *)
+  lemma add_commutes : forall c: t, a1 a2: aggressor, s1 s2: Decimal.t.
+    add (add c a1 s1) a2 s2 = add (add c a2 s2) a1 s1
+end

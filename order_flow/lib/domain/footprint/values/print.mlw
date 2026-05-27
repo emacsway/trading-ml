@@ -1,0 +1,26 @@
+(** Why3 companion for [print.mli] — a tape print with the single
+    invariant [size > 0] enforced by [make]. The aggressor is opaque
+    here (its sign law lives in [aggressor.mlw]); structural reasoning
+    about the print does not depend on which side aggressed. *)
+
+module Print
+  use int.Int
+  use decimal.Decimal
+
+  type aggressor
+
+  type t = {
+    price : Decimal.t;
+    size : Decimal.t;
+    ts : int;
+    aggressor : aggressor;
+  }
+
+  predicate valid (p: t) = raw p.size > 0
+
+  function make (price size: Decimal.t) (ts: int) (a: aggressor) : t =
+    { price = price; size = size; ts = ts; aggressor = a }
+
+  lemma make_valid : forall price size: Decimal.t, ts: int, a: aggressor.
+    raw size > 0 -> valid (make price size ts a)
+end

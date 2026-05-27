@@ -1,0 +1,6 @@
+(test
+ (name order_flow_unit_runner)
+ (libraries core decimal order_flow alcotest qcheck-core))
+
+; Flat namespace across the domain/ subdir; filenames globally unique.
+(include_subdirs unqualified)

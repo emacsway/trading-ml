@@ -1,0 +1,29 @@
+(** Why3 companion for [footprint_completed.mli] — Domain Event record.
+    A pure data carrier: structural, no behavioural lemmas. Instrument,
+    boundary and cluster are opaque here; the conservation/delta laws
+    these fields satisfy are proved at their source in [cluster.mlw] and
+    [footprint.mlw], not restated on the event. *)
+
+module Footprint_completed
+  use int.Int
+  use list.List
+  use decimal.Decimal
+
+  type instrument
+  type boundary
+  type cluster
+
+  type t = {
+    instrument : instrument;
+    boundary : boundary;
+    open_ts : int;
+    open_price : Decimal.t;
+    high : Decimal.t;
+    low : Decimal.t;
+    close : Decimal.t;
+    volume : Decimal.t;
+    delta : Decimal.t;
+    poc_price : Decimal.t;
+    clusters : list cluster;
+  }
+end

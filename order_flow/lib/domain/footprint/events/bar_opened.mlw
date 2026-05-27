@@ -1,0 +1,16 @@
+(** Why3 companion for [bar_opened.mli] — Domain Event record. A pure
+    data carrier: structural, no behavioural lemmas. Instrument and
+    boundary are opaque here. *)
+
+module Bar_opened
+  use int.Int
+
+  type instrument
+  type boundary
+
+  type t = {
+    instrument : instrument;
+    boundary : boundary;
+    open_ts : int;
+  }
+end
