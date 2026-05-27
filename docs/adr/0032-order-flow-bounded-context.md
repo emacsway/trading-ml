@@ -229,9 +229,13 @@ behind the polymorphic seam, so step 1 is not throwaway.
 
 - The aggressor-side semantics ("does the venue's `side` mark the
   aggressor or the resting side?") is the assumption the whole delta
-  pyramid rests on. MOEX convention says aggressor, but it must be
-  validated empirically against the L1 quote before live use; an
-  inversion would flip every delta-based signal.
+  pyramid rests on; an inversion would flip every delta-based signal.
+  **Validated for Finam on 2026-05-27** (live SBER@MISX, via
+  `broker/test/live_smoke/finam_public_trades_probe`): BUY prints sit at
+  the ask and SELL prints at the bid against the L1 quote, so `side` is
+  the aggressor and the `Trade_printed_integration_event.of_domain`
+  mapping is correct. BCS and Alor remain to be confirmed the same way
+  before their tapes are trusted for delta.
 - A Time footprint's reconstructed OHLC may diverge from the venue
   candle (auction prints, venue filtering). Treated as an observability
   concern, not a correctness one — the footprint owns its own OHLC,
