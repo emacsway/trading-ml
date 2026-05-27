@@ -749,6 +749,10 @@ let cmd_serve args =
   in
   let order_management = Order_management_factory.Factory.build ~bus in
   let execution_management = Execution_management_factory.Factory.build ~bus ~now in
+  (* order_flow BC (ADR 0032): subscribes to broker.trade-printed and
+     builds footprints, publishing footprint-completed for strategy. No
+     HTTP surface yet, so it adds no bc_handler — a pure bus consumer. *)
+  let () = Order_flow_factory.Factory.build ~bus () in
   let bc_handlers =
     [
       account.http_handler;

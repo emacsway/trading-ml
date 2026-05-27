@@ -1,0 +1,11 @@
+(library
+ (name order_flow_factory)
+ (public_name trading.order_flow.factory)
+ (modules factory)
+ (libraries
+  bus
+  core
+  yojson
+  order_flow
+  order_flow_integration_events
+  order_flow_external_integration_events))

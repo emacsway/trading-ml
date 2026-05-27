@@ -354,5 +354,20 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
           (Timeframe.to_string timeframe)
           (Printexc.to_string e))
     watchlist;
+  (* Public-tape (footprint) subscription for the distinct instruments
+     in the watchlist: if we follow an instrument's bars, also relay its
+     tape so the order_flow BC can build footprints (ADR 0032). Adapters
+     that don't support it (BCS, Alor today) log and no-op. *)
+  watchlist |> List.map fst
+  |> List.sort_uniq Instrument.compare
+  |> List.iter (fun instrument ->
+      try
+        Broker.subscribe client (Subscribe_public_trades { instrument });
+        Log.info "watchlist: subscribed public-trades %s"
+          (Instrument.to_qualified instrument)
+      with e ->
+        Log.warn "watchlist: public-trades %s failed: %s"
+          (Instrument.to_qualified instrument)
+          (Printexc.to_string e));
   let http_handler = Broker_inbound_http.Http.make_handler ~broker:client in
   { client; market_price; http_handler }

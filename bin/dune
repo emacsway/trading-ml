@@ -9,6 +9,7 @@
             order_management_factory
             execution_management_factory
             strategy_factory
+            order_flow_factory
             broker_factory
             paper_broker
             paper_broker_factory
