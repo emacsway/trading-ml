@@ -35,6 +35,7 @@ let () =
       ("obv ma crossover", Obv_ma_crossover_test.tests);
       ("chaikin momentum", Chaikin_momentum_test.tests);
       ("ad ma crossover", Ad_ma_crossover_test.tests);
+      ("cvd divergence (footprint)", Cvd_divergence_test.tests);
       ("strat registry", Registry_test.tests);
       ("composite strat", Composite_test.tests);
       ("gbt strategy", Gbt_strategy_test.tests);

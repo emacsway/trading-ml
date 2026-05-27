@@ -2,17 +2,52 @@ type t = { http_handler : Inbound_http.Route.handler }
 
 let build ~bus ~sw ~strategy ~strategy_id ~engine_symbol : t =
   let http_handler = Strategy_inbound_http.Http.make_handler () in
+  let publish_signal_detected =
+    Bus.publish
+      (Bus.producer bus ~uri:"in-memory://strategy.signal-detected" ~serialize:(fun v ->
+           Yojson.Safe.to_string
+             (Strategy_integration_events.Signal_detected_integration_event.yojson_of_t v)))
+  in
+  (* Footprint signal path (ADR 0032): always-on CVD / price-divergence
+     over the order_flow footprint feed, independent of the candle
+     strategy. Idle when no tape flows (e.g. synthetic / paper). *)
+  let () =
+    let cfg : Footprint_engine.config =
+      {
+        strategy =
+          Strategies.Footprint_strategy.default (module Strategies.Cvd_divergence);
+        instrument = engine_symbol;
+        strategy_id = "FootprintCVDDivergence";
+      }
+    in
+    let engine = Footprint_engine.make ~config:cfg ~publish_signal_detected in
+    let handler =
+      Strategy_external_integration_events.Footprint_completed_integration_event_handler
+      .make ~capacity:64
+    in
+    let consumer =
+      Bus.consumer bus ~uri:"in-memory://order-flow.footprint-completed"
+        ~group:"strategy-footprint-engine" ~deserialize:(fun s ->
+          Strategy_external_integration_events.Footprint_completed_integration_event
+          .t_of_yojson (Yojson.Safe.from_string s))
+    in
+    let _ : Bus.subscription =
+      Bus.subscribe consumer
+        (Strategy_external_integration_events
+         .Footprint_completed_integration_event_handler
+         .handle handler ~instrument:engine_symbol)
+    in
+    Eio.Fiber.fork_daemon ~sw (fun () ->
+        Footprint_engine.run engine
+          ~source:
+            (Strategy_external_integration_events
+             .Footprint_completed_integration_event_handler
+             .source handler);
+        `Stop_daemon)
+  in
   match strategy with
   | None -> { http_handler }
   | Some strat ->
-      let publish_signal_detected =
-        Bus.publish
-          (Bus.producer bus ~uri:"in-memory://strategy.signal-detected"
-             ~serialize:(fun v ->
-               Yojson.Safe.to_string
-                 (Strategy_integration_events.Signal_detected_integration_event
-                  .yojson_of_t v)))
-      in
       let cfg : Live_engine.config =
         { strategy = strat; instrument = engine_symbol; strategy_id }
       in

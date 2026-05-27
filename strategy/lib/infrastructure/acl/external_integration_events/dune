@@ -6,6 +6,7 @@
   ppx_yojson_conv_lib
   atdgen-runtime
   strategy_external_view_models
+  common
   core
   decimal
   datetime
@@ -27,3 +28,15 @@
   (progn
    (run atdgen -t -o bar_updated_integration_event %{atd})
    (run atdgen -j -o bar_updated_integration_event %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/order_flow/integration_events/footprint_completed_integration_event.atd))
+ (targets footprint_completed_integration_event_t.ml
+          footprint_completed_integration_event_t.mli
+          footprint_completed_integration_event_j.ml
+          footprint_completed_integration_event_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o footprint_completed_integration_event %{atd})
+   (run atdgen -j -o footprint_completed_integration_event %{atd}))))

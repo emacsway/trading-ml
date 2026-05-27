@@ -9,6 +9,7 @@
   decimal
   strategies
   live_engine
+  footprint_engine
   strategy_integration_events
   strategy_external_integration_events
   strategy_external_view_models

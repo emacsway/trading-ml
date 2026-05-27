@@ -25,3 +25,16 @@
   (progn
    (run atdgen -t -o candle_view_model %{atd})
    (run atdgen -j -o candle_view_model %{atd}))))
+
+; Mirror of order_flow's cluster view model — referenced by the
+; footprint_completed integration event mirror in the sibling
+; external_integration_events library.
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/order_flow/view_models/cluster_view_model.atd))
+ (targets cluster_view_model_t.ml cluster_view_model_t.mli
+          cluster_view_model_j.ml cluster_view_model_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o cluster_view_model %{atd})
+   (run atdgen -j -o cluster_view_model %{atd}))))

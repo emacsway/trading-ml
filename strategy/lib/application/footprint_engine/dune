@@ -1,0 +1,5 @@
+(library
+ (name footprint_engine)
+ (public_name trading.footprint_engine)
+ (libraries core common decimal strategies pipe strategy_integration_events)
+ (flags (:standard -open Common)))
