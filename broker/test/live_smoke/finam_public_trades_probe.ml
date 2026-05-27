@@ -1,21 +1,24 @@
 (** Live smoke probe for the public-tape relay (ADR 0032).
 
-    Subscribes to Finam's INSTRUMENT_TRADES channel for a liquid
-    instrument, decodes each frame through the real
-    {!Finam.Ws.event_of_json} parser (the same path the adapter uses),
-    and prints every relayed print with its aggressor side, tallying
-    BUY / SELL / UNSPECIFIED.
+    Subscribes to Finam's QUOTES (L1) and INSTRUMENT_TRADES (public
+    tape) channels for a liquid instrument on one connection, decodes
+    both through the real {!Finam.Ws.event_of_json} parser (the same
+    path the adapter uses), keeps the latest best bid/ask, and for each
+    relayed print prints the prevailing L1 and a per-trade verdict:
 
-    Two purposes:
-    - End-to-end check that the adapter's INSTRUMENT_TRADES parser
-      handles the live frame shape (vs. the doc-derived sample).
-    - Practical read on the side semantics that ADR 0032's empirical
-      validation was meant to give: on a liquid name during continuous
-      trading, BUY and SELL should both be well-represented and roughly
-      balanced; an all-one-side or all-UNSPECIFIED result is a red flag
-      to investigate before trusting delta.
+      price >= ask  -> aggressor is a buyer (lifted the ask)
+      price <= bid  -> aggressor is a seller (hit the bid)
+      in spread     -> ambiguous from L1 alone
 
-    Skipped silently when [FINAM_SECRET] is absent. Best run during MOEX
+    compared to the venue-reported [side]. This settles the ADR 0032
+    "to watch for" caveat directly (not by adjacent-trade inference):
+    if BUY prints sit at the ask and SELL prints at the bid, [side] is
+    the aggressor and the [of_domain] mapping is correct; if reversed,
+    it is inverted and must be flipped.
+
+    Caveat: quote/trade interleaving on the wire is mildly racy, so the
+    verdict is statistical over many prints, not per-trade. Skipped
+    silently when [FINAM_SECRET] is absent. Best run during MOEX
     continuous trading.
 
     {v
@@ -49,24 +52,57 @@ let run ~env ~clock ~cfg ~token =
   Eio.Switch.run @@ fun sw ->
   let c = connect ~env ~sw ~cfg in
   let instrument = Core.Instrument.of_qualified "SBER@MISX" in
-  let req = Finam.Ws.Requests.Public_trades.subscribe ~token instrument in
-  Websocket.Client.send_text c (Yojson.Safe.to_string req);
-  pf "[%s] subscribed INSTRUMENT_TRADES SBER@MISX — draining 60s..." (now_iso ());
-  let buy = ref 0 and sell = ref 0 and unspec = ref 0 in
+  Websocket.Client.send_text c
+    (Yojson.Safe.to_string (Finam.Ws.Requests.Quotes.subscribe ~token [ instrument ]));
+  Websocket.Client.send_text c
+    (Yojson.Safe.to_string (Finam.Ws.Requests.Public_trades.subscribe ~token instrument));
+  pf "[%s] subscribed QUOTES + INSTRUMENT_TRADES SBER@MISX — draining 60s..." (now_iso ());
+  let bid = ref None and ask = ref None in
+  let agree = ref 0 and disagree = ref 0 and ambiguous = ref 0 and no_quote = ref 0 in
   let handle_text s =
     match Finam.Ws.event_of_json (Yojson.Safe.from_string s) with
-    | Finam.Ws.Public_trades { instrument; trades } ->
+    | Finam.Ws.Quote q ->
+        bid := Some q.bid;
+        ask := Some q.ask
+    | Finam.Ws.Public_trades { trades; _ } ->
         List.iter
           (fun (u : Finam.Ws.Events.Public_trades.update) ->
-            (match u.side with
-            | Some Core.Side.Buy -> incr buy
-            | Some Core.Side.Sell -> incr sell
-            | None -> incr unspec);
-            pf "[%s] %s %-12s %s @ %s" (now_iso ())
-              (Core.Instrument.to_qualified instrument)
-              (side_str u.side)
+            let l1, verdict =
+              match (!bid, !ask) with
+              | Some b, Some a ->
+                  let l1 =
+                    Printf.sprintf "[bid %s / ask %s]" (Decimal.to_string b)
+                      (Decimal.to_string a)
+                  in
+                  let at_ask = Decimal.compare u.price a >= 0 in
+                  let at_bid = Decimal.compare u.price b <= 0 in
+                  let v =
+                    match (u.side, at_ask, at_bid) with
+                    | Some Core.Side.Buy, true, _ ->
+                        incr agree;
+                        "ok (BUY at ask)"
+                    | Some Core.Side.Sell, _, true ->
+                        incr agree;
+                        "ok (SELL at bid)"
+                    | Some Core.Side.Buy, false, true ->
+                        incr disagree;
+                        "INVERTED (BUY at bid)"
+                    | Some Core.Side.Sell, true, false ->
+                        incr disagree;
+                        "INVERTED (SELL at ask)"
+                    | _, false, false ->
+                        incr ambiguous;
+                        "in-spread (ambiguous)"
+                    | None, _, _ -> "unspecified side"
+                  in
+                  (l1, v)
+              | _ ->
+                  incr no_quote;
+                  ("[no quote yet]", "no L1 yet")
+            in
+            pf "[%s] %-6s %s @ %s %s -> %s" (now_iso ()) (side_str u.side)
               (Decimal.to_string u.quantity)
-              (Decimal.to_string u.price))
+              (Decimal.to_string u.price) l1 verdict)
           trades
     | Finam.Ws.Other j -> pf "[%s] (unparsed) %s" (now_iso ()) (Yojson.Safe.to_string j)
     | _ -> ()
@@ -86,9 +122,21 @@ let run ~env ~clock ~cfg ~token =
   | Ok () -> ()
   | Error `Timeout -> pf "[%s] (60s window elapsed)" (now_iso ()));
   pf "";
-  pf "TALLY  buy=%d  sell=%d  unspecified=%d" !buy !sell !unspec;
-  pf "Expect BUY and SELL both well-represented on a liquid name;";
-  pf "all-one-side or all-UNSPEC warrants investigation before trusting delta.";
+  pf
+    "VERDICT among L1-classifiable prints: agree=%d  INVERTED=%d  (ambiguous=%d, \
+     no_quote=%d)"
+    !agree !disagree !ambiguous !no_quote;
+  let total = !agree + !disagree in
+  if total = 0 then
+    pf "inconclusive — no classifiable prints (market thin, or quotes lagged trades)"
+  else if !disagree = 0 then
+    pf "=> side == aggressor CONFIRMED: of_domain mapping is correct."
+  else if !agree = 0 then
+    pf "=> side == INVERTED: flip Buy/Sell in Trade_printed_integration_event.of_domain."
+  else
+    pf
+      "=> MIXED (%.0f%% agree) — likely quote/trade races; widen the window and re-check."
+      (100.0 *. float_of_int !agree /. float_of_int total);
   Websocket.Client.send_close c ()
 
 let main () =
