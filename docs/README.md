@@ -112,13 +112,17 @@ order for a tour; read individually for a specific concern.
    become orders; Paper wiring; reconciliation with the broker.
 7. [Testing strategy](architecture/testing.md) — unit, component,
    differential; mirroring `lib/` in `test/unit/`.
-8. [Gradient-boosted trees](architecture/ml/gbt.md) — pure-OCaml
+8. [Order flow](architecture/order-flow.md) — footprint analysis on
+   the public trade tape: the `order_flow` BC, its aggregate
+   lifecycle, the per-venue trade relay, tick-replay backtest, and
+   what is proved versus tested.
+9. [Gradient-boosted trees](architecture/ml/gbt.md) — pure-OCaml
    inference over LightGBM text-dump models; training pipeline;
    how `Gbt_strategy` plugs into the engine.
-9. [Logistic regression](architecture/ml/logistic_regression.md) —
+10. [Logistic regression](architecture/ml/logistic_regression.md) —
    lightweight classifier as a gating function for the
    `Composite.Learned` policy; SGD + L2 in ~70 lines.
-10. [Triple-barrier labelling](architecture/ml/triple_barrier.md) —
+11. [Triple-barrier labelling](architecture/ml/triple_barrier.md) —
     path-sensitive, volatility-adaptive label derivation for
     supervised training; the intended alternative to "sign of
     forward return" when the strategy will trade TP/SL brackets.
@@ -138,6 +142,9 @@ concrete commands, expected output, troubleshooting.
   — practical workflow for deciding whether path-sensitive
   labelling actually helps your model, with tuning guidance and
   pitfalls.
+- [Backtest a footprint strategy and record a live tape](howto/footprint-backtest.md)
+  — synthetic-tape backtest, recording a real tape with the broker
+  probes (`--record`), and replaying it offline (`backtest --tape`).
 - [Work with Gospel specifications](howto/formal-verification.md) —
   running `dune build @gospel`, adding new contracts, working around
   Gospel 0.3.1 limitations; Phase 0 wiring and roadmap to Ortac/Why3.

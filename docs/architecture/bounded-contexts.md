@@ -78,9 +78,24 @@ own.
 
 `paper_broker` is the only optional BC: it is instantiated only
 when the trading host is started with `--paper` (or for the
-backtest path). The other seven are always present. ADR 0012
-covers paper_broker's role and why it is a separate BC instead of
-a Paper decorator inside broker.
+backtest path). The other always-present BCs include the
+order-routing pipeline above. ADR 0012 covers paper_broker's role
+and why it is a separate BC instead of a Paper decorator inside
+broker.
+
+Beyond the place-order saga the diagram traces, an **analytics
+branch** reads the broker's public-trade tape: `order_flow` turns
+individual prints into footprints (per-price buy/sell volume) that
+`strategy` consumes. It is always present (live and backtest) but
+sits off the order-routing path, so it is described in its own
+subsection below and at length in
+[order-flow.md](order-flow.md) rather than threaded into the saga
+map above:
+
+```
+  broker ──Trade_printed_IE──► order_flow ──Footprint_completed_IE──► strategy
+          broker.trade-printed             order-flow.footprint-completed
+```
 
 The seven **canonical pipeline stages** (Alpha → Construction →
 Risk → Execution) of LEAN's Algorithm Framework correspond to four
@@ -104,7 +119,7 @@ invariants that deserve their own model and Why3 surface — see
 ADR 0009 §«Merge target portfolio into the existing account BC» on
 why this split is load-bearing rather than incidental.
 
-## The seven BCs
+## The bounded contexts
 
 ### `strategy` — alpha emitter
 
@@ -286,6 +301,27 @@ submit-order subscriber is gated off when `--paper` is on). The
 wire format is identical, so Account and execution_management
 consume the same shape regardless of who produced it.
 
+### `order_flow` — footprint / order-flow microstructure
+
+ADR 0032. Reconstructs, from the public trade stream, the volume
+traded at each price split by aggressor side — the *footprint*. The
+aggregate `Footprint` has a `Forming → Sealed` lifecycle
+(`open_ / classify / absorb / seal`); its value objects are `Aggressor`
+(three-state — `Buy | Sell | Indeterminate`, where the third keeps
+auction volume in *total* but out of *delta*), `Cluster` (three buckets
+per price, with a Why3-proved commutative `add`), `Print`, and the
+polymorphic `Bar_boundary` (`Time` today, `Volume` / `Tick` behind the
+seam). The application layer holds the current bar per instrument and
+rolls it at the period edge — mirroring how Account holds its
+`Portfolio`. Objective facts only live here; thresholded
+interpretations (CVD divergence, stacked imbalance) belong to
+`strategy`. See [order-flow.md](order-flow.md) for the full treatment.
+
+**Inbound** ← `broker.trade-printed` (one IE per print:
+price / size / ts / aggressor).
+**Outbound** → `order-flow.footprint-completed` (a sealed footprint:
+OHLCV, volume, delta, POC, per-price clusters).
+
 ### `shared` — cross-BC kernel
 
 `shared/lib/` holds code more than one BC depends on. Notable
@@ -347,6 +383,8 @@ Topic conventions per BC:
 | `in-memory://broker.trade-executed`            | broker or paper_broker | One executed trade leg; cid echoed (ADR 0029) |
 | `in-memory://broker.order-cancelled`           | paper_broker          | Cid + reservation_id echoed    |
 | `in-memory://broker.bar-updated`               | broker                | Upstream candles               |
+| `in-memory://broker.trade-printed`             | broker                | Public trade tape: price/size/ts/aggressor (ADR 0032) |
+| `in-memory://order-flow.footprint-completed`   | order_flow            | Sealed footprint: OHLCV, delta, POC, clusters (ADR 0032) |
 | `in-memory://pre-trade-risk.trade-submission-blocked` | pre_trade_risk | Telemetry on a gate halt    |
 | `in-memory://pre-trade-risk.kill-switch-tripped` | pre_trade_risk | First trip of the drawdown circuit |
 
