@@ -161,6 +161,10 @@ type backtest_summary = {
   symbol : Instrument.t;
   candles : int;
   signals : int;
+  footprint_signals : int;
+      (** Subset of [signals] emitted by the footprint CVD-divergence
+          strategy — confirms the order_flow -> footprint -> strategy
+          loop fired in backtest (ADR 0032). *)
   intents_planned : int;
   intents_approved : int;
   intents_rejected : int;
@@ -237,10 +241,15 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
     Strategy_factory.Factory.build ~bus ~sw ~strategy:(Some strategy)
       ~strategy_id:strategy_name ~engine_symbol:symbol
   in
+  (* order_flow BC (ADR 0032): consumes the synthetic tape published
+     below on broker.trade-printed and builds footprints; the strategy
+     factory's always-on footprint engine turns them into signals. *)
+  let () = Order_flow_factory.Factory.build ~bus () in
   (* Outcome counters. The saga publishes its progression through
      these topics; tallying their cardinality yields the post-run
      summary that used to come from [Engine.Backtest.run]. *)
   let signals = ref 0 in
+  let footprint_signals = ref 0 in
   let intents_planned = ref 0 in
   let intents_approved = ref 0 in
   let intents_rejected = ref 0 in
@@ -254,6 +263,21 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
   let count r = Bus.subscribe (consume ~uri:r ~group:"backtest-collector") in
   let _ : Bus.subscription =
     count "in-memory://strategy.signal-detected" (fun _ -> incr signals)
+  in
+  (* Footprint subset of the signal stream, by strategy_id. Distinct
+     consumer group so it sees every signal independently of the total
+     counter above; raw-JSON parse avoids a strategy-IE dependency. *)
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (Bus.consumer bus ~uri:"in-memory://strategy.signal-detected"
+         ~group:"backtest-footprint-collector" ~deserialize:Fun.id) (fun s ->
+        match Yojson.Safe.from_string s with
+        | `Assoc fields -> (
+            match List.assoc_opt "strategy_id" fields with
+            | Some (`String "FootprintCVDDivergence") -> incr footprint_signals
+            | _ -> ())
+        | _ -> ()
+        | exception _ -> ())
   in
   let _ : Bus.subscription =
     count "in-memory://pm.trade-intents-planned" (fun _ -> incr intents_planned)
@@ -294,6 +318,17 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
            Yojson.Safe.to_string
              (Broker_integration_events.Bar_updated_integration_event.yojson_of_t v)))
   in
+  (* Synthetic public tape for footprint backtest (ADR 0032): each
+     candle is expanded into prints whose footprint reconstructs its
+     OHLC, published on broker.trade-printed alongside the bar. The
+     delta is generated, not observed — this exercises footprint
+     mechanics offline, it is not microstructure alpha evidence. *)
+  let publish_trade_printed =
+    Bus.publish
+      (Bus.producer bus ~uri:"in-memory://broker.trade-printed" ~serialize:(fun v ->
+           Yojson.Safe.to_string
+             (Broker_integration_events.Trade_printed_integration_event.yojson_of_t v)))
+  in
   (* Each candle takes one trip through:
      bar-updated → strategy → signal-detected → PM → trade-intents-planned
      → pre_trade_risk → trade-intent-approved → execution_management
@@ -316,6 +351,12 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
              timeframe = Timeframe.M5;
              candle;
            });
+      List.iter
+        (fun tr ->
+          publish_trade_printed
+            (Broker_integration_events.Trade_printed_integration_event.of_domain tr))
+        (Synthetic.Trade_generator.generate ~instrument:symbol ~candle ~tf_seconds:300
+           ~n:10);
       drain ())
     candles_list;
   drain ();
@@ -327,6 +368,7 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol :
     symbol;
     candles = n;
     signals = !signals;
+    footprint_signals = !footprint_signals;
     intents_planned = !intents_planned;
     intents_approved = !intents_approved;
     intents_rejected = !intents_rejected;
@@ -391,6 +433,7 @@ let backtest_summary_to_json (s : backtest_summary) : Yojson.Safe.t =
       ("symbol", `String (Instrument.to_qualified s.symbol));
       ("candles", `Int s.candles);
       ("signals", `Int s.signals);
+      ("footprint_signals", `Int s.footprint_signals);
       ("intents_planned", `Int s.intents_planned);
       ("intents_approved", `Int s.intents_approved);
       ("intents_rejected", `Int s.intents_rejected);
@@ -814,7 +857,7 @@ let cmd_backtest args =
   Printf.printf "backtest: strategy=%s symbol=%s candles=%d\n" s.strategy_name
     (Instrument.to_qualified s.symbol)
     s.candles;
-  Printf.printf "  signals_emitted=%d\n" s.signals;
+  Printf.printf "  signals_emitted=%d (footprint=%d)\n" s.signals s.footprint_signals;
   Printf.printf "  intents: planned=%d approved=%d rejected=%d\n" s.intents_planned
     s.intents_approved s.intents_rejected;
   Printf.printf "  reservations: ok=%d rejected=%d\n" s.amounts_reserved

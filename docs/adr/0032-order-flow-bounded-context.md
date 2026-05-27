@@ -221,9 +221,15 @@ behind the polymorphic seam, so step 1 is not throwaway.
 - A new data tier. The broker BC must relay a public trade stream
   (price / size / ts / aggressor) — it currently relays only bars. This
   is a hard prerequisite for the application / ACL layers.
-- Backtest must move to **tick replay**: the `VirtualClock` is today
-  subscribed to the bar stream; footprint needs virtual time advanced
-  per print.
+- Backtest must move to **tick replay**: footprint needs a tape, not
+  just bars. Addressed by a synthetic tape generator
+  (`Synthetic.Trade_generator`) that expands each backtest candle into
+  prints (reconstructing its OHLC) published on `broker.trade-printed`,
+  so the full footprint loop runs offline. The `VirtualClock` stays on
+  the bar stream — footprint uses each print's own `ts`, not ambient
+  time. Caveat: the synthetic tape's delta is *generated*, so it
+  validates footprint mechanics, not microstructure alpha; real
+  evaluation needs a recorded live tape (a follow-up).
 
 **To watch for:**
 
