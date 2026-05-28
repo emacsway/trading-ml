@@ -71,7 +71,12 @@ let run ~env ~clock ~cfg ~token ~record_oc =
           (Yojson.Safe.to_string
              (Broker_integration_events.Trade_printed_integration_event.yojson_of_t
                 (Broker_integration_events.Trade_printed_integration_event.of_domain dom)));
-        output_char oc '\n'
+        output_char oc '\n';
+        (* Flush per record: a tape recorder must be durable on Ctrl-C /
+           early termination. [open_out] uses a ~64K buffer; without
+           per-line flush a short run leaves the file empty because the
+           buffer never reaches [close_out]. *)
+        flush oc
   in
   Websocket.Client.send_text c
     (Yojson.Safe.to_string (Finam.Ws.Requests.Quotes.subscribe ~token [ instrument ]));
