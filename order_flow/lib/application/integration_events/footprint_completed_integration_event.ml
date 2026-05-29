@@ -8,9 +8,17 @@ let t_of_yojson (j : Yojson.Safe.t) : t = t_of_string (Yojson.Safe.to_string j)
 type domain = Footprint.Events.Footprint_completed.t
 
 let of_domain (ev : domain) : t =
+  (* Serialised boundary token carried in the wire [timeframe] field. A
+     Time bar is fully described by its timeframe token (M1 … MN1); a
+     Volume bar has no timeframe, so it is tagged [VOL:<cap>]. This reuses
+     the existing string field as a stopgap — the proper fix, foreseen in
+     the .atd, is a structured boundary discriminator on the wire, a
+     contract change deferred with the rest of the Volume-bar follow-up
+     (exact-cap split, Tick). *)
   let timeframe =
     match ev.Footprint.Events.Footprint_completed.boundary with
     | Footprint.Values.Bar_boundary.Time tf -> Timeframe.to_string tf
+    | Footprint.Values.Bar_boundary.Volume cap -> "VOL:" ^ Decimal.to_string cap
   in
   {
     instrument = Instrument_view_model.of_domain ev.instrument;

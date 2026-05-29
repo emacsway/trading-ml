@@ -55,7 +55,13 @@ let open_ ~instrument ~boundary ~first =
   and size = first.Print.size
   and ts = first.Print.ts
   and aggressor = first.Print.aggressor in
-  let open_ts = Bar_boundary.bucket_start boundary ~ts in
+  let open_ts =
+    match boundary with
+    | Bar_boundary.Time _ -> Bar_boundary.bucket_start boundary ~ts
+    | Bar_boundary.Volume _ -> ts
+    (* Volume bars have no time grid: the bar opens at the first print's
+       own timestamp. *)
+  in
   let clusters = [ Cluster.add (Cluster.empty ~price) ~aggressor ~size ] in
   let bar =
     {
@@ -73,9 +79,22 @@ let open_ ~instrument ~boundary ~first =
   (bar, { Bar_opened.instrument; boundary; open_ts })
 
 let classify bar p =
-  let b = Bar_boundary.bucket_start bar.boundary ~ts:p.Print.ts in
-  let cmp = Int64.compare b bar.open_ts in
-  if cmp = 0 then In_bar else if cmp > 0 then Opens_later else Late
+  match bar.boundary with
+  | Bar_boundary.Time _ ->
+      let b = Bar_boundary.bucket_start bar.boundary ~ts:p.Print.ts in
+      let cmp = Int64.compare b bar.open_ts in
+      if cmp = 0 then In_bar else if cmp > 0 then Opens_later else Late
+  | Bar_boundary.Volume cap ->
+      (* No-split policy: while the bar has not yet reached [cap] the
+         print joins it (even if it tips the total past [cap]); once the
+         bar is full the print opens a new one. A [Volume] bar has no
+         "Late": its partition follows arrival order, not timestamp, so a
+         print never belongs to an already-passed bucket. (Exact-cap
+         splitting of the tipping print — Lean's leftover-loop — is the
+         documented follow-up; it must split the print's signed volume
+         across both bars' clusters while preserving per-bucket
+         conservation, hence it is deferred behind this same seam.) *)
+      if Decimal.compare bar.volume cap >= 0 then Opens_later else In_bar
 
 let absorb bar p =
   let price = p.Print.price and size = p.Print.size and aggressor = p.Print.aggressor in

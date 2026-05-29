@@ -21,14 +21,21 @@ module Footprint = Order_flow.Footprint
 module Footprint_completed_ie =
   Order_flow_integration_events.Footprint_completed_integration_event
 
-let build ~bus ?(timeframe = Timeframe.M5) () : unit =
+let build ~bus ?(timeframe = Timeframe.M5) ?boundary () : unit =
   (* Forming bar per instrument, keyed by qualified symbol. *)
   let store : (string, Footprint.t) Hashtbl.t = Hashtbl.create 64 in
   let get_bar instrument = Hashtbl.find_opt store (Instrument.to_qualified instrument) in
   let put_bar instrument bar =
     Hashtbl.replace store (Instrument.to_qualified instrument) bar
   in
-  let boundary = Footprint.Values.Bar_boundary.Time timeframe in
+  (* [?boundary] overrides the default explicitly — e.g.
+     [Bar_boundary.Volume (Decimal.of_int 10_000)] — without the
+     composition root touching anything else (ADR 0032 §5). *)
+  let boundary =
+    match boundary with
+    | Some b -> b
+    | None -> Footprint.Values.Bar_boundary.Time timeframe
+  in
   let publish_footprint_completed =
     Bus.publish
       (Bus.producer bus ~uri:"in-memory://order-flow.footprint-completed"

@@ -137,16 +137,44 @@ of the *set* of prints, not their arrival order.
 
 ### `Bar_boundary` — a polymorphic seam
 
-`Bar_boundary` is a variant; only `Time of Core.Timeframe.t` is
-implemented today. `Volume` and `Tick` boundaries are planned and drop
-in as new cases, not a rewrite — the seam lives in the type, exposed
-via `admits_time_close` (Time bars must close at the period edge even
-in a silent market; Volume/Tick bars close only on the print that
-crosses the threshold). Time bars were chosen first deliberately: they
-reuse the existing `Timeframe`, align with the broker's candle grid,
-and give a free reconciliation oracle — a Time footprint's own OHLC
-must agree with the venue candle for the same period. The default
-timeframe wired in the factory is `M5`.
+`Bar_boundary` is a variant: `Time of Core.Timeframe.t` and
+`Volume of Decimal.t` are implemented; `Tick` is the next planned case
+and drops in the same way — a new constructor, not a rewrite. The seam
+lives in the type, exposed via `admits_time_close` (Time bars must
+close at the period edge even in a silent market; Volume/Tick bars
+close only on the print that crosses the threshold). Time bars were
+chosen *first* deliberately: they reuse the existing `Timeframe`, align
+with the broker's candle grid, and give a free reconciliation oracle —
+a Time footprint's own OHLC must agree with the venue candle for the
+same period. The factory defaults to `Time M5`; a composition can pass
+`~boundary:(Bar_boundary.Volume cap)` to switch, touching nothing else.
+
+**What adding `Volume` actually cost.** The seam held where it was
+designed to: the integration event, the ingest handler, the workflow,
+and the downstream strategy are unchanged; `absorb`/`seal` and their
+Why3 accumulator laws are unchanged (they are boundary-agnostic). Two
+things in the aggregate gained a `Volume` case — `classify` (membership
+is "has the running volume reached `cap`?" instead of a timestamp
+bucket) and `open_` (a Volume bar opens at the first print's own `ts`,
+with no time grid). Two honest costs surfaced that the original
+"new variant, zero churn" framing glossed over: `bucket_start` and
+`period_seconds` are Time-shaped and became **partial** (they raise on
+`Volume`, which the aggregate never calls there); and the **fold-order
+independence** argument does *not* carry to Volume — a Volume bar's
+*partition* depends on arrival order (which print first fills the bar),
+even though the cluster algebra within any fixed bar still commutes.
+No Why3 goal broke, because none encoded the Time-specific partition;
+the order-independence claim is scoped to Time in the boundary's docs.
+
+**Close policy: no-split (for now).** The print that tips the bar over
+`cap` is absorbed whole, so a sealed Volume bar may slightly exceed
+`cap` by that print's overshoot. The exact-cap alternative — splitting
+the tipping print across two bars (Lean's `VolumeRenkoConsolidator`
+leftover-loop) — is a documented follow-up; for a footprint it must
+split the print's *signed* volume across both bars' per-price clusters
+while preserving per-bucket conservation, so it is a domain decision
+with its own proof obligation, deferred behind this same seam rather
+than hidden in the consolidator.
 
 ADR 0032 §5 records why we did *not* start with the
 information-theoretically superior volume/dollar bars (de Prado): they

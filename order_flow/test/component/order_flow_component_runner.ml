@@ -2,4 +2,8 @@
 
 let () =
   Alcotest.run "trading-order_flow-component"
-    [ Ingest_print_command_test.feature; Trade_printed_handler_test.feature ]
+    [
+      Ingest_print_command_test.feature;
+      Trade_printed_handler_test.feature;
+      ("Volume bar (ingest workflow)", Ingest_print_volume_bar_test.tests);
+    ]

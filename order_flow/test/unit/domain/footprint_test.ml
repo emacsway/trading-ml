@@ -154,6 +154,73 @@ let prop_conservation =
 
 let test_conservation_qcheck () = QCheck.Test.check_exn prop_conservation
 
+(* --- Volume boundary (ADR 0032 §5) --- *)
+
+let vol cap = Bar_boundary.Volume (d cap)
+
+(* admits_time_close discriminates the two families: Time closes on the
+   clock, Volume only on the filling print. *)
+let test_boundary_admits_time_close () =
+  Alcotest.(check bool)
+    "Time admits time-close" true
+    (Bar_boundary.admits_time_close boundary);
+  Alcotest.(check bool)
+    "Volume does not" false
+    (Bar_boundary.admits_time_close (vol 100.0))
+
+(* period_seconds / bucket_start are Time-only; partial on Volume. *)
+let test_boundary_volume_is_partial () =
+  Alcotest.check_raises "period_seconds raises on Volume"
+    (Invalid_argument "Bar_boundary.period_seconds: Volume boundary has no period")
+    (fun () -> ignore (Bar_boundary.period_seconds (vol 100.0)));
+  Alcotest.check_raises "bucket_start raises on Volume"
+    (Invalid_argument "Bar_boundary.bucket_start: Volume boundary has no time bucket")
+    (fun () -> ignore (Bar_boundary.bucket_start (vol 100.0) ~ts:42L))
+
+(* A Volume bar opens at the first print's own ts (no time grid). *)
+let test_volume_open_uses_print_ts () =
+  let bar, _ =
+    Footprint.open_ ~instrument:inst ~boundary:(vol 100.0)
+      ~first:(pr ~ts:1234L ~price:100.0 ~size:5.0 Aggressor.Buy)
+  in
+  Alcotest.(check int64) "open_ts = first print ts" 1234L bar.Footprint.open_ts
+
+(* classify: below cap the print joins the bar (even with an earlier
+   timestamp); at/over cap the next print opens a new bar; a Volume bar
+   never returns Late. *)
+let test_volume_classify_fills_then_rolls () =
+  let bar, _ =
+    Footprint.open_ ~instrument:inst ~boundary:(vol 10.0)
+      ~first:(pr ~ts:0L ~price:100.0 ~size:4.0 Aggressor.Buy)
+  in
+  Alcotest.(check bool)
+    "below cap -> In_bar (ts irrelevant)" true
+    (Footprint.classify bar (pr ~ts:0L ~price:100.0 ~size:3.0 Aggressor.Sell)
+    = Footprint.In_bar);
+  let bar = Footprint.absorb bar (pr ~ts:1L ~price:100.0 ~size:6.0 Aggressor.Buy) in
+  Alcotest.(check bool)
+    "at cap -> Opens_later" true
+    (Footprint.classify bar (pr ~ts:2L ~price:101.0 ~size:1.0 Aggressor.Buy)
+    = Footprint.Opens_later);
+  Alcotest.(check bool)
+    "no Late for Volume" true
+    (Footprint.classify bar (pr ~ts:0L ~price:100.0 ~size:1.0 Aggressor.Buy)
+    <> Footprint.Late)
+
+(* No-split: the tipping print is absorbed whole, so the bar may exceed
+   cap by that print's overshoot. *)
+let test_volume_no_split_overshoot () =
+  let bar, _ =
+    Footprint.open_ ~instrument:inst ~boundary:(vol 10.0)
+      ~first:(pr ~ts:0L ~price:100.0 ~size:8.0 Aggressor.Buy)
+  in
+  Alcotest.(check bool)
+    "still In_bar at 8" true
+    (Footprint.classify bar (pr ~ts:1L ~price:100.0 ~size:5.0 Aggressor.Buy)
+    = Footprint.In_bar);
+  let bar = Footprint.absorb bar (pr ~ts:1L ~price:100.0 ~size:5.0 Aggressor.Buy) in
+  Alcotest.check dec "volume overshoots cap (13)" (d 13.0) bar.Footprint.volume
+
 let tests =
   [
     Alcotest.test_case "open seeds a forming bar" `Quick test_open_seeds;
@@ -167,4 +234,13 @@ let tests =
     Alcotest.test_case "fold-order independence of the footprint" `Quick
       test_fold_order_independence;
     Alcotest.test_case "conservation (property)" `Quick test_conservation_qcheck;
+    Alcotest.test_case "boundary: admits_time_close discriminates families" `Quick
+      test_boundary_admits_time_close;
+    Alcotest.test_case "boundary: Volume period/bucket are partial" `Quick
+      test_boundary_volume_is_partial;
+    Alcotest.test_case "volume: open uses the first print's ts" `Quick
+      test_volume_open_uses_print_ts;
+    Alcotest.test_case "volume: classify fills then rolls" `Quick
+      test_volume_classify_fills_then_rolls;
+    Alcotest.test_case "volume: no-split overshoot" `Quick test_volume_no_split_overshoot;
   ]

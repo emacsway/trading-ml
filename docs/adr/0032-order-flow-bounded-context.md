@@ -113,6 +113,18 @@ buy/sell would corrupt POC and delta.
 
 ### 5. Time bars first, with a polymorphic boundary seam
 
+> **Update (2026-05-30):** `Volume of Decimal.t` is now implemented
+> behind this seam (no-split close policy). The seam held as designed —
+> the integration event, ingest handler, workflow, strategy, and the
+> `absorb`/`seal` Why3 laws were untouched; only `classify`/`open_`
+> gained a `Volume` case. Two costs the original framing understated:
+> `bucket_start`/`period_seconds` became partial (Time-only), and
+> fold-order independence does not carry to Volume (its partition is
+> arrival-order-dependent; the cluster algebra still commutes within a
+> fixed bar). Exact-cap print-splitting (Lean's leftover-loop, with a
+> per-bucket conservation obligation for the signed split) remains the
+> documented follow-up. `Tick` is still pending.
+
 `Bar_boundary` is a variant; only `Time of Core.Timeframe.t` is
 implemented now. `Volume` / `Tick` boundaries are the planned additions
 and drop in as new cases, not a rewrite — the seam lives in the type,
