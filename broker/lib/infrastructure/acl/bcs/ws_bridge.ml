@@ -179,8 +179,8 @@ let unsubscribe_bars (t : bridge) ~instrument ~timeframe : unit =
 let subscribe_public_trades
     (t : bridge)
     ~instrument
-    ~(on_trade : Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t -> unit)
-    : unit =
+    ~(on_trade : Broker_domain.Remote_broker.Events.Public_trade_printed.t -> unit) : unit
+    =
   let already =
     Eio.Mutex.use_ro t.mutex (fun () -> InstrMap.mem instrument t.public_trade_conns)
   in

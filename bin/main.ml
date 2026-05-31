@@ -368,8 +368,7 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol ?tape 
             publish_bar_updated
               (Broker_integration_events.Bar_updated_integration_event.of_domain
                  {
-                   Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument =
-                     symbol;
+                   Broker_domain.Remote_broker.Events.Bar_updated.instrument = symbol;
                    timeframe = Timeframe.M5;
                    candle;
                  });

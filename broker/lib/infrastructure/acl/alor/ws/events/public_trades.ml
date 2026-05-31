@@ -1,6 +1,6 @@
 open Core
 
-type t = Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t
+type t = Broker_domain.Remote_broker.Events.Public_trade_printed.t
 
 (* The single side-mapping point for Alor (ADR 0032). AllTrades reports
    the aggressor as lowercase "buy"/"sell"; anything else is [None].
@@ -32,7 +32,7 @@ let parse (data : Yojson.Safe.t) : t =
         | _ -> 0L)
   in
   {
-    Broker_domain.Remote_broker.Events.Remote_public_trade_printed.instrument =
+    Broker_domain.Remote_broker.Events.Public_trade_printed.instrument =
       Dto.Wire.instrument_of_json data;
     side = parse_side (str "side");
     quantity = dec "qty";

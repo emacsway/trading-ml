@@ -27,8 +27,8 @@ open Core
     pattern-matches surface exhaustivity warnings to flag
     missing handlers. *)
 type event =
-  | Remote_bar_updated of Remote_broker.Events.Remote_bar_updated.t
-  | Remote_public_trade_printed of Remote_broker.Events.Remote_public_trade_printed.t
+  | Bar_updated of Remote_broker.Events.Bar_updated.t
+  | Public_trade_printed of Remote_broker.Events.Public_trade_printed.t
       (** A public-tape print recognised from the venue's all-trades
           feed (Finam INSTRUMENT_TRADES, …). Venue data with no order
           linkage — distinct from [Trade_executed] (this account's own

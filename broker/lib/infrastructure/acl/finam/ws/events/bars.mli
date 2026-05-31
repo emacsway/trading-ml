@@ -22,7 +22,7 @@ val parse : Yojson.Safe.t -> t
     logs and drops the frame, surfacing the contract drift loudly
     rather than silently fabricating bars. *)
 
-val to_domain : t -> Broker_domain.Remote_broker.Events.Remote_bar_updated.t list
-(** Fans the batch into one {!Remote_bar_updated} domain event per
+val to_domain : t -> Broker_domain.Remote_broker.Events.Bar_updated.t list
+(** Fans the batch into one {!Bar_updated} domain event per
     candle, carrying the [instrument] and [timeframe] resolved by
     the parser. *)

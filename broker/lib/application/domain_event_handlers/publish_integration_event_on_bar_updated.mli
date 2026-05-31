@@ -1,5 +1,5 @@
 (** Domain Event handler: projects
-    {!Broker_domain.Remote_broker.Events.Remote_bar_updated.t} into
+    {!Broker_domain.Remote_broker.Events.Bar_updated.t} into
     {!Broker_integration_events.Bar_updated_integration_event.t}
     via [of_domain] and publishes it through the supplied port
     closure. *)
@@ -9,5 +9,5 @@ module Bar_updated :
 
 val handle :
   publish_bar_updated:(Bar_updated.t -> unit) ->
-  Broker_domain.Remote_broker.Events.Remote_bar_updated.t ->
+  Broker_domain.Remote_broker.Events.Bar_updated.t ->
   unit

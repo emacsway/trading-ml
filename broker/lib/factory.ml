@@ -322,13 +322,13 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
   | Opened.Finam _ | Opened.Bcs _ | Opened.Alor _ ->
       let on_event (event : Broker.event) =
         match event with
-        | Remote_bar_updated ev ->
+        | Bar_updated ev ->
             Broker_domain_event_handlers.Publish_integration_event_on_bar_updated.handle
               ~publish_bar_updated ev
         | Trade_executed domain_ev ->
             Broker_domain_event_handlers.Publish_integration_event_on_trade_executed
             .handle ~publish_trade_executed ~origin_correlation_id domain_ev
-        | Remote_public_trade_printed ev ->
+        | Public_trade_printed ev ->
             Broker_domain_event_handlers.Publish_integration_event_on_public_trade_printed
             .handle ~publish_trade_printed ev
       in

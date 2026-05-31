@@ -316,9 +316,9 @@ let subscribe t (request : Broker.request) : unit =
                 (timeframe : Timeframe.t)
                 (candle : Candle.t) =
               dispatch t
-                (Broker.Remote_bar_updated
+                (Broker.Bar_updated
                    {
-                     Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument;
+                     Broker_domain.Remote_broker.Events.Bar_updated.instrument;
                      timeframe;
                      candle;
                    })
@@ -342,7 +342,7 @@ let subscribe t (request : Broker.request) : unit =
       in
       if should_open then
         with_bridge t (fun bridge ->
-            let on_trade ev = dispatch t (Broker.Remote_public_trade_printed ev) in
+            let on_trade ev = dispatch t (Broker.Public_trade_printed ev) in
             try Ws_bridge.subscribe_public_trades bridge ~instrument ~on_trade
             with e ->
               Log.warn "[bcs ws] subscribe_public_trades failed: %s"

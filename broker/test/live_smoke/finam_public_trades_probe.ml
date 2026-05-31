@@ -60,7 +60,7 @@ let run ~env ~clock ~cfg ~token ~record_oc =
     | Some oc ->
         let dom =
           {
-            Remote_broker.Events.Remote_public_trade_printed.instrument;
+            Remote_broker.Events.Public_trade_printed.instrument;
             side = u.side;
             quantity = u.quantity;
             price = u.price;

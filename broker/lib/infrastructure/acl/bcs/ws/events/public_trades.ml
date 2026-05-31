@@ -1,6 +1,6 @@
 open Core
 
-type t = Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t
+type t = Broker_domain.Remote_broker.Events.Public_trade_printed.t
 
 let num_field k j =
   let open Yojson.Safe.Util in
@@ -34,7 +34,7 @@ let parse (j : Yojson.Safe.t) : t =
     | _ -> 0L
   in
   {
-    Broker_domain.Remote_broker.Events.Remote_public_trade_printed.instrument;
+    Broker_domain.Remote_broker.Events.Public_trade_printed.instrument;
     side = parse_side (member "side" j);
     quantity = num_field "quantity" j;
     price = num_field "price" j;

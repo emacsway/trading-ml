@@ -297,7 +297,7 @@ let dispatch_ws_event t (ev : Ws.event) : unit =
          here (unlike bars/fills). REST-poll resilience via
          [Rest.latest_trades] is a documented follow-up. *)
       List.iter
-        (fun ev -> dispatch t (Broker.Remote_public_trade_printed ev))
+        (fun ev -> dispatch t (Broker.Public_trade_printed ev))
         (Ws.Events.Public_trades.to_domain pt)
   | Error_ev e -> Log.warn "[finam ws] error %d %s: %s" e.code e.type_ e.message
   | Lifecycle ev -> Log.info "[finam ws] %s (%d) %s" ev.event ev.code ev.reason
@@ -400,12 +400,8 @@ let make_bar_supervisor t bridge ~sw ~env ~instrument ~timeframe :
   in
   let emit (candle : Candle.t) =
     dispatch t
-      (Broker.Remote_bar_updated
-         {
-           Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument;
-           timeframe;
-           candle;
-         })
+      (Broker.Bar_updated
+         { Broker_domain.Remote_broker.Events.Bar_updated.instrument; timeframe; candle })
   in
   let label =
     Printf.sprintf "finam bars %s/%s"

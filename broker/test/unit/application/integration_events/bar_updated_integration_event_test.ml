@@ -23,11 +23,7 @@ let test_of_domain_maps_all_fields () =
   let timeframe = Timeframe.H1 in
   let dto =
     Event.of_domain
-      {
-        Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument;
-        timeframe;
-        candle;
-      }
+      { Broker_domain.Remote_broker.Events.Bar_updated.instrument; timeframe; candle }
   in
   Alcotest.(check string) "ticker" "SBER" dto.instrument.ticker;
   Alcotest.(check string) "venue" "MISX" dto.instrument.venue;
@@ -51,7 +47,7 @@ let test_yojson_roundtrip () =
   let dto =
     Event.of_domain
       {
-        Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument;
+        Broker_domain.Remote_broker.Events.Bar_updated.instrument;
         timeframe = Timeframe.M5;
         candle;
       }

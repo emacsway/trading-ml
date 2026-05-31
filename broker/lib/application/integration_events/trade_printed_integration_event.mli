@@ -20,6 +20,6 @@ include module type of Trade_printed_integration_event_j with type t := t
 val yojson_of_t : t -> Yojson.Safe.t
 val t_of_yojson : Yojson.Safe.t -> t
 
-type domain = Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t
+type domain = Broker_domain.Remote_broker.Events.Public_trade_printed.t
 
 val of_domain : domain -> t

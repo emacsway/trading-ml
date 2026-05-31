@@ -194,7 +194,7 @@ let dispatch_ws_event t (ev : Ws.event) : unit =
           match trade_executed_of_dto t dt with
           | Some raw -> Acl_common.Transport_supervisor.feed_ws sup raw
           | None -> ()))
-  | Ws.Public_trades ev -> dispatch t (Broker.Remote_public_trade_printed ev)
+  | Ws.Public_trades ev -> dispatch t (Broker.Public_trade_printed ev)
 
 (** REST-poll branch of the fill supervisor: pull the portfolio's
     current-session trades and lift the ones we recognise. Alor's
@@ -235,12 +235,8 @@ let make_bar_supervisor t bridge ~sw ~env ~instrument ~timeframe :
   in
   let emit (candle : Candle.t) =
     dispatch t
-      (Broker.Remote_bar_updated
-         {
-           Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument;
-           timeframe;
-           candle;
-         })
+      (Broker.Bar_updated
+         { Broker_domain.Remote_broker.Events.Bar_updated.instrument; timeframe; candle })
   in
   let label =
     Printf.sprintf "alor bars %s/%s"

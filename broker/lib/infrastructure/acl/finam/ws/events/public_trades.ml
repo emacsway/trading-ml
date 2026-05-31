@@ -51,13 +51,11 @@ let parse (j : Yojson.Safe.t) : t =
   in
   { instrument; trades }
 
-let to_domain (t : t) :
-    Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t list =
+let to_domain (t : t) : Broker_domain.Remote_broker.Events.Public_trade_printed.t list =
   List.map
     (fun (u : update) ->
       {
-        Broker_domain.Remote_broker.Events.Remote_public_trade_printed.instrument =
-          t.instrument;
+        Broker_domain.Remote_broker.Events.Public_trade_printed.instrument = t.instrument;
         side = u.side;
         quantity = u.quantity;
         price = u.price;

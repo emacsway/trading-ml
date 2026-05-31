@@ -51,11 +51,11 @@ let parse (j : Yojson.Safe.t) : t =
   in
   { instrument; timeframe; bars }
 
-let to_domain (t : t) : Broker_domain.Remote_broker.Events.Remote_bar_updated.t list =
+let to_domain (t : t) : Broker_domain.Remote_broker.Events.Bar_updated.t list =
   List.map
     (fun (candle : Candle.t) ->
       {
-        Broker_domain.Remote_broker.Events.Remote_bar_updated.instrument = t.instrument;
+        Broker_domain.Remote_broker.Events.Bar_updated.instrument = t.instrument;
         timeframe = t.timeframe;
         candle;
       })
