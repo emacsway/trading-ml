@@ -194,7 +194,7 @@ let dispatch_ws_event t (ev : Ws.event) : unit =
           match trade_executed_of_dto t dt with
           | Some raw -> Acl_common.Transport_supervisor.feed_ws sup raw
           | None -> ()))
-  | Ws.Public_trades ev -> dispatch t (Broker.Remote_public_trade_updated ev)
+  | Ws.Public_trades ev -> dispatch t (Broker.Remote_public_trade_printed ev)
 
 (** REST-poll branch of the fill supervisor: pull the portfolio's
     current-session trades and lift the ones we recognise. Alor's

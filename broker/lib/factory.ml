@@ -328,8 +328,8 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
         | Trade_executed domain_ev ->
             Broker_domain_event_handlers.Publish_integration_event_on_trade_executed
             .handle ~publish_trade_executed ~origin_correlation_id domain_ev
-        | Remote_public_trade_updated ev ->
-            Broker_domain_event_handlers.Publish_integration_event_on_public_trade_updated
+        | Remote_public_trade_printed ev ->
+            Broker_domain_event_handlers.Publish_integration_event_on_public_trade_printed
             .handle ~publish_trade_printed ev
       in
       Broker.start_live_feed client ~sw ~env ~on_event);

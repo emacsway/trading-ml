@@ -342,7 +342,7 @@ let subscribe t (request : Broker.request) : unit =
       in
       if should_open then
         with_bridge t (fun bridge ->
-            let on_trade ev = dispatch t (Broker.Remote_public_trade_updated ev) in
+            let on_trade ev = dispatch t (Broker.Remote_public_trade_printed ev) in
             try Ws_bridge.subscribe_public_trades bridge ~instrument ~on_trade
             with e ->
               Log.warn "[bcs ws] subscribe_public_trades failed: %s"

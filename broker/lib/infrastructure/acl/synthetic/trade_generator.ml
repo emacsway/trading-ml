@@ -14,11 +14,11 @@
 
 open Core
 
-module Remote_public_trade_updated =
-  Broker_domain.Remote_broker.Events.Remote_public_trade_updated
+module Remote_public_trade_printed =
+  Broker_domain.Remote_broker.Events.Remote_public_trade_printed
 
 let generate ~(instrument : Instrument.t) ~(candle : Candle.t) ~tf_seconds ~n :
-    Remote_public_trade_updated.t list =
+    Remote_public_trade_printed.t list =
   let open_ = Decimal.to_float candle.Candle.open_ in
   let high = Decimal.to_float candle.Candle.high in
   let low = Decimal.to_float candle.Candle.low in
@@ -42,7 +42,7 @@ let generate ~(instrument : Instrument.t) ~(candle : Candle.t) ~tf_seconds ~n :
         if Random.State.float rng 1.0 < bias then Some Side.Buy else Some Side.Sell
       in
       {
-        Remote_public_trade_updated.instrument;
+        Remote_public_trade_printed.instrument;
         side;
         quantity = Decimal.of_float size;
         price = Decimal.of_float price;

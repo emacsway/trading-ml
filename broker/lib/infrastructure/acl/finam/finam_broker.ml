@@ -297,7 +297,7 @@ let dispatch_ws_event t (ev : Ws.event) : unit =
          here (unlike bars/fills). REST-poll resilience via
          [Rest.latest_trades] is a documented follow-up. *)
       List.iter
-        (fun ev -> dispatch t (Broker.Remote_public_trade_updated ev))
+        (fun ev -> dispatch t (Broker.Remote_public_trade_printed ev))
         (Ws.Events.Public_trades.to_domain pt)
   | Error_ev e -> Log.warn "[finam ws] error %d %s: %s" e.code e.type_ e.message
   | Lifecycle ev -> Log.info "[finam ws] %s (%d) %s" ev.event ev.code ev.reason

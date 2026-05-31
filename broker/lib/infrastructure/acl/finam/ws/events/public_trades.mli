@@ -23,5 +23,5 @@ val parse : Yojson.Safe.t -> t
     Raises [Invalid_argument] when the symbol is absent — the WS
     bridge's decode-fail handler logs and drops the frame. *)
 
-val to_domain : t -> Broker_domain.Remote_broker.Events.Remote_public_trade_updated.t list
-(** Fans the batch into one {!Remote_public_trade_updated} per print. *)
+val to_domain : t -> Broker_domain.Remote_broker.Events.Remote_public_trade_printed.t list
+(** Fans the batch into one {!Remote_public_trade_printed} per print. *)

@@ -120,7 +120,7 @@ let run ~env ~clock ~cfg ~token ~instrument ~record_oc =
   let q_dumped = ref 0 and t_dumped = ref 0 in
   let dump_cap = 5 in
 
-  let record (pt : Remote_broker.Events.Remote_public_trade_updated.t) =
+  let record (pt : Remote_broker.Events.Remote_public_trade_printed.t) =
     match record_oc with
     | None -> ()
     | Some oc ->
@@ -133,7 +133,7 @@ let run ~env ~clock ~cfg ~token ~instrument ~record_oc =
            early termination — see the Finam/BCS probes. *)
         flush oc
   in
-  let classify (pt : Remote_broker.Events.Remote_public_trade_updated.t) =
+  let classify (pt : Remote_broker.Events.Remote_public_trade_printed.t) =
     let l1, verdict =
       match (!bid, !ask) with
       | Some b, Some a ->
