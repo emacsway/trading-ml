@@ -14,8 +14,8 @@
 
     DTO-shaped: primitives only, no domain values. *)
 
-include module type of Trade_printed_integration_event_t
-include module type of Trade_printed_integration_event_j with type t := t
+include module type of Public_trade_printed_integration_event_t
+include module type of Public_trade_printed_integration_event_j with type t := t
 
 val yojson_of_t : t -> Yojson.Safe.t
 val t_of_yojson : Yojson.Safe.t -> t

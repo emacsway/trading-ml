@@ -246,7 +246,7 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol ?tape 
       ~strategy_id:strategy_name ~engine_symbol:symbol
   in
   (* order_flow BC (ADR 0032): consumes the synthetic tape published
-     below on broker.trade-printed and builds footprints; the strategy
+     below on broker.public-trade-printed and builds footprints; the strategy
      factory's always-on footprint engine turns them into signals. *)
   let () = Order_flow_factory.Factory.build ~bus () in
   (* Outcome counters. The saga publishes its progression through
@@ -321,14 +321,16 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol ?tape 
   in
   (* Synthetic public tape for footprint backtest (ADR 0032): each
      candle is expanded into prints whose footprint reconstructs its
-     OHLC, published on broker.trade-printed alongside the bar. The
+     OHLC, published on broker.public-trade-printed alongside the bar. The
      delta is generated, not observed — this exercises footprint
      mechanics offline, it is not microstructure alpha evidence. *)
   let publish_trade_printed =
     Bus.publish
-      (Bus.producer bus ~uri:"in-memory://broker.trade-printed" ~serialize:(fun v ->
+      (Bus.producer bus ~uri:"in-memory://broker.public-trade-printed"
+         ~serialize:(fun v ->
            Yojson.Safe.to_string
-             (Broker_integration_events.Trade_printed_integration_event.yojson_of_t v)))
+             (Broker_integration_events.Public_trade_printed_integration_event.yojson_of_t
+                v)))
   in
   (* Each candle takes one trip through:
      bar-updated → strategy → signal-detected → PM → trade-intents-planned
@@ -350,7 +352,8 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol ?tape 
            captured microstructure, not synthetic. No bars are published,
            so the candle strategy is idle and only the footprint engine
            runs; the virtual clock advances to each print's own ts. *)
-        let module Tp = Broker_integration_events.Trade_printed_integration_event in
+        let module Tp = Broker_integration_events.Public_trade_printed_integration_event
+        in
         List.iter
           (fun (ie : Tp.t) ->
             Datetime.Virtual_clock.set virtual_clock (Datetime.Iso8601.parse ie.Tp.ts);
@@ -375,7 +378,8 @@ let run_backtest_composition ~env ~sw ~strategy ~strategy_name ~n ~symbol ?tape 
             List.iter
               (fun tr ->
                 publish_trade_printed
-                  (Broker_integration_events.Trade_printed_integration_event.of_domain tr))
+                  (Broker_integration_events.Public_trade_printed_integration_event
+                   .of_domain tr))
               (Synthetic.Trade_generator.generate ~instrument:symbol ~candle
                  ~tf_seconds:300 ~n:10);
             drain ())
@@ -815,7 +819,7 @@ let cmd_serve args =
   in
   let order_management = Order_management_factory.Factory.build ~bus in
   let execution_management = Execution_management_factory.Factory.build ~bus ~now in
-  (* order_flow BC (ADR 0032): subscribes to broker.trade-printed and
+  (* order_flow BC (ADR 0032): subscribes to broker.public-trade-printed and
      builds footprints, publishing footprint-completed for strategy. No
      HTTP surface yet, so it adds no bc_handler — a pure bus consumer. *)
   let () = Order_flow_factory.Factory.build ~bus () in
@@ -846,11 +850,11 @@ let cmd_serve args =
   let server = Server_factory.Factory.build ~bus ~bar_subscription in
   Server_factory.Factory.serve server ~bc_handlers ~sw ~env ~port ~broker:broker.client ()
 
-(** Read a recorded tape: one [Trade_printed_integration_event] JSON per
+(** Read a recorded tape: one [Public_trade_printed_integration_event] JSON per
     line (as written by the [--record] probe). Blank and malformed lines
     are skipped. *)
 let read_tape (path : string) :
-    Broker_integration_events.Trade_printed_integration_event.t list =
+    Broker_integration_events.Public_trade_printed_integration_event.t list =
   In_channel.with_open_text path (fun ic ->
       let rec loop acc =
         match In_channel.input_line ic with
@@ -858,7 +862,7 @@ let read_tape (path : string) :
         | Some line when String.trim line = "" -> loop acc
         | Some line -> (
             match
-              Broker_integration_events.Trade_printed_integration_event.t_of_yojson
+              Broker_integration_events.Public_trade_printed_integration_event.t_of_yojson
                 (Yojson.Safe.from_string line)
             with
             | ie -> loop (ie :: acc)

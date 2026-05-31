@@ -7,7 +7,7 @@ let handle
     ~(put_bar : Core.Instrument.t -> Order_flow.Footprint.t -> unit)
     ~(publish_footprint_completed :
        Order_flow_integration_events.Footprint_completed_integration_event.t -> unit)
-    (ie : Trade_printed_integration_event.t) : unit =
+    (ie : Public_trade_printed_integration_event.t) : unit =
   let cmd : Cmd.t =
     {
       symbol = ie.symbol;

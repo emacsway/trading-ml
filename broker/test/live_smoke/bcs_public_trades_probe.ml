@@ -25,7 +25,7 @@
          simply withheld and the raw QUOTE dump is the deliverable.
 
     [--record FILE] writes each decoded print as one
-    [Trade_printed_integration_event] JSON per line — the exact wire
+    [Public_trade_printed_integration_event] JSON per line — the exact wire
     shape [trading backtest --tape FILE] replays.
 
     Skipped silently when [BCS_SECRET] (the Keycloak refresh token) is
@@ -127,8 +127,9 @@ let run ~env ~clock ~cfg ~token ~record_oc =
     | Some oc ->
         output_string oc
           (Yojson.Safe.to_string
-             (Broker_integration_events.Trade_printed_integration_event.yojson_of_t
-                (Broker_integration_events.Trade_printed_integration_event.of_domain pt)));
+             (Broker_integration_events.Public_trade_printed_integration_event.yojson_of_t
+                (Broker_integration_events.Public_trade_printed_integration_event
+                 .of_domain pt)));
         output_char oc '\n';
         (* Flush per record: a tape recorder must be durable on Ctrl-C /
            early termination. [open_out] uses a ~64K buffer; without

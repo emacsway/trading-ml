@@ -4,7 +4,7 @@ open Core
 
     Holds the per-instrument forming-bar store (transitional in-memory
     persistence) and subscribes the inbound ACL to the broker's public
-    tape on [broker.trade-printed]; sealed footprints are published on
+    tape on [broker.public-trade-printed]; sealed footprints are published on
     [order-flow.footprint-completed] for the strategy BC to consume.
 
     No clock dependency: a print carries its own venue timestamp, and the
@@ -12,10 +12,10 @@ open Core
     (the clock-driven idle-flush is a deferred refinement, ADR 0032). *)
 
 module Trade_printed_ie =
-  Order_flow_external_integration_events.Trade_printed_integration_event
+  Order_flow_external_integration_events.Public_trade_printed_integration_event
 
 module Trade_printed_handler =
-  Order_flow_external_integration_events.Trade_printed_integration_event_handler
+  Order_flow_external_integration_events.Public_trade_printed_integration_event_handler
 
 module Footprint = Order_flow.Footprint
 module Footprint_completed_ie =
@@ -36,8 +36,9 @@ let build ~bus ?(timeframe = Timeframe.M5) () : unit =
            Yojson.Safe.to_string (Footprint_completed_ie.yojson_of_t v)))
   in
   let consumer =
-    Bus.consumer bus ~uri:"in-memory://broker.trade-printed" ~group:"order-flow-ingest"
-      ~deserialize:(fun s -> Trade_printed_ie.t_of_yojson (Yojson.Safe.from_string s))
+    Bus.consumer bus ~uri:"in-memory://broker.public-trade-printed"
+      ~group:"order-flow-ingest" ~deserialize:(fun s ->
+        Trade_printed_ie.t_of_yojson (Yojson.Safe.from_string s))
   in
   let (_ : Bus.subscription) =
     Bus.subscribe consumer

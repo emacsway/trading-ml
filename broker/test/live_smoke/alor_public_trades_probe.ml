@@ -23,7 +23,7 @@
     inverted and [parse_side] must flip).
 
     [--record FILE] writes each decoded print as one
-    [Trade_printed_integration_event] JSON per line — the exact wire
+    [Public_trade_printed_integration_event] JSON per line — the exact wire
     shape [trading backtest --tape FILE] replays.
 
     Needs a refresh token in [ALOR_SECRET] and a portfolio code
@@ -126,8 +126,9 @@ let run ~env ~clock ~cfg ~token ~instrument ~record_oc =
     | Some oc ->
         output_string oc
           (Yojson.Safe.to_string
-             (Broker_integration_events.Trade_printed_integration_event.yojson_of_t
-                (Broker_integration_events.Trade_printed_integration_event.of_domain pt)));
+             (Broker_integration_events.Public_trade_printed_integration_event.yojson_of_t
+                (Broker_integration_events.Public_trade_printed_integration_event
+                 .of_domain pt)));
         output_char oc '\n';
         (* Flush per record: a tape recorder must be durable on Ctrl-C /
            early termination — see the Finam/BCS probes. *)

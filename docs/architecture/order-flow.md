@@ -56,7 +56,7 @@ parallel to the place-order saga the
         │                            │                               │
         │  Trade_printed_IE          │  per print:                   │
         ├───────────────────────────►  open_ / classify / absorb    │
-        │  broker.trade-printed      │                               │
+        │  broker.public-trade-printed      │                               │
         │                            │  at period edge: seal,        │
         │                            │  emit Footprint_completed     │
         │                            ├───────────────────────────────►
@@ -190,8 +190,8 @@ reverse would flag inversion.
 Feeding `order_flow` required a new data tier in the broker BC, which
 previously relayed only bars. A `Remote_public_trade_updated` domain
 event (`side : Core.Side.t option`, `None` = auction/indeterminate) is
-emitted per print and published as `Trade_printed_integration_event` on
-`broker.trade-printed`. The three adapters differ in WS topology — see
+emitted per print and published as `Public_trade_printed_integration_event` on
+`broker.public-trade-printed`. The three adapters differ in WS topology — see
 [websocket-protocol-layer.md](websocket-protocol-layer.md) for the
 shared client:
 
@@ -218,7 +218,7 @@ to tick replay. Two tape sources exist:
 
 1. **Synthetic tape.** `Synthetic.Trade_generator` expands each
    backtest candle into a sequence of prints that reconstruct its OHLC,
-   published on `broker.trade-printed`. The full footprint loop runs
+   published on `broker.public-trade-printed`. The full footprint loop runs
    offline with no network. The `VirtualClock`
    ([ADR 0013](../adr/0013-clock-injection.md)) stays on the bar
    stream; the footprint uses each *print's own* `ts`, not ambient

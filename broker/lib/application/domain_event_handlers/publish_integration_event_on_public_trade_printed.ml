@@ -1,4 +1,4 @@
-module Trade_printed = Broker_integration_events.Trade_printed_integration_event
+module Trade_printed = Broker_integration_events.Public_trade_printed_integration_event
 
 let handle
     ~(publish_trade_printed : Trade_printed.t -> unit)

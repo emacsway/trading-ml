@@ -1,5 +1,5 @@
 (** ACL handler: translates the broker BC's public-tape
-    {!Trade_printed_integration_event.t} into an {!Ingest_print_command.t}
+    {!Public_trade_printed_integration_event.t} into an {!Ingest_print_command.t}
     and invokes the order_flow workflow in-process (bypassing the bus,
     per the ACL convention).
 
@@ -15,5 +15,5 @@ val handle :
   put_bar:(Core.Instrument.t -> Order_flow.Footprint.t -> unit) ->
   publish_footprint_completed:
     (Order_flow_integration_events.Footprint_completed_integration_event.t -> unit) ->
-  Trade_printed_integration_event.t ->
+  Public_trade_printed_integration_event.t ->
   unit

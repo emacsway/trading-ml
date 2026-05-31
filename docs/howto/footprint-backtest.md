@@ -12,7 +12,7 @@ see [order-flow.md](../architecture/order-flow.md) and
 
 The default backtest path generates a synthetic tape: each candle is
 expanded into prints that reconstruct its OHLC, published on
-`broker.trade-printed`, so the whole footprint loop
+`broker.public-trade-printed`, so the whole footprint loop
 (`order_flow → footprint-completed → strategy`) runs offline.
 
 ```bash

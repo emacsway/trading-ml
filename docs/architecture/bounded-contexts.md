@@ -94,7 +94,7 @@ map above:
 
 ```
   broker ──Trade_printed_IE──► order_flow ──Footprint_completed_IE──► strategy
-          broker.trade-printed             order-flow.footprint-completed
+          broker.public-trade-printed             order-flow.footprint-completed
 ```
 
 The seven **canonical pipeline stages** (Alpha → Construction →
@@ -317,7 +317,7 @@ rolls it at the period edge — mirroring how Account holds its
 interpretations (CVD divergence, stacked imbalance) belong to
 `strategy`. See [order-flow.md](order-flow.md) for the full treatment.
 
-**Inbound** ← `broker.trade-printed` (one IE per print:
+**Inbound** ← `broker.public-trade-printed` (one IE per print:
 price / size / ts / aggressor).
 **Outbound** → `order-flow.footprint-completed` (a sealed footprint:
 OHLCV, volume, delta, POC, per-price clusters).
@@ -383,7 +383,7 @@ Topic conventions per BC:
 | `in-memory://broker.trade-executed`            | broker or paper_broker | One executed trade leg; cid echoed (ADR 0029) |
 | `in-memory://broker.order-cancelled`           | paper_broker          | Cid + reservation_id echoed    |
 | `in-memory://broker.bar-updated`               | broker                | Upstream candles               |
-| `in-memory://broker.trade-printed`             | broker                | Public trade tape: price/size/ts/aggressor (ADR 0032) |
+| `in-memory://broker.public-trade-printed`             | broker                | Public trade tape: price/size/ts/aggressor (ADR 0032) |
 | `in-memory://order-flow.footprint-completed`   | order_flow            | Sealed footprint: OHLCV, delta, POC, clusters (ADR 0032) |
 | `in-memory://pre-trade-risk.trade-submission-blocked` | pre_trade_risk | Telemetry on a gate halt    |
 | `in-memory://pre-trade-risk.kill-switch-tripped` | pre_trade_risk | First trip of the drawdown circuit |

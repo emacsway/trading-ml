@@ -178,14 +178,15 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
     produce ~uri:"in-memory://broker.trade-executed"
       ~yojson_of:Broker_integration_events.Trade_executed_integration_event.yojson_of_t
   in
-  (* Outbound publisher for [broker.trade-printed] — the public tape
+  (* Outbound publisher for [broker.public-trade-printed] — the public tape
      (all market participants), consumed by the order_flow BC for
      footprint analysis (ADR 0032). Stateless: tape prints carry no
      per-key monotonicity invariant; ordering/dedup are the
      subscriber inbox's concern. *)
   let publish_trade_printed =
-    produce ~uri:"in-memory://broker.trade-printed"
-      ~yojson_of:Broker_integration_events.Trade_printed_integration_event.yojson_of_t
+    produce ~uri:"in-memory://broker.public-trade-printed"
+      ~yojson_of:
+        Broker_integration_events.Public_trade_printed_integration_event.yojson_of_t
   in
   (* Process-correlation log: [placement_id ↦ submit/cancel
      correlation_id]. Recorded by Submit on Accepted (and, when

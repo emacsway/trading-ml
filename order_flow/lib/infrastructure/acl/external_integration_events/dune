@@ -22,10 +22,10 @@
 ; code-level dependency on the broker BC.
 (rule
  (deps
-  (:atd %{project_root}/shared/contracts/broker/integration_events/trade_printed_integration_event.atd))
- (targets trade_printed_integration_event_t.ml trade_printed_integration_event_t.mli
-          trade_printed_integration_event_j.ml trade_printed_integration_event_j.mli)
+  (:atd %{project_root}/shared/contracts/broker/integration_events/public_trade_printed_integration_event.atd))
+ (targets public_trade_printed_integration_event_t.ml public_trade_printed_integration_event_t.mli
+          public_trade_printed_integration_event_j.ml public_trade_printed_integration_event_j.mli)
  (action
   (progn
-   (run atdgen -t -o trade_printed_integration_event %{atd})
-   (run atdgen -j -o trade_printed_integration_event %{atd}))))
+   (run atdgen -t -o public_trade_printed_integration_event %{atd})
+   (run atdgen -j -o public_trade_printed_integration_event %{atd}))))

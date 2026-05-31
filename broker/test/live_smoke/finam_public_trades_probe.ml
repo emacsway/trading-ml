@@ -69,8 +69,9 @@ let run ~env ~clock ~cfg ~token ~record_oc =
         in
         output_string oc
           (Yojson.Safe.to_string
-             (Broker_integration_events.Trade_printed_integration_event.yojson_of_t
-                (Broker_integration_events.Trade_printed_integration_event.of_domain dom)));
+             (Broker_integration_events.Public_trade_printed_integration_event.yojson_of_t
+                (Broker_integration_events.Public_trade_printed_integration_event
+                 .of_domain dom)));
         output_char oc '\n';
         (* Flush per record: a tape recorder must be durable on Ctrl-C /
            early termination. [open_out] uses a ~64K buffer; without
@@ -162,7 +163,9 @@ let run ~env ~clock ~cfg ~token ~record_oc =
   else if !disagree = 0 then
     pf "=> side == aggressor CONFIRMED: of_domain mapping is correct."
   else if !agree = 0 then
-    pf "=> side == INVERTED: flip Buy/Sell in Trade_printed_integration_event.of_domain."
+    pf
+      "=> side == INVERTED: flip Buy/Sell in \
+       Public_trade_printed_integration_event.of_domain."
   else
     pf
       "=> MIXED (%.0f%% agree) — likely quote/trade races; widen the window and re-check."

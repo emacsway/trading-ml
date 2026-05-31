@@ -224,7 +224,7 @@ behind the polymorphic seam, so step 1 is not throwaway.
 - Backtest must move to **tick replay**: footprint needs a tape, not
   just bars. Addressed by a synthetic tape generator
   (`Synthetic.Trade_generator`) that expands each backtest candle into
-  prints (reconstructing its OHLC) published on `broker.trade-printed`,
+  prints (reconstructing its OHLC) published on `broker.public-trade-printed`,
   so the full footprint loop runs offline. The `VirtualClock` stays on
   the bar stream — footprint uses each print's own `ts`, not ambient
   time. Caveat: the synthetic tape's delta is *generated*, so it
@@ -239,7 +239,7 @@ behind the polymorphic seam, so step 1 is not throwaway.
   **Validated for Finam on 2026-05-27** (live SBER@MISX, via
   `broker/test/live_smoke/finam_public_trades_probe`): BUY prints sit at
   the ask and SELL prints at the bid against the L1 quote, so `side` is
-  the aggressor and the `Trade_printed_integration_event.of_domain`
+  the aggressor and the `Public_trade_printed_integration_event.of_domain`
   mapping is correct. **Validated for BCS on 2026-05-28** (live
   SBER@TQBR, via `broker/test/live_smoke/bcs_public_trades_probe`):
   the `LastTrades` frame matches the inferred shape exactly

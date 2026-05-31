@@ -9,9 +9,9 @@
 module Gherkin = Gherkin_edsl
 
 module Handler =
-  Order_flow_external_integration_events.Trade_printed_integration_event_handler
+  Order_flow_external_integration_events.Public_trade_printed_integration_event_handler
 
-module Ext = Order_flow_external_integration_events.Trade_printed_integration_event
+module Ext = Order_flow_external_integration_events.Public_trade_printed_integration_event
 module Bar_boundary = Order_flow.Footprint.Values.Bar_boundary
 module Footprint = Order_flow.Footprint
 module FC = Order_flow_integration_events.Footprint_completed_integration_event
