@@ -824,8 +824,20 @@ let cmd_serve args =
   (* order_flow BC (ADR 0032): subscribes to broker.public-trade-printed and
      builds footprints, publishing footprint-completed for strategy. It
      also exposes [GET /api/footprints] (the pull side of the footprint
-     stream), so its inbound handler joins [bc_handlers]. *)
-  let order_flow = Order_flow_factory.Factory.build ~bus () in
+     stream), so its inbound handler joins [bc_handlers].
+
+     The footprint boundary tracks the operator's first watchlist bar
+     timeframe so the footprint grid and the chart share one timeframe
+     (a UI on H1 must not query an M5-only footprint store). Falls back
+     to M5 when no watchlist is declared. *)
+  let footprint_timeframe =
+    match watchlist_bars with
+    | (_, tf) :: _ -> tf
+    | [] -> Timeframe.M5
+  in
+  let order_flow =
+    Order_flow_factory.Factory.build ~bus ~timeframe:footprint_timeframe ()
+  in
   let bc_handlers =
     [
       account.http_handler;
