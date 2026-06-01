@@ -5,11 +5,21 @@ import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController, provideHttpClientTesting,
 } from '@angular/common/http/testing';
+import { EMPTY, of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { ChartComponent } from './chart.component';
 import { OrdersComponent } from './orders.component';
+import { FootprintApi } from './footprint/footprint.service';
 import type { IndicatorOverlay } from './indicators';
 import { Candle } from './api.service';
+
+/** The footprint feed is exercised by footprint.spec; here it is stubbed
+ *  so the component spec stays focused on candle/indicator behaviour and
+ *  no /api/footprints request reaches the HTTP testing backend. */
+const footprintStub: Partial<FootprintApi> = {
+  recent: () => of([]),
+  stream: () => EMPTY,
+};
 
 @Component({
   selector: 'app-chart',
@@ -69,6 +79,7 @@ describe('AppComponent', () => {
         provideZonelessChangeDetection(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        { provide: FootprintApi, useValue: footprintStub },
       ],
     });
     TestBed.overrideComponent(AppComponent, {

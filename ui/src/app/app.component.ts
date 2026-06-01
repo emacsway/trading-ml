@@ -15,6 +15,8 @@ import {
   emptyOverlay, overlayRegistry, LINE_STYLES,
   type IndicatorOverlay, type LineStyle, type LineWidth, type OverlayStyle,
 } from './indicators';
+import { FootprintApi } from './footprint/footprint.service';
+import { cvdTrueOverlay, type FootprintBar } from './footprint/footprint';
 
 /** A configured indicator instance on the chart. Multiple slots may
  *  reference the same spec (e.g. SMA(20) and SMA(50)). */
@@ -32,6 +34,18 @@ const PALETTE = [
 ];
 
 const LINE_WIDTHS: LineWidth[] = [1, 2, 3, 4];
+
+/** Fold a live footprint seal into the accumulated window: replace the
+ *  head on a same-ts redelivery (the contract dedup key is open_ts),
+ *  drop a stale older seal, otherwise append. Mirrors the candle stream's
+ *  trailing-bar discipline. */
+function appendSeal(fps: FootprintBar[], bar: FootprintBar): FootprintBar[] {
+  if (!fps.length) return [bar];
+  const last = fps[fps.length - 1];
+  if (last.ts === bar.ts) return [...fps.slice(0, -1), bar];
+  if (bar.ts < last.ts) return fps;
+  return [...fps, bar];
+}
 
 let nextSlotId = 1;
 
@@ -245,6 +259,7 @@ let nextSlotId = 1;
 })
 export class AppComponent {
   private readonly api = inject(Api);
+  private readonly footprintApi = inject(FootprintApi);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly ticker = signal('SBER');
@@ -285,6 +300,10 @@ export class AppComponent {
   readonly catalog = signal<IndicatorSpec[]>([]);
   readonly slots = signal<IndicatorSlot[]>([]);
   readonly candles = signal<Candle[]>([]);
+  /** Sealed footprints for the current feed, oldest-first: seeded from
+   *  /api/footprints, extended by live SSE seals. Drives the true CVD
+   *  line (cumulative sum of measured aggressor delta, ADR 0032). */
+  readonly footprints = signal<FootprintBar[]>([]);
   readonly result = signal<BacktestResult | undefined>(undefined);
 
   /** Ticked value of the "add" dropdown, kept out of signals because it's
@@ -294,15 +313,28 @@ export class AppComponent {
   readonly lineStyles = LINE_STYLES;
   readonly lineWidths = LINE_WIDTHS;
 
+  /** Fixed style for the always-on true-CVD line. Not a user slot —
+   *  it is fed by order-flow data, not candle math, so it lives outside
+   *  the indicator registry. */
+  private readonly cvdTrueStyle: OverlayStyle = {
+    color: '#26c6da', lineWidth: 2, lineStyle: 'solid', opacity: 1,
+  };
+
   readonly overlays = computed<IndicatorOverlay[]>(() => {
     const cs = this.candles();
-    return this.slots()
+    const indicatorOverlays = this.slots()
       .filter(s => s.visible)
       .map(s => {
         const render = overlayRegistry[s.specName];
         return render ? render(cs, s.params, s.style)
                       : emptyOverlay(s.specName);
       });
+    // Always-on true CVD from measured order-flow delta, in its own pane.
+    // Only drawn once footprints have arrived for the current feed.
+    const fps = this.footprints();
+    return fps.length
+      ? [...indicatorOverlays, cvdTrueOverlay(fps, this.cvdTrueStyle)]
+      : indicatorOverlays;
   });
 
   constructor() {
@@ -384,6 +416,35 @@ export class AppComponent {
         console.warn('[stream-effect] cleanup (closing EventSource)');
         sub.unsubscribe();
       });
+    });
+
+    // Seed the true-CVD line: recent sealed footprints for the current
+    // feed, reloaded on symbol/timeframe change (same trigger as candles).
+    // Failure is non-fatal — the feed may simply have no footprints yet.
+    effect(() => {
+      const s = this.symbol();
+      const tf = this.timeframe();
+      const count = this.n();
+      this.footprintApi.recent(s, tf, count)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: bars => this.footprints.set(bars),
+          error: () => this.footprints.set([]),
+        });
+    });
+
+    // Live footprint seals over the SSE footprint channel, gated on the
+    // same Live toggle as the bar stream. Appends each seal to the
+    // accumulated window (replacing a same-ts redelivery of the head).
+    effect((onCleanup) => {
+      if (!this.liveEnabled()) return;
+      const s = this.symbol();
+      const tf = this.timeframe();
+      const sub = this.footprintApi.stream(s, tf).subscribe({
+        next: seal => this.footprints.update(fps => appendSeal(fps, seal.bar)),
+        error: (e) => console.warn('[footprint-stream] error', e),
+      });
+      onCleanup(() => sub.unsubscribe());
     });
   }
 
