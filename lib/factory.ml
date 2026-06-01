@@ -27,6 +27,8 @@ module Order_rejected_ie =
   Server_external_integration_events.Order_rejected_integration_event
 module Order_unreachable_ie =
   Server_external_integration_events.Order_unreachable_integration_event
+module Footprint_completed_ie =
+  Order_flow_integration_events.Footprint_completed_integration_event
 module Bar_subscription = Server_application_ports.Bar_subscription
 
 type t = { registry : Stream.t }
@@ -84,6 +86,14 @@ let build ~bus ~(bar_subscription : Bar_subscription.t) : t =
       (consumer ~uri:"in-memory://broker.order-unreachable" ~group:"sse-publisher"
          ~t_of_yojson:Order_unreachable_ie.t_of_yojson)
       (Server.Publish_order_events.handle_order_unreachable ~registry)
+  in
+  (* order_flow sealed footprints → [footprint] SSE channel, per
+     (instrument, boundary) feed (ADR 0032). *)
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consumer ~uri:"in-memory://order-flow.footprint-completed" ~group:"sse-publisher"
+         ~t_of_yojson:Footprint_completed_ie.t_of_yojson)
+      (Server.Publish_footprint_events.handle ~registry)
   in
   { registry }
 

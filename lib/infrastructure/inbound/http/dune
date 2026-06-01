@@ -4,5 +4,7 @@
  (libraries core decimal broker indicators strategies log
             view_models inbound_http
             account_integration_events
+            order_flow_integration_events
+            order_flow_view_models
             server_external_integration_events
             cohttp-eio eio eio.unix yojson uri))

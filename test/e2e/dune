@@ -1,5 +1,6 @@
 (test
  (name e2e_runner)
  (libraries server broker core decimal finam bcs
+            order_flow_integration_events
             cohttp-eio eio eio_main mirage-crypto-rng.unix
             alcotest))

@@ -73,7 +73,21 @@ end
 module KMap = Map.Make (Key)
 module KSet = Set.Make (Key)
 
-type subscriber = { id : int; queue : string Eio.Stream.t; mutable bar_keys : KSet.t }
+module SSet = Set.Make (String)
+(** Footprint feeds are keyed by a plain string [symbol|boundary-token]
+    rather than [(Instrument.t * Timeframe.t)]: the boundary token can be
+    a timeframe ("M5") or a volume cap ("VOL:1000"), which a [Timeframe.t]
+    cannot hold. The footprint channel needs no registry-side feed state
+    (no cache, no seed — clients pull [/api/footprints] first; no
+    lifecycle hooks — order_flow builds footprints unconditionally from
+    the tape), so a per-subscriber interest set is all it carries. *)
+
+type subscriber = {
+  id : int;
+  queue : string Eio.Stream.t;
+  mutable bar_keys : KSet.t;
+  mutable footprint_keys : SSet.t;
+}
 
 type feed = {
   mutable last_candles : Candle.t list;
@@ -191,7 +205,14 @@ let connect t : subscriber =
   Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       let id = t.next_id in
       t.next_id <- t.next_id + 1;
-      let s = { id; queue = Eio.Stream.create 64; bar_keys = KSet.empty } in
+      let s =
+        {
+          id;
+          queue = Eio.Stream.create 64;
+          bar_keys = KSet.empty;
+          footprint_keys = SSet.empty;
+        }
+      in
       t.subscribers <- s :: t.subscribers;
       s)
 
@@ -282,3 +303,39 @@ let publish_order t (data : Yojson.Safe.t) : unit =
   let chunk = "event: order\ndata: " ^ Yojson.Safe.to_string data ^ "\n\n" in
   let subscribers = Eio.Mutex.use_rw ~protect:true t.mutex (fun () -> t.subscribers) in
   List.iter (fun s -> Eio.Stream.add s.queue chunk) subscribers
+
+(** The single definition of how a footprint feed key is spelled, so the
+    subscribe side (the [?footprints=] query parser) and the push side
+    (the bus consumer decoding a footprint integration event) cannot
+    drift apart. [symbol] is the qualified instrument; [token] is the
+    boundary token from the event's [timeframe] field ("M5", "VOL:1000"). *)
+let footprint_key ~symbol ~token = symbol ^ "|" ^ token
+
+(** Declare interest in a footprint feed keyed by [symbol|boundary-token]
+    (the qualified symbol and the token the integration event carries in
+    its [timeframe] field). Unlike bars there is no seed: the chart pulls
+    recent footprints through [/api/footprints] before opening the
+    stream, and no upstream watch command is needed since order_flow
+    builds footprints unconditionally. *)
+let subscribe_footprint t (subscriber : subscriber) ~key : unit =
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      subscriber.footprint_keys <- SSet.add key subscriber.footprint_keys)
+
+(** Fan one sealed-footprint payload out to subscribers that declared
+    interest in its [key]. [data] is the already-decoded footprint DTO;
+    it rides the [footprint] SSE channel with [kind: "footprint"] and the
+    [symbol] / [timeframe] fields the DTO already carries, so a
+    multi-feed connection can route inside one
+    [addEventListener("footprint", …)]. No-op when no subscriber holds
+    the key. *)
+let push_footprint t ~key (data : Yojson.Safe.t) : unit =
+  let chunk =
+    "event: footprint\ndata: "
+    ^ Yojson.Safe.to_string (`Assoc [ ("kind", `String "footprint"); ("payload", data) ])
+    ^ "\n\n"
+  in
+  let subs =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        List.filter (fun s -> SSet.mem key s.footprint_keys) t.subscribers)
+  in
+  List.iter (fun s -> Eio.Stream.add s.queue chunk) subs
