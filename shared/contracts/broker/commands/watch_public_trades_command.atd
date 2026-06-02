@@ -1,0 +1,20 @@
+(* Wire contract: broker/lib/application/commands/watch_public_trades_command.ml
+
+   Async, fire-and-forget. The sender expresses "I am interested in the
+   public trade tape (price / size / aggressor prints) for this instrument;
+   keep it flowing while I (or any other caller) say so." The broker BC's
+   handler forwards the request to {!Broker.S.subscribe} with
+   [Subscribe_public_trades], whose adapter-side refcount merges callers —
+   many watchers on the same instrument share one upstream tape, and the
+   operator watchlist's own subscription coexists with it.
+
+   This is the tape analogue of watch_bars_command: it carries no
+   timeframe because the public tape is per-instrument, not per-period.
+   There is no correlation id and no response IE: the only observable
+   effect is prints appearing on [broker.public-trade-printed] for the
+   instrument while interest is held; loss of a single command produces a
+   silent gap the sender recovers by re-watching on its own schedule. *)
+
+type t = {
+  symbol <doc text="Qualified instrument: TICKER@MIC[/BOARD] — Core.Instrument.of_qualified round-trips it."> : string;
+}

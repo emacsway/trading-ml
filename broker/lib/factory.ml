@@ -310,6 +310,38 @@ let build ~bus ~env ~sw ~now ~(opened : Opened.t) ~paper_mode ~watchlist : t =
          ~t_of_yojson:Broker_commands.Unwatch_bars_command.t_of_yojson)
       dispatch_unwatch_bars
   in
+  (* Public-trade (tape) subscription commands — the tape analogue of the
+     bar-subscription commands. The order_flow BC issues these when a
+     footprint subscription first needs (or last releases) an instrument's
+     tape; the adapter-side refcount lets them coexist with the operator
+     watchlist's own public-trade subscription. *)
+  let dispatch_watch_public_trades (cmd : Broker_commands.Watch_public_trades_command.t) =
+    match
+      Broker_commands.Watch_public_trades_command_workflow.execute ~broker:client cmd
+    with
+    | Ok () | Error _ -> ()
+  in
+  let dispatch_unwatch_public_trades
+      (cmd : Broker_commands.Unwatch_public_trades_command.t) =
+    match
+      Broker_commands.Unwatch_public_trades_command_workflow.execute ~broker:client cmd
+    with
+    | Ok () | Error _ -> ()
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume_command ~uri:"in-memory://broker.watch-public-trades-command"
+         ~group:"broker-public-trade-subscription"
+         ~t_of_yojson:Broker_commands.Watch_public_trades_command.t_of_yojson)
+      dispatch_watch_public_trades
+  in
+  let _ : Bus.subscription =
+    Bus.subscribe
+      (consume_command ~uri:"in-memory://broker.unwatch-public-trades-command"
+         ~group:"broker-public-trade-subscription"
+         ~t_of_yojson:Broker_commands.Unwatch_public_trades_command.t_of_yojson)
+      dispatch_unwatch_public_trades
+  in
   let origin_correlation_id ~placement_id =
     let module CL = (val command_log_module) in
     CL.origin_correlation_id command_log ~placement_id

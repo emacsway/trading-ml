@@ -164,6 +164,28 @@ buy/sell would corrupt POC and delta.
 > watchlist, so a UI watching an instrument outside it gets no prints until
 > broker grows a `Watch_public_trades_command`.
 
+> **Update (2026-06-02, cont.): the tape is pulled on demand — the
+> demand chain is now complete across all three BCs.** Broker grew a
+> `Watch_public_trades_command` / `Unwatch_public_trades_command` (the tape
+> analogue of `Watch_bars_command`, symbol only — the public tape is
+> per-instrument, not per-period) whose handler calls
+> `Broker.subscribe`/`unsubscribe` with `Subscribe_public_trades`. The
+> order_flow demand registry was promoted out of the factory closure into a
+> unit-tested application value (`Footprint_subscription_registry`) with two
+> refcount levels: the boundary level feeds the fan-out, and the
+> instrument level reports `First_for_instrument` / `Last_for_instrument`
+> transitions. On the first footprint watch for an instrument the factory
+> publishes `Watch_public_trades_command` to broker (via an outbound sender
+> mirroring broker's contract, ADR 0001); on the last release it publishes
+> the unwatch. Broker's adapter-side refcount lets this coexist with the
+> operator watchlist — a watchlist instrument's tape is held by both and
+> survives either dropping. So a chart subscribing to footprints for {e any}
+> instrument now gets prints end-to-end: SSE `on_first_footprint` ->
+> `Watch_footprints_command` -> order_flow registry `First_for_instrument`
+> -> `Watch_public_trades_command` -> broker `Subscribe_public_trades`. The
+> always-on default boundary is unchanged; only the cross-BC tape demand is
+> new.
+
 `Bar_boundary` is a variant; only `Time of Core.Timeframe.t` is
 implemented now. `Volume` / `Tick` boundaries are the planned additions
 and drop in as new cases, not a rewrite — the seam lives in the type,

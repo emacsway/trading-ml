@@ -74,3 +74,27 @@
   (progn
    (run atdgen -t -o unwatch_bars_command %{atd})
    (run atdgen -j -o unwatch_bars_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/commands/watch_public_trades_command.atd))
+ (targets watch_public_trades_command_t.ml
+          watch_public_trades_command_t.mli
+          watch_public_trades_command_j.ml
+          watch_public_trades_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o watch_public_trades_command %{atd})
+   (run atdgen -j -o watch_public_trades_command %{atd}))))
+
+(rule
+ (deps
+  (:atd %{project_root}/shared/contracts/broker/commands/unwatch_public_trades_command.atd))
+ (targets unwatch_public_trades_command_t.ml
+          unwatch_public_trades_command_t.mli
+          unwatch_public_trades_command_j.ml
+          unwatch_public_trades_command_j.mli)
+ (action
+  (progn
+   (run atdgen -t -o unwatch_public_trades_command %{atd})
+   (run atdgen -j -o unwatch_public_trades_command %{atd}))))

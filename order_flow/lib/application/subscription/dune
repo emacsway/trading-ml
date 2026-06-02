@@ -1,0 +1,4 @@
+(library
+ (name order_flow_subscription)
+ (public_name trading.order_flow.subscription)
+ (libraries core order_flow))

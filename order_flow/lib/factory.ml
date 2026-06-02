@@ -34,6 +34,11 @@ module Watch_footprints_workflow = Order_flow_commands.Watch_footprints_command_
 module Unwatch_footprints_command = Order_flow_commands.Unwatch_footprints_command
 module Unwatch_footprints_workflow =
   Order_flow_commands.Unwatch_footprints_command_workflow
+module Registry = Order_flow_subscription.Footprint_subscription_registry
+module Watch_public_trades_sender =
+  Order_flow_external_commands.Watch_public_trades_command_sender
+module Unwatch_public_trades_sender =
+  Order_flow_external_commands.Unwatch_public_trades_command_sender
 
 type t = { http_handler : Inbound_http.Route.handler }
 (** What the composition root needs from the BC beyond the bus wiring:
@@ -61,61 +66,33 @@ let build ~bus ?(timeframe = Timeframe.M5) ?boundary () : t =
     | Some b -> b
     | None -> Bar_boundary.Time timeframe
   in
-  let default_token = Bar_boundary.to_token default_boundary in
-  (* Demand registry: which boundaries are watched per instrument, refcounted
-     so concurrent watchers on the same key coexist and a boundary stops
-     forming only when the last watcher drops it (mirrors broker's
-     adapter-side refcount for bar feeds). Keyed by qualified symbol -> token
-     -> count. Single Eio domain: the trade-tape consumer reads it while the
+  (* Demand registry (an application value, unit-tested in isolation):
+     which boundaries are watched per instrument, refcounted at two levels.
+     Single Eio domain: the trade-tape consumer reads it while the
      watch/unwatch consumers write it, but every access is a synchronous
-     Hashtbl operation with no fibre yield inside, so no lock is needed —
-     same discipline as [store]. *)
-  let watched : (string, (string, int) Hashtbl.t) Hashtbl.t = Hashtbl.create 64 in
+     operation with no fibre yield inside, so no lock is needed — same
+     discipline as [store]. *)
+  let registry = Registry.create ~default_boundary in
+  (* Cross-BC tape demand: when a footprint subscription is the FIRST for
+     an instrument, pull that instrument's public tape from the broker BC
+     (a non-watchlist instrument has no tape until something asks); when it
+     releases the instrument's LAST boundary, release the tape. Boundary-
+     level transitions (a second watcher of the same feed) are silent — the
+     broker's adapter-side refcount and the operator watchlist coexist with
+     this. *)
+  let request_tape = Watch_public_trades_sender.make ~bus in
+  let release_tape = Unwatch_public_trades_sender.make ~bus in
   let watch ~instrument ~boundary =
-    let sym = Instrument.to_qualified instrument in
-    let tok = Bar_boundary.to_token boundary in
-    let inner =
-      match Hashtbl.find_opt watched sym with
-      | Some h -> h
-      | None ->
-          let h = Hashtbl.create 4 in
-          Hashtbl.replace watched sym h;
-          h
-    in
-    let prev = Option.value ~default:0 (Hashtbl.find_opt inner tok) in
-    Hashtbl.replace inner tok (prev + 1)
+    match Registry.watch registry ~instrument ~boundary with
+    | Registry.First_for_instrument -> request_tape ~instrument
+    | Registry.Already_watching -> ()
   in
   let unwatch ~instrument ~boundary =
-    let sym = Instrument.to_qualified instrument in
-    let tok = Bar_boundary.to_token boundary in
-    match Hashtbl.find_opt watched sym with
-    | None -> ()
-    | Some inner -> (
-        match Hashtbl.find_opt inner tok with
-        | None | Some 1 ->
-            Hashtbl.remove inner tok;
-            if Hashtbl.length inner = 0 then Hashtbl.remove watched sym
-        | Some n -> Hashtbl.replace inner tok (n - 1))
+    match Registry.unwatch registry ~instrument ~boundary with
+    | Registry.Last_for_instrument -> release_tape ~instrument
+    | Registry.Still_watching -> ()
   in
-  (* Boundaries to fan a print into for [symbol]: the configured default
-     (always on — preserves the headless behaviour) plus every watched
-     boundary, deduplicated by token so a watch of the default does not
-     double-ingest. Tokens were produced by [to_token], so [of_token] round
-     trips; the filter is defensive only. *)
-  let boundaries_for (symbol : string) : Bar_boundary.t list =
-    let watched_tokens =
-      match Hashtbl.find_opt watched symbol with
-      | None -> []
-      | Some inner ->
-          Hashtbl.fold (fun tok n acc -> if n > 0 then tok :: acc else acc) inner []
-    in
-    default_token :: watched_tokens
-    |> List.sort_uniq String.compare
-    |> List.filter_map (fun tok ->
-        match Bar_boundary.of_token tok with
-        | b -> Some b
-        | exception _ -> None)
-  in
+  let boundaries_for symbol = Registry.boundaries_for registry symbol in
   (* Read-model of recently sealed footprints, fed from this BC's own
      footprint-completed stream — the pull side of [GET /api/footprints],
      a peer of the push side that publishes the same fact onward. *)

@@ -1,0 +1,16 @@
+(* Wire contract: broker/lib/application/commands/unwatch_public_trades_command.ml
+
+   The release counterpart of watch_public_trades_command. The sender drops
+   its interest in the public trade tape for this instrument; the broker
+   BC's handler forwards to {!Broker.S.unsubscribe} with
+   [Subscribe_public_trades], decrementing the adapter-side refcount and
+   closing the upstream tape only on the 1->0 transition — the operator
+   watchlist's own subscription, if any, keeps it open.
+
+   Symmetric to unwatch_bars_command, minus the timeframe (the tape is
+   per-instrument). Fire-and-forget; an unwatch with no matching prior
+   watch is a benign no-op. *)
+
+type t = {
+  symbol <doc text="Qualified instrument: TICKER@MIC[/BOARD] — Core.Instrument.of_qualified round-trips it."> : string;
+}
