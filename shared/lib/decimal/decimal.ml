@@ -7,7 +7,12 @@ let zero = 0L
 let one = unit_
 
 let of_int n = Int64.mul (Int64.of_int n) unit_
-let of_float f = Int64.of_float (f *. Int64.to_float unit_)
+
+(* Round to the nearest fixed-point unit, not truncate: [Int64.of_float]
+   truncates toward zero, and a value like [324.65] is [324.6499999…] as a
+   double, so [324.65 *. 1e8] lands just below the unit boundary and would
+   truncate to 324.64999999. Rounding recovers the intended 324.65. *)
+let of_float f = Int64.of_float (Float.round (f *. Int64.to_float unit_))
 let to_float x = Int64.to_float x /. Int64.to_float unit_
 
 let add = Int64.add

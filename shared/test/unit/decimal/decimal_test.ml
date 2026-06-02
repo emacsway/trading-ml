@@ -19,6 +19,14 @@ let test_roundtrip () =
       Alcotest.(check (float 1e-6)) "roundtrip" f (Decimal.to_float x))
     [ 0.0; 1.0; -1.5; 123.456789; 1000.0 ]
 
+(* of_float rounds to the nearest fixed-point unit, not truncates: a price
+   like 324.65 is 324.6499999… as a double, and truncation would render it
+   "324.64999999". *)
+let test_of_float_rounds () =
+  Alcotest.(check string) "324.65" "324.65" (Decimal.to_string (Decimal.of_float 324.65));
+  Alcotest.(check string) "0.1" "0.1" (Decimal.to_string (Decimal.of_float 0.1));
+  Alcotest.(check string) "-1.5" "-1.5" (Decimal.to_string (Decimal.of_float (-1.5)))
+
 let test_string_roundtrip () =
   List.iter
     (fun s ->
@@ -137,6 +145,7 @@ let tests =
   [
     ("zero", `Quick, test_zero);
     ("roundtrip float", `Quick, test_roundtrip);
+    ("of_float rounds not truncates", `Quick, test_of_float_rounds);
     ("roundtrip string", `Quick, test_string_roundtrip);
     ("arithmetic", `Quick, test_arithmetic);
     ("div by zero", `Quick, test_div_by_zero);
