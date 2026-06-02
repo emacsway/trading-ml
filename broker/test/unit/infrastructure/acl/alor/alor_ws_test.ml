@@ -83,25 +83,30 @@ let test_public_trades_subscribe_envelope () =
     | _ -> true)
 
 (* AllTradesGetAndSubscribe data frame in the "Simple" format the bridge
-   subscribes with: it carries NO [exchange] field (only symbol/qty/price/
-   side/timestamp), which is exactly why the instrument must come from the
-   subscription, not from the frame — reconstructing it would default the
-   venue to the XXXX placeholder. *)
+   subscribes with: NO [exchange] field (so the venue comes from the
+   subscription, not the body — reconstructing it would hit the XXXX
+   placeholder), but it DOES carry [board], which the adapter grafts on so
+   the identity is intrinsic, like BCS. *)
 let trade_data side =
   Yojson.Safe.from_string
     (Printf.sprintf
-       {|{"symbol":"SBER","qty":7,"price":250.5,"side":"%s","timestamp":1716800000000}|}
+       {|{"symbol":"SBER","board":"TQBR","qty":7,"price":250.5,"side":"%s","timestamp":1716800000000}|}
        side)
 
+(* Subscribed WITHOUT a board, to prove the board is taken from the frame. *)
+let sber_no_board =
+  Instrument.make ~ticker:(Ticker.of_string "SBER") ~venue:(Mic.of_string "MISX") ()
+
 let test_decode_public_trade_buy () =
-  let pt = Ws.Events.Public_trades.parse ~instrument:sber (trade_data "buy") in
+  let pt = Ws.Events.Public_trades.parse ~instrument:sber_no_board (trade_data "buy") in
   Alcotest.(check bool) "side = Buy" true (pt.side = Some Side.Buy);
   Alcotest.(check (float 1e-6)) "qty" 7.0 (Decimal.to_float pt.quantity);
   Alcotest.(check (float 1e-6)) "price" 250.5 (Decimal.to_float pt.price);
-  (* Instrument is the subscribed one verbatim — venue MISX, not the XXXX
-     placeholder a frame-only reconstruction would yield. *)
+  (* Venue from the subscription (MISX, not the XXXX placeholder), board
+     from the frame (TQBR) — intrinsic identity even though the caller
+     subscribed without a board. *)
   Alcotest.(check string)
-    "instrument is the subscribed one" "SBER@MISX/TQBR"
+    "venue from subscription, board from frame" "SBER@MISX/TQBR"
     (Instrument.to_qualified pt.instrument);
   (* Alor's timestamp is milliseconds; the event carries seconds. *)
   Alcotest.(check bool) "timestamp ms→s" true (pt.ts = 1716800000L)

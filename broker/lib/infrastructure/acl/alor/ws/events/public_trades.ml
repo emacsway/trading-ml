@@ -11,11 +11,25 @@ let parse_side = function
   | "sell" | "Sell" | "SELL" -> Some Side.Sell
   | _ -> None
 
-(* The instrument is the one the caller subscribed for (the bridge tracks
-   it per guid), NOT one reconstructed from the frame: Alor's "Simple"
-   AllTrades frame omits [exchange], so [Dto.Wire.instrument_of_json] would
-   default the venue to the XXXX placeholder. Mirrors the bars path, which
-   already stamps the subscribed (instrument, timeframe). *)
+(* Ticker and venue come from the subscribed instrument (the bridge tracks
+   it per guid): Alor's "Simple" AllTrades frame omits [exchange], so
+   reconstructing the venue from the body would hit the XXXX placeholder.
+   The board, however, IS in the frame, so we graft it on — the identity is
+   then the same [SBER@MISX/TQBR] whether or not the caller subscribed with
+   the board, matching the BCS adapter (board intrinsic to the instrument,
+   not to the subscription form). *)
+let instrument_of ~subscribed data =
+  let open Yojson.Safe.Util in
+  match member "board" data with
+  | `String b -> (
+      match Board.of_string b with
+      | board ->
+          Instrument.make
+            ~ticker:(Instrument.ticker subscribed)
+            ~venue:(Instrument.venue subscribed) ~board ()
+      | exception Invalid_argument _ -> subscribed)
+  | _ -> subscribed
+
 let parse ~instrument (data : Yojson.Safe.t) : t =
   let open Yojson.Safe.Util in
   let str k =
@@ -40,7 +54,8 @@ let parse ~instrument (data : Yojson.Safe.t) : t =
         | _ -> 0L)
   in
   {
-    Broker_domain.Remote_broker.Events.Public_trade_printed.instrument;
+    Broker_domain.Remote_broker.Events.Public_trade_printed.instrument =
+      instrument_of ~subscribed:instrument data;
     side = parse_side (str "side");
     quantity = dec "qty";
     price = dec "price";
