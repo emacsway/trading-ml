@@ -27,9 +27,12 @@ let parse ~instrument (data : Yojson.Safe.t) : t =
     try Acl_common.Decimal_wire.of_yojson_flex (member k data) with _ -> Decimal.zero
   in
   let ts =
+    (* Alor's [timestamp] is Unix MILLISECONDS; our domain timestamp is
+       seconds, so divide. (The [time] fallback is already seconds.) Using
+       it raw put every bar's open ~56000 years in the future. *)
     match member "timestamp" data with
-    | `Int n -> Int64.of_int n
-    | `Intlit s -> ( try Int64.of_string s with _ -> 0L)
+    | `Int n -> Int64.div (Int64.of_int n) 1000L
+    | `Intlit s -> ( try Int64.div (Int64.of_string s) 1000L with _ -> 0L)
     | _ -> (
         match member "time" data with
         | `String s -> Datetime.Iso8601.parse s

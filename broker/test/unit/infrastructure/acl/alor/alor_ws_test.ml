@@ -103,7 +103,8 @@ let test_decode_public_trade_buy () =
   Alcotest.(check string)
     "instrument is the subscribed one" "SBER@MISX/TQBR"
     (Instrument.to_qualified pt.instrument);
-  Alcotest.(check bool) "timestamp carried" true (pt.ts = 1716800000000L)
+  (* Alor's timestamp is milliseconds; the event carries seconds. *)
+  Alcotest.(check bool) "timestamp ms→s" true (pt.ts = 1716800000L)
 
 let test_decode_public_trade_sell () =
   let pt = Ws.Events.Public_trades.parse ~instrument:sber (trade_data "sell") in
