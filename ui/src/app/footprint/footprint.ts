@@ -1,10 +1,10 @@
 /** Footprint domain types for the UI and the *true* Cumulative Volume
  *  Delta derived from them.
  *
- *  Unlike the candle-range CVD proxy (indicators/cvd.ts), which estimates
- *  per-bar delta from the close's position within the range, this CVD is
- *  the running sum of the REAL aggressor-signed delta the order_flow BC
- *  measures from the public tape (ADR 0032). The per-bar figure is a
+ *  Unlike a candle-range proxy, which can only estimate per-bar delta
+ *  from the close's position within the range, this CVD is the running
+ *  sum of the REAL aggressor-signed delta the order_flow BC measures from
+ *  the public tape (ADR 0032). The per-bar figure is a
  *  fact carried on the wire; the *cumulative* sum is a presentation
  *  projection computed here in the consumer, anchored at the start of the
  *  loaded window. */

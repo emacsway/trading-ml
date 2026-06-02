@@ -2,9 +2,9 @@
     {!Footprint_strategy.S}).
 
     Maintains the true cumulative volume delta — the running sum of each
-    sealed bar's signed [delta], the real figure rather than the
-    candle-range proxy {!Cvd} must use — and over a [lookback] window
-    flags divergence between price and flow:
+    sealed bar's signed [delta], the real aggressor-flow figure rather
+    than the close-in-range estimate a candle-only proxy is limited to —
+    and over a [lookback] window flags divergence between price and flow:
 
     - price prints a new window high while CVD does not -> bearish
       divergence (buying not confirming the high): exit long / enter short;
