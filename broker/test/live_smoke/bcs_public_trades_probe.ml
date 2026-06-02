@@ -261,7 +261,18 @@ let main () =
       in
       Eio_main.run @@ fun env ->
       Mirage_crypto_rng_unix.use_default ();
-      let cfg = Bcs.Config.make () in
+      (* Market-data tokens are issued under the read client; the order
+         engine uses [trade-api-write]. A refresh-token only exchanges
+         under the client it was issued for (Keycloak 400 "Token client
+         and authorized client don't match" otherwise), so default this
+         data-only probe to [trade-api-read] and let [BCS_CLIENT_ID]
+         override. *)
+      let client_id =
+        match Sys.getenv_opt "BCS_CLIENT_ID" with
+        | Some s when s <> "" -> s
+        | _ -> "trade-api-read"
+      in
+      let cfg = Bcs.Config.make ~client_id () in
       let transport = Http_transport.make_eio ~env in
       let token_store = Broker_persistence.Token_store.env ~name:"BCS_SECRET" in
       let auth = Bcs.Auth.make ~transport ~cfg ~token_store in
